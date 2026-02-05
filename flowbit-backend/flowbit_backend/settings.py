@@ -85,8 +85,8 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': 'flowbit_db',
-        'USER': 'postgres',          
-        'PASSWORD': 'your_password',
+        'USER': 'dana_khaing',          
+        'PASSWORD': 'Dana1352$',
         'HOST': 'localhost',
         'PORT': '5432',
     }
