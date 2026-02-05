@@ -119,6 +119,7 @@ class Profile(models.Model):
     
     # For master override functionality (Phase 2)
     # Store hashed value – never store plain text!
+    """In a real implementation, you would use Django's built-in password hashing utilities to set and check this value securely. The field is just a placeholder to indicate where the master override password would be stored."""
     master_override_password = models.CharField(max_length=128, blank=True, null=True)
     
     # Optional: track last login or other profile info
