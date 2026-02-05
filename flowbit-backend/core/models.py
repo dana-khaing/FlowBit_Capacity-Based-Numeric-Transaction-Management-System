@@ -3,6 +3,7 @@ from django.contrib.auth.models import User
 from django.db.models import Sum
 from decimal import Decimal
 from django.contrib.auth.models import User
+from django.forms import ValidationError
 from django.utils import timezone
 
 class Ledger(models.Model):
@@ -75,11 +76,65 @@ class Transaction(models.Model):
 
     # Override save to auto-generate order number in the format FB-000001, FB-000002, etc.
     def save(self, *args, **kwargs):
+    # """Auto order number + capacity check + overflow creation on new transactions."""
         if not self.order_number:
             last = Transaction.objects.order_by('-id').first()
             seq = (last.id + 1) if last else 1
             self.order_number = f'FB-{seq:06d}'
-        super().save(*args, **kwargs)
+
+        # Skip capacity check on updates
+        if self.pk is not None:
+            super().save(*args, **kwargs)
+            return
+
+        # ── Capacity check & allocation only on creation ──
+        active_ledgers = Ledger.objects.filter(is_active=True).order_by('priority')
+        if not active_ledgers.exists():
+            raise ValidationError("No active ledgers available.")
+
+        remaining = self.amount
+        assigned_ledger = None
+
+        for ledger in active_ledgers:
+            if remaining <= 0:
+                break
+
+            current_usage = Transaction.objects.filter(
+                identifier=self.identifier,
+                ledger=ledger
+            ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+
+            available = ledger.limit_per_identifier - current_usage
+
+            if available >= remaining:
+                assigned_ledger = ledger
+                remaining = Decimal('0.00')
+                break
+            else:
+                remaining -= available
+
+        # Remember original amount for overflow calculation
+        original_amount = self.amount
+
+        # Overflow handling
+        if remaining > 0:
+            self.is_overflow = True
+            self.amount = original_amount - remaining  # only save what fits
+            self.ledger = assigned_ledger or active_ledgers.first()
+
+            # First save the transaction so it gets a PK
+            super().save(*args, **kwargs)
+
+            # Now it's safe to create the related Overflow
+            Overflow.objects.create(
+                transaction=self,
+                excess_amount=remaining,
+                status='TCSO'
+            )
+        else:
+            self.is_overflow = False
+            self.ledger = assigned_ledger
+            super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.order_number} | {self.identifier} ← {self.amount}"
