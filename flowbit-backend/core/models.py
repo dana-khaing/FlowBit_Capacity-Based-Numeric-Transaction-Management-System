@@ -2,7 +2,8 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.db.models import Sum
 from decimal import Decimal
-
+from django.contrib.auth.models import User
+from django.utils import timezone
 
 class Ledger(models.Model):
     name = models.CharField(max_length=100, default='Default Ledger')
@@ -97,3 +98,70 @@ class Overflow(models.Model):
 
     def __str__(self):
         return f"{self.status} - {self.transaction}"
+    
+
+
+
+
+class Profile(models.Model):
+    """
+    Extends the built-in User model with Flowbit-specific fields.
+    One-to-one relationship with User.
+    """
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
+    
+    # Role for access control (expandable later)
+    ROLE_CHOICES = (
+        ('admin', 'Administrator'),
+        ('user', 'Regular User'),
+    )
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='user')
+    
+    # For master override functionality (Phase 2)
+    # Store hashed value – never store plain text!
+    master_override_password = models.CharField(max_length=128, blank=True, null=True)
+    
+    # Optional: track last login or other profile info
+    last_activity = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.user.username} ({self.role})"
+
+    class Meta:
+        verbose_name = "User Profile"
+        verbose_name_plural = "User Profiles"
+
+
+class AuditLog(models.Model):
+    """
+    Tracks significant actions in the system for security and auditing.
+    Useful for overrides, approvals, deletions, etc.
+    """
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='audit_logs')
+    action = models.CharField(max_length=100)  # e.g. 'override_transaction', 'approve_overflow', 'ledger_priority_changed'
+    timestamp = models.DateTimeField(default=timezone.now, db_index=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    
+    # What was affected
+    target_model = models.CharField(max_length=100, blank=True)      # e.g. 'Transaction', 'Overflow'
+    target_id = models.PositiveIntegerField(null=True, blank=True)   # ID of the affected object
+    
+    # Details – can be JSON string or text description
+    details = models.TextField(blank=True)
+    
+    # Optional: old vs new values (as JSON)
+    changes = models.JSONField(null=True, blank=True, default=dict)
+
+    def __str__(self):
+        return f"{self.action} by {self.user or 'System'} at {self.timestamp:%Y-%m-%d %H:%M}"
+
+    class Meta:
+        ordering = ['-timestamp']
+        verbose_name = "Audit Log Entry"
+        verbose_name_plural = "Audit Logs"
+        indexes = [
+            models.Index(fields=['timestamp']),
+            models.Index(fields=['action']),
+        ]
