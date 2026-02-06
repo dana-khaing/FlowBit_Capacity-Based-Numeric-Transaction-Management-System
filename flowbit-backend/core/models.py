@@ -37,29 +37,54 @@ class Identifier(models.Model):
 
     @property
     def remaining_capacity(self):
+        """
+        Remaining capacity = total active limits - effective used amount.
+        
+        Effective used amount = 
+        - Amounts from non-overflow transactions
+        - + Only APPROVED (CSO) overflow excesses
+        Pending (TCSO) overflows are NOT included → shows negative until approved.
+        """
+        # Total capacity from all active ledgers
         total_limit = Ledger.objects.filter(is_active=True).aggregate(
             total=Sum('limit_per_identifier')
         )['total'] or Decimal('0.00')
-        return total_limit - self.current_utilization
+
+        # Sum of ALL transaction amounts (normal + overflow ones)
+        total_transaction_amount = self.transaction_set.aggregate(
+            total=Sum('amount')
+        )['total'] or Decimal('0.00')
+
+        # Subtract ONLY the excess from APPROVED (CSO) overflows
+        # (this avoids double-counting the excess)
+        approved_excess = Overflow.objects.filter(
+            transaction__identifier=self,
+            status='CSO'
+        ).aggregate(
+            total=Sum('excess_amount')
+        )['total'] or Decimal('0.00')
+
+        # Effective usage = total transactions - approved excesses (they're already in total_transaction_amount)
+        effective_usage = total_transaction_amount - approved_excess
+
+        return total_limit - effective_usage
+    
+    @property
+    def pending_overflow_amount(self):
+        """Total excess still in TCSO (pending) state."""
+        return Overflow.objects.filter(
+            transaction__identifier=self,
+            status='TCSO'
+        ).aggregate(total=Sum('excess_amount'))['total'] or Decimal('0.00')
+
 
     @property
-    def amount_history_str(self):
-        """Returns '3250.5000.2500' style string - sorted by timestamp"""
-        amounts = self.transaction_set.order_by('timestamp').values_list('amount', flat=True)
-        return '.'.join(str(int(a)) for a in amounts if a > 0)  # convert to int if no decimals needed
-
-    def get_amount_details(self):
-        """List of dicts for clickable details: amount + receipt info"""
-        return [
-            {
-                'amount': t.amount,
-                'order_number': t.order_number,
-                'timestamp': t.timestamp,
-                'created_by': t.created_by.username if t.created_by else 'Unknown',
-                'overflow': t.is_overflow,
-            }
-            for t in self.transaction_set.order_by('timestamp')
-        ]
+    def approved_overflow_amount(self):
+        """Total excess that has been approved (CSO)."""
+        return Overflow.objects.filter(
+            transaction__identifier=self,
+            status='CSO'
+        ).aggregate(total=Sum('excess_amount'))['total'] or Decimal('0.00')
 
 # Transaction model to log each transaction with order number and overflow flag
 class Transaction(models.Model):
@@ -77,13 +102,11 @@ class Transaction(models.Model):
     # Override save to auto-generate order number in the format FB-000001, FB-000002, etc.
 
     def save(self, *args, **kwargs):
-        """Auto order number + capacity check + overflow creation on new transactions."""
         if not self.order_number:
             last = Transaction.objects.order_by('-id').first()
             seq = (last.id + 1) if last else 1
             self.order_number = f'FB-{seq:06d}'
 
-        # Skip capacity check on updates
         if self.pk is not None:
             super().save(*args, **kwargs)
             return
@@ -113,19 +136,18 @@ class Transaction(models.Model):
             else:
                 remaining -= available
 
-        # Always keep original amount, but mark overflow if excess
         excess = remaining
         self.is_overflow = excess > 0
         self.ledger = assigned_ledger or active_ledgers.first()
 
-        # Save transaction first
+        # Save transaction first (so it has PK)
         super().save(*args, **kwargs)
 
-        # Create overflow if needed
+        # Always create a NEW overflow record if excess > 0
         if excess > 0:
             Overflow.objects.create(
                 transaction=self,
-                excess_amount=excess,
+                excess_amount=excess,           # only this transaction's excess
                 status='TCSO'
             )
 
