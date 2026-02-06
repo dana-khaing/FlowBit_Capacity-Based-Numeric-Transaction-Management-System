@@ -18,9 +18,20 @@ class LedgerAdmin(admin.ModelAdmin):
 
 @admin.register(Identifier)
 class IdentifierAdmin(admin.ModelAdmin):
-    list_display = ('number', 'current_utilization', 'remaining_capacity')
+    list_display = (
+        'number',
+        'current_utilization',
+        'remaining_capacity',
+        'current_overflow_amount',
+        'total_overflow_amount',
+    )
     search_fields = ('number',)
-    readonly_fields = ('current_utilization', 'remaining_capacity')
+    readonly_fields = (
+        'current_utilization',
+        'remaining_capacity',
+        'current_overflow_amount',
+        'total_overflow_amount',
+    )
 
 
 @admin.register(Transaction)

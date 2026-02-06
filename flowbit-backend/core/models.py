@@ -33,7 +33,7 @@ class Identifier(models.Model):
     @property
     def current_utilization(self):
         total = self.transaction_set.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
-        return total
+        return total 
 
     @property
     def remaining_capacity(self):
@@ -68,22 +68,24 @@ class Identifier(models.Model):
         effective_usage = total_transaction_amount - approved_excess
 
         return total_limit - effective_usage
-    
+
+
     @property
-    def pending_overflow_amount(self):
-        """Total excess still in TCSO (pending) state."""
-        return Overflow.objects.filter(
+    def current_overflow_amount(self):
+        
+        pending_excess = Overflow.objects.filter(
             transaction__identifier=self,
             status='TCSO'
-        ).aggregate(total=Sum('excess_amount'))['total'] or Decimal('0.00')
-
+        ).aggregate(
+            total=Sum('excess_amount')
+        )['total'] or Decimal('0.00')
+        return pending_excess
 
     @property
-    def approved_overflow_amount(self):
-        """Total excess that has been approved (CSO)."""
+    def total_overflow_amount(self):
+        """Total overflow amount across all statuses."""
         return Overflow.objects.filter(
-            transaction__identifier=self,
-            status='CSO'
+            transaction__identifier=self
         ).aggregate(total=Sum('excess_amount'))['total'] or Decimal('0.00')
 
 # Transaction model to log each transaction with order number and overflow flag
@@ -129,12 +131,16 @@ class Transaction(models.Model):
 
             available = ledger.limit_per_identifier - current_usage
 
-            if available >= remaining:
-                assigned_ledger = ledger
-                remaining = Decimal('0.00')
-                break
+            if available >= 0:
+                if available >= remaining:
+                    assigned_ledger = ledger
+                    remaining = Decimal('0.00')
+                    break
+                else:
+                    remaining -= available
             else:
-                remaining -= available
+                # This ledger is already over-utilized, so all of the amount is excess
+                continue
 
         excess = remaining
         self.is_overflow = excess > 0
@@ -150,6 +156,7 @@ class Transaction(models.Model):
                 excess_amount=excess,           # only this transaction's excess
                 status='TCSO'
             )
+            excess=0
 
     def __str__(self):
         return f"{self.order_number} | {self.identifier} ← {self.amount}"
@@ -166,12 +173,19 @@ class Overflow(models.Model):
     collaborators = models.ManyToManyField(User, blank=True, related_name='approved_overflows')
     approved_at = models.DateTimeField(null=True, blank=True)
 
+    def save(self, *args, **kwargs):
+        # Keep approval fields consistent so pending sums drop on approval.
+        if self.approved_at and self.status != 'CSO':
+            self.status = 'CSO'
+        elif self.status == 'CSO' and self.approved_at is None:
+            self.approved_at = timezone.now()
+        elif self.status == 'TCSO' and self.approved_at is not None:
+            self.approved_at = None
+
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return f"{self.status} - {self.transaction}"
-    
-
-
-
 
 class Profile(models.Model):
     """
