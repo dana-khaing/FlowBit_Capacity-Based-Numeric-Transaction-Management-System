@@ -75,8 +75,9 @@ class Transaction(models.Model):
         ordering = ['-timestamp']
 
     # Override save to auto-generate order number in the format FB-000001, FB-000002, etc.
+
     def save(self, *args, **kwargs):
-    # """Auto order number + capacity check + overflow creation on new transactions."""
+        """Auto order number + capacity check + overflow creation on new transactions."""
         if not self.order_number:
             last = Transaction.objects.order_by('-id').first()
             seq = (last.id + 1) if last else 1
@@ -87,7 +88,6 @@ class Transaction(models.Model):
             super().save(*args, **kwargs)
             return
 
-        # ── Capacity check & allocation only on creation ──
         active_ledgers = Ledger.objects.filter(is_active=True).order_by('priority')
         if not active_ledgers.exists():
             raise ValidationError("No active ledgers available.")
@@ -113,28 +113,21 @@ class Transaction(models.Model):
             else:
                 remaining -= available
 
-        # Remember original amount for overflow calculation
-        original_amount = self.amount
+        # Always keep original amount, but mark overflow if excess
+        excess = remaining
+        self.is_overflow = excess > 0
+        self.ledger = assigned_ledger or active_ledgers.first()
 
-        # Overflow handling
-        if remaining > 0:
-            self.is_overflow = True
-            self.amount = original_amount - remaining  # only save what fits
-            self.ledger = assigned_ledger or active_ledgers.first()
+        # Save transaction first
+        super().save(*args, **kwargs)
 
-            # First save the transaction so it gets a PK
-            super().save(*args, **kwargs)
-
-            # Now it's safe to create the related Overflow
+        # Create overflow if needed
+        if excess > 0:
             Overflow.objects.create(
                 transaction=self,
-                excess_amount=remaining,
+                excess_amount=excess,
                 status='TCSO'
             )
-        else:
-            self.is_overflow = False
-            self.ledger = assigned_ledger
-            super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.order_number} | {self.identifier} ← {self.amount}"
