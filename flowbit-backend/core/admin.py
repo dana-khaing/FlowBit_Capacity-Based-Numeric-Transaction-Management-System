@@ -16,14 +16,20 @@ class IdentifierAdmin(admin.ModelAdmin):
         'utilization_display',
         'remaining_display',
         'pending_overflow_display',
-        'comfirmed_overflow_amount',
+        'confirmed_overflow_display',  # fixed name
     )
     search_fields = ('number',)
-    readonly_fields = ('current_utilization', 'remaining_capacity', 'current_overflow_amount', 'comfirmed_overflow_amount')
+    readonly_fields = (
+        'current_utilization',
+        'remaining_capacity',
+        'current_overflow_amount',
+        'confirmed_overflow_amount',
+        'total_overflow_amount',
+    )
 
     def utilization_display(self, obj):
         return f"{obj.current_utilization:,.2f}"
-    utilization_display.short_description = "Utilization"
+    utilization_display.short_description = "Utilization (incl. overflow)"
 
     def remaining_display(self, obj):
         return f"{obj.remaining_capacity:,.2f}"
@@ -33,9 +39,9 @@ class IdentifierAdmin(admin.ModelAdmin):
         return f"{obj.current_overflow_amount:,.2f}"
     pending_overflow_display.short_description = "Pending Overflow"
 
-    def comfirmed_overflow_amount(self, obj):
-        return f"{obj.comfirmed_overflow_amount:,.2f}"
-    comfirmed_overflow_amount.short_description = "Confirmed Overflow"
+    def confirmed_overflow_display(self, obj):
+        return f"{obj.confirmed_overflow_amount:,.2f}"
+    confirmed_overflow_display.short_description = "Confirmed Overflow"
 
 
 class LedgerAllocationInline(admin.TabularInline):

@@ -13,8 +13,7 @@ class IdentifierSerializer(serializers.ModelSerializer):
     remaining_capacity = serializers.ReadOnlyField()
     current_overflow_amount = serializers.ReadOnlyField()
     total_overflow_amount = serializers.ReadOnlyField()
-    # Optional: if you implement amount_history_str later
-    # amount_history_str = serializers.SerializerMethodField()
+    confirmed_overflow_amount = serializers.ReadOnlyField()  # added
 
     class Meta:
         model = Identifier
@@ -23,9 +22,8 @@ class IdentifierSerializer(serializers.ModelSerializer):
             'current_utilization',
             'remaining_capacity',
             'current_overflow_amount',
+            'confirmed_overflow_amount',  # added
             'total_overflow_amount',
-            'comfirmed_overflow_amount',
-            # 'amount_history_str',
         ]
 
 
