@@ -1,5 +1,7 @@
 from django.contrib import admin
-from .models import Ledger, Identifier, Transaction, LedgerAllocation, Overflow, Profile, AuditLog
+from django.urls import reverse
+from django.utils.html import format_html
+from .models import Ledger, Identifier, Transaction, LedgerAllocation, Overflow, Profile, AuditLog, Ticket
 
 
 @admin.register(Ledger)
@@ -16,7 +18,7 @@ class IdentifierAdmin(admin.ModelAdmin):
         'utilization_display',
         'remaining_display',
         'pending_overflow_display',
-        'confirmed_overflow_display',  # fixed name
+        'confirmed_overflow_display',
     )
     search_fields = ('number',)
     readonly_fields = (
@@ -44,6 +46,26 @@ class IdentifierAdmin(admin.ModelAdmin):
     confirmed_overflow_display.short_description = "Confirmed Overflow"
 
 
+@admin.register(Ticket)
+class TicketAdmin(admin.ModelAdmin):
+    list_display = (
+        'ticket_number',
+        'created_at',
+        'created_by',
+        'customer_name',
+        'total_amount_display',
+        'transaction_count',
+    )
+    list_filter = ('created_at', 'created_by')
+    search_fields = ('ticket_number', 'customer_name', 'notes')
+    date_hierarchy = 'created_at'
+    readonly_fields = ('total_amount_display', 'transaction_count', 'created_at')
+
+    def total_amount_display(self, obj):
+        return f"{obj.total_amount:,.2f}"
+    total_amount_display.short_description = "Total Amount"
+
+
 class LedgerAllocationInline(admin.TabularInline):
     model = LedgerAllocation
     extra = 0
@@ -61,6 +83,7 @@ class OverflowInline(admin.TabularInline):
 @admin.register(Transaction)
 class TransactionAdmin(admin.ModelAdmin):
     list_display = (
+        'ticket_link',
         'order_number',
         'identifier',
         'total_amount',
@@ -69,11 +92,19 @@ class TransactionAdmin(admin.ModelAdmin):
         'get_ledgers_summary',
         'get_overflow_summary',
     )
-    list_filter = ('timestamp', 'created_by', 'identifier')
-    search_fields = ('order_number', 'identifier__number')
-    readonly_fields = ('order_number', 'total_amount', 'timestamp', 'identifier', 'created_by')
+    list_filter = ('timestamp', 'created_by', 'identifier', 'ticket')
+    search_fields = ('order_number', 'identifier__number', 'ticket__ticket_number')
+    readonly_fields = ('order_number', 'timestamp', 'created_by')
+    list_select_related = ('ticket', 'identifier')
     inlines = [LedgerAllocationInline, OverflowInline]
     date_hierarchy = 'timestamp'
+
+    def ticket_link(self, obj):
+        if obj.ticket:
+            url = reverse("admin:core_ticket_change", args=(obj.ticket.id,))
+            return format_html('<a href="{}">{}</a>', url, obj.ticket.ticket_number)
+        return "-"
+    ticket_link.short_description = "Ticket"
 
     def get_ledgers_summary(self, obj):
         allocations = obj.allocations.all()
