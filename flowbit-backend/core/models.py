@@ -63,6 +63,12 @@ class Identifier(models.Model):
             transaction__identifier=self,
             status='TCSO'
         ).aggregate(total=Sum('excess_amount'))['total'] or Decimal('0.00')
+    @property
+    def comfirmed_overflow_amount(self):
+        return Overflow.objects.filter(
+            transaction__identifier=self,
+            status='CSO'
+        ).aggregate(total=Sum('excess_amount'))['total'] or Decimal('0.00')
 
     @property
     def total_overflow_amount(self):
