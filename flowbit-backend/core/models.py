@@ -30,12 +30,22 @@ class Identifier(models.Model):
     def __str__(self):
         return self.number
 
+    # @property
+    # def current_utilization(self):
+    #     return LedgerAllocation.objects.filter(
+    #         transaction__identifier=self
+    #     ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+    
     @property
     def current_utilization(self):
-        return LedgerAllocation.objects.filter(
+        """Total amount actually used, including approved and pending overflow"""
+        transation_in_limits= LedgerAllocation.objects.filter(
             transaction__identifier=self
         ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
-
+        allocated = transation_in_limits
+        all_overflow = self.total_overflow_amount
+        return allocated + all_overflow
+    
     @property
     def remaining_capacity(self):
         total_limit = Ledger.objects.filter(is_active=True).aggregate(
@@ -48,10 +58,10 @@ class Identifier(models.Model):
         ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
 
         # Subtract only APPROVED overflow from the overflow part (but NOT from normal usage)
-        approved_excess = Overflow.objects.filter(
-            transaction__identifier=self,
-            status='CSO'
-        ).aggregate(total=Sum('excess_amount'))['total'] or Decimal('0.00')
+        # approved_excess = Overflow.objects.filter(
+        #     transaction__identifier=self,
+        #     status='CSO'
+        # ).aggregate(total=Sum('excess_amount'))['total'] or Decimal('0.00')
 
         # Remaining = total official limit - normal usage
         # → approved overflow does NOT give you more remaining capacity
