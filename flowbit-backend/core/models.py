@@ -51,12 +51,10 @@ class Identifier(models.Model):
             transaction__identifier=self
         ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
 
-        # Approved overflow does NOT increase remaining capacity
         return total_limit - normal_usage
 
     @property
     def current_overflow_amount(self):
-        """Pending (TCSO) overflow"""
         return Overflow.objects.filter(
             transaction__identifier=self,
             status='TCSO'
@@ -64,7 +62,6 @@ class Identifier(models.Model):
 
     @property
     def confirmed_overflow_amount(self):
-        """Approved (CSO) overflow"""
         return Overflow.objects.filter(
             transaction__identifier=self,
             status='CSO'
@@ -72,22 +69,78 @@ class Identifier(models.Model):
 
     @property
     def total_overflow_amount(self):
-        """Total overflow amount across all statuses (pending + approved)"""
+        """Total overflow amount across all statuses."""
         return Overflow.objects.filter(
             transaction__identifier=self
         ).aggregate(total=Sum('excess_amount'))['total'] or Decimal('0.00')
 
 
+class Ticket(models.Model):
+    """
+    Represents a logical ticket/receipt/invoice that can contain multiple transactions.
+    """
+    ticket_number = models.CharField(
+        max_length=50,
+        unique=True,
+        db_index=True,
+        help_text="Unique ticket identifier (e.g. TICKET-20260209-001)"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_tickets'
+    )
+    customer_name = models.CharField(max_length=150, blank=True, null=True)
+    notes = models.TextField(blank=True, null=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "Ticket"
+        verbose_name_plural = "Tickets"
+
+    def __str__(self):
+        return self.ticket_number
+
+    def save(self, *args, **kwargs):
+        if not self.ticket_number:
+            today = timezone.now().strftime('%Y%m%d')
+            last = Ticket.objects.filter(
+                ticket_number__startswith=f"TICKET-{today}"
+            ).order_by('-ticket_number').first()
+            seq = 1
+            if last:
+                last_seq = int(last.ticket_number.split('-')[-1])
+                seq = last_seq + 1
+            self.ticket_number = f"TICKET-{today}-{seq:04d}"
+        super().save(*args, **kwargs)
+
+    @property
+    def total_amount(self):
+        return self.transactions.aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
+
+    @property
+    def transaction_count(self):
+        return self.transactions.count()
+
+
 class Transaction(models.Model):
-    """
-    Logical transaction (what appears on receipt / main list).
-    One order_number and total amount, but may be split across multiple ledgers.
-    """
     identifier = models.ForeignKey(Identifier, on_delete=models.CASCADE, related_name='transactions')
     total_amount = models.DecimalField(max_digits=12, decimal_places=2)
     timestamp = models.DateTimeField(auto_now_add=True)
     order_number = models.CharField(max_length=20, unique=True, blank=True)
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+
+    # Link to Ticket
+    ticket = models.ForeignKey(
+        Ticket,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='transactions'
+    )
 
     class Meta:
         ordering = ['-timestamp']
@@ -108,7 +161,6 @@ class Transaction(models.Model):
             self._allocate_to_ledgers()
 
     def _allocate_to_ledgers(self):
-        """Greedy allocation: fill highest priority ledgers first, create overflow if remaining."""
         active_ledgers = Ledger.objects.filter(is_active=True).order_by('priority')
         if not active_ledgers.exists():
             raise ValidationError("No active ledgers available.")
@@ -161,8 +213,8 @@ class LedgerAllocation(models.Model):
 
 class Overflow(models.Model):
     STATUS_CHOICES = (
-        ('TCSO', 'Take Care Spill Over'),  # pending / red
-        ('CSO', 'Completed Spill Over'),   # approved / green
+        ('TCSO', 'Take Care Spill Over'),
+        ('CSO', 'Completed Spill Over'),
     )
 
     transaction = models.ForeignKey(Transaction, on_delete=models.CASCADE, related_name='overflows')
@@ -187,13 +239,11 @@ class Overflow(models.Model):
             if leftover > 0:
                 self.excess_amount = self.amount_to_approve or Decimal('0.00')
                 super().save(update_fields=['excess_amount'])
-
                 Overflow.objects.create(
                     transaction=self.transaction,
                     excess_amount=leftover,
                     status='TCSO'
                 )
-
 
     def __str__(self):
         return f"{self.status} - {self.transaction.order_number}"

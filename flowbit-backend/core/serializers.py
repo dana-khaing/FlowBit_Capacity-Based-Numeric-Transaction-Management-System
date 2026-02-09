@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Ledger, Identifier, Transaction, LedgerAllocation, Overflow, Profile
+from .models import Ledger, Identifier, Transaction, LedgerAllocation, Overflow, Profile, Ticket
 
 
 class LedgerSerializer(serializers.ModelSerializer):
@@ -8,12 +8,33 @@ class LedgerSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+class TicketSerializer(serializers.ModelSerializer):
+    total_amount = serializers.ReadOnlyField()
+    transaction_count = serializers.ReadOnlyField()
+    created_by_username = serializers.CharField(source='created_by.username', read_only=True, default=None)
+
+    class Meta:
+        model = Ticket
+        fields = [
+            'id',
+            'ticket_number',
+            'created_at',
+            'created_by',
+            'created_by_username',
+            'customer_name',
+            'notes',
+            'total_amount',
+            'transaction_count',
+        ]
+        read_only_fields = ['ticket_number', 'created_at', 'total_amount', 'transaction_count']
+
+
 class IdentifierSerializer(serializers.ModelSerializer):
     current_utilization = serializers.ReadOnlyField()
     remaining_capacity = serializers.ReadOnlyField()
     current_overflow_amount = serializers.ReadOnlyField()
     total_overflow_amount = serializers.ReadOnlyField()
-    confirmed_overflow_amount = serializers.ReadOnlyField()  # added
+    confirmed_overflow_amount = serializers.ReadOnlyField()
 
     class Meta:
         model = Identifier
@@ -22,7 +43,7 @@ class IdentifierSerializer(serializers.ModelSerializer):
             'current_utilization',
             'remaining_capacity',
             'current_overflow_amount',
-            'confirmed_overflow_amount',  # added
+            'confirmed_overflow_amount',
             'total_overflow_amount',
         ]
 
@@ -45,11 +66,21 @@ class TransactionSerializer(serializers.ModelSerializer):
     allocations = LedgerAllocationSerializer(many=True, read_only=True)
     overflows = OverflowSerializer(many=True, read_only=True)
     identifier_number = serializers.CharField(source='identifier.number', read_only=True)
+    ticket_number = serializers.CharField(source='ticket.ticket_number', read_only=True, allow_null=True)
+    ticket_id = serializers.PrimaryKeyRelatedField(
+        source='ticket',
+        queryset=Ticket.objects.all(),
+        required=False,
+        allow_null=True
+    )
 
     class Meta:
         model = Transaction
         fields = [
             'id',
+            'ticket',
+            'ticket_id',
+            'ticket_number',
             'identifier',
             'identifier_number',
             'total_amount',
@@ -59,7 +90,14 @@ class TransactionSerializer(serializers.ModelSerializer):
             'allocations',
             'overflows',
         ]
-        read_only_fields = ['order_number', 'timestamp', 'created_by', 'allocations', 'overflows']
+        read_only_fields = [
+            'order_number',
+            'timestamp',
+            'created_by',
+            'ticket_number',
+            'allocations',
+            'overflows',
+        ]
 
 
 class ProfileSerializer(serializers.ModelSerializer):
