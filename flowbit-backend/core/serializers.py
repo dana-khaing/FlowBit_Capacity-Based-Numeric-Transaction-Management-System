@@ -24,6 +24,7 @@ class IdentifierSerializer(serializers.ModelSerializer):
             'remaining_capacity',
             'current_overflow_amount',
             'total_overflow_amount',
+            'comfirmed_overflow_amount',
             # 'amount_history_str',
         ]
 
