@@ -36,7 +36,21 @@ class TransactionViewSet(viewsets.ModelViewSet):
 class OverflowViewSet(viewsets.ModelViewSet):
     queryset = Overflow.objects.all()
     serializer_class = OverflowSerializer
-    # permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+    @action(detail=False, methods=['get'], url_path='pending')
+    def pending_overflows(self, request):
+        """Get TCSO overflows"""
+        pending = Overflow.objects.filter(status='TCSO')
+        serializer = self.get_serializer(pending, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='approved')
+    def approved_overflows(self, request):
+        """Get CSO overflows"""
+        approved = Overflow.objects.filter(status='CSO')
+        serializer = self.get_serializer(approved, many=True)
+        return Response(serializer.data)
 
     @action(detail=False, methods=['get'], url_path='pending')
     def pending_overflows(self, request):
