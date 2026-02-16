@@ -1,4 +1,4 @@
-from rest_framework import viewsets
+from rest_framework import viewsets, generics
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -15,6 +15,7 @@ class LedgerViewSet(viewsets.ModelViewSet):
 class IdentifierViewSet(viewsets.ModelViewSet):
     queryset = Identifier.objects.all()
     serializer_class = IdentifierSerializer
+    # permission_classes =[IsAuthenticatedOrReadOnly]  change to IsAuthenticated if user want login required
 
 class TransactionViewSet(viewsets.ModelViewSet):
     queryset = Transaction.objects.all()
@@ -23,6 +24,19 @@ class TransactionViewSet(viewsets.ModelViewSet):
 class OverflowViewSet(viewsets.ModelViewSet):
     queryset = Overflow.objects.all()
     serializer_class = OverflowSerializer
+
+class TicketListView(generics.ListAPIView):
+    queryset = Ticket.objects.all().order_by('-created_at')
+    serializer_class = TicketSerializer
+    # permission_classes = [IsAuthenticated]
+    permission_classes = []  #[IsAuthenticatedOrReadOnly] change to IsAuthenticated if user want login required
+
+class TicketDetailView(generics.RetrieveAPIView):
+    queryset = Ticket.objects.all()
+    serializer_class = TicketSerializer
+    # permission_classes = [IsAuthenticated]
+    permission_classes = []  #[IsAuthenticatedOrReadOnly] change to IsAuthenticated if user want login required
+    lookup_field = 'ticket_number'  # or 'id' if you prefer
 
 
 class CreateTicketWithTransactions(APIView):
