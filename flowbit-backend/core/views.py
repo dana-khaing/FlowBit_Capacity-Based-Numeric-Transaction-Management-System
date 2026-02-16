@@ -3,29 +3,84 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticatedOrReadOnly
-from django.db import transaction
+from django.db import transaction as db_transaction
 from django.utils import timezone
-from django.contrib.auth.models import User
+from django.http import HttpResponse
+from django.db.models import Sum
 from decimal import Decimal, InvalidOperation
 from .models import Ledger, Identifier, Transaction, Overflow, Ticket
-from .serializers import (
-    LedgerSerializer, 
-    IdentifierSerializer, 
-    TransactionSerializer, 
-    OverflowSerializer, 
-    TicketSerializer
-)
+from .serializers import LedgerSerializer, IdentifierSerializer, TransactionSerializer, OverflowSerializer, TicketSerializer
 
 
 class LedgerViewSet(viewsets.ModelViewSet):
     queryset = Ledger.objects.all()
     serializer_class = LedgerSerializer
+    permission_classes =[]
+
+    @action(detail=True, methods=['post'], url_path='close')
+    def close_ledger(self, request, pk=None):
+        """
+        POST /api/ledgers/{id}/close/
+        
+        Manually close a ledger (set is_active=False)
+        """
+        ledger = self.get_object()
+        
+        if not ledger.is_active:
+            return Response(
+                {"detail": "Ledger is already closed"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        ledger.is_active = False
+        ledger.save()
+        
+        serializer = self.get_serializer(ledger)
+        return Response({
+            "message": f"Ledger '{ledger.name}' closed successfully",
+            "ledger": serializer.data
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], url_path='auto-close-expired')
+    def auto_close_expired(self, request):
+        """
+        POST /api/ledgers/auto-close-expired/
+        
+        Close all ledgers that have passed their end_date
+        This can be called by a cron job or manually
+        
+        Returns list of closed ledgers
+        """
+        now = timezone.now()
+        
+        expired_ledgers = Ledger.objects.filter(
+            is_active=True,
+            end_date__lte=now
+        )
+        
+        closed_ledgers = []
+        
+        with db_transaction.atomic():
+            for ledger in expired_ledgers:
+                ledger.is_active = False
+                ledger.save()
+                closed_ledgers.append({
+                    'id': ledger.id,
+                    'name': ledger.name,
+                    'end_date': ledger.end_date,
+                    'closed_at': now
+                })
+        
+        return Response({
+            "message": f"Closed {len(closed_ledgers)} expired ledger(s)",
+            "closed_ledgers": closed_ledgers
+        }, status=status.HTTP_200_OK)
 
 
 class IdentifierViewSet(viewsets.ModelViewSet):
     queryset = Identifier.objects.all()
     serializer_class = IdentifierSerializer
-    # permission_classes = [IsAuthenticatedOrReadOnly]
+    # permission_classes =[IsAuthenticatedOrReadOnly]
 
 
 class TransactionViewSet(viewsets.ModelViewSet):
@@ -36,21 +91,6 @@ class TransactionViewSet(viewsets.ModelViewSet):
 class OverflowViewSet(viewsets.ModelViewSet):
     queryset = Overflow.objects.all()
     serializer_class = OverflowSerializer
-    permission_classes = [IsAuthenticatedOrReadOnly]
-
-    @action(detail=False, methods=['get'], url_path='pending')
-    def pending_overflows(self, request):
-        """Get TCSO overflows"""
-        pending = Overflow.objects.filter(status='TCSO')
-        serializer = self.get_serializer(pending, many=True)
-        return Response(serializer.data)
-
-    @action(detail=False, methods=['get'], url_path='approved')
-    def approved_overflows(self, request):
-        """Get CSO overflows"""
-        approved = Overflow.objects.filter(status='CSO')
-        serializer = self.get_serializer(approved, many=True)
-        return Response(serializer.data)
 
     @action(detail=False, methods=['get'], url_path='pending')
     def pending_overflows(self, request):
@@ -74,15 +114,7 @@ class OverflowViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='approve')
     def approve_overflow(self, request, pk=None):
-        """
-        POST /api/overflows/{id}/approve/
-        
-        Request body:
-        {
-            "amount_to_approve": "1500.00",  # optional
-            "collaborator_ids": [1, 2, 3]     # optional
-        }
-        """
+        """POST /api/overflows/{id}/approve/ - Approve overflow with collaborators"""
         overflow = self.get_object()
         
         if overflow.status == 'CSO':
@@ -91,11 +123,9 @@ class OverflowViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Get data from request
         amount_str = request.data.get('amount_to_approve')
         collaborator_ids = request.data.get('collaborator_ids', [])
         
-        # Validate and set approval amount
         if amount_str:
             try:
                 amount = Decimal(str(amount_str))
@@ -113,13 +143,12 @@ class OverflowViewSet(viewsets.ModelViewSet):
         else:
             overflow.amount_to_approve = overflow.excess_amount
         
-        # Update overflow status
         overflow.status = 'CSO'
         overflow.approved_at = timezone.now()
         overflow.save()
         
-        # Add collaborators
         if collaborator_ids:
+            from django.contrib.auth.models import User
             collaborators = User.objects.filter(id__in=collaborator_ids)
             overflow.collaborators.set(collaborators)
         
@@ -160,7 +189,7 @@ class CreateTicketWithTransactions(APIView):
     """
     permission_classes = []
 
-    @transaction.atomic
+    @db_transaction.atomic
     def post(self, request):
         data = request.data
 
