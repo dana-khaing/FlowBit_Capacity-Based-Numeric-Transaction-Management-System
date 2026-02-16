@@ -1,42 +1,132 @@
-from rest_framework import viewsets, generics
+from rest_framework import viewsets, generics, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import status
-from rest_framework.permissions import IsAuthenticatedOrReadOnly # or IsAuthenticated
+from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticatedOrReadOnly
 from django.db import transaction
+from django.utils import timezone
+from django.contrib.auth.models import User
 from decimal import Decimal, InvalidOperation
 from .models import Ledger, Identifier, Transaction, Overflow, Ticket
-from .serializers import LedgerSerializer, IdentifierSerializer, TransactionSerializer, OverflowSerializer, TicketSerializer
+from .serializers import (
+    LedgerSerializer, 
+    IdentifierSerializer, 
+    TransactionSerializer, 
+    OverflowSerializer, 
+    TicketSerializer
+)
+
 
 class LedgerViewSet(viewsets.ModelViewSet):
     queryset = Ledger.objects.all()
     serializer_class = LedgerSerializer
 
+
 class IdentifierViewSet(viewsets.ModelViewSet):
     queryset = Identifier.objects.all()
     serializer_class = IdentifierSerializer
-    # permission_classes =[IsAuthenticatedOrReadOnly]  change to IsAuthenticated if user want login required
+    # permission_classes = [IsAuthenticatedOrReadOnly]
+
 
 class TransactionViewSet(viewsets.ModelViewSet):
     queryset = Transaction.objects.all()
     serializer_class = TransactionSerializer
 
+
 class OverflowViewSet(viewsets.ModelViewSet):
     queryset = Overflow.objects.all()
     serializer_class = OverflowSerializer
+    # permission_classes = [IsAuthenticatedOrReadOnly]
+
+    @action(detail=False, methods=['get'], url_path='pending')
+    def pending_overflows(self, request):
+        """GET /api/overflows/pending/ - Get all TCSO (red) overflows"""
+        pending = Overflow.objects.filter(status='TCSO').select_related(
+            'transaction__identifier',
+            'transaction__ticket'
+        ).order_by('-transaction__timestamp')
+        serializer = self.get_serializer(pending, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='approved')
+    def approved_overflows(self, request):
+        """GET /api/overflows/approved/ - Get all CSO (green) overflows"""
+        approved = Overflow.objects.filter(status='CSO').select_related(
+            'transaction__identifier',
+            'transaction__ticket'
+        ).order_by('-approved_at')
+        serializer = self.get_serializer(approved, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'], url_path='approve')
+    def approve_overflow(self, request, pk=None):
+        """
+        POST /api/overflows/{id}/approve/
+        
+        Request body:
+        {
+            "amount_to_approve": "1500.00",  # optional
+            "collaborator_ids": [1, 2, 3]     # optional
+        }
+        """
+        overflow = self.get_object()
+        
+        if overflow.status == 'CSO':
+            return Response(
+                {"detail": "Already approved"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get data from request
+        amount_str = request.data.get('amount_to_approve')
+        collaborator_ids = request.data.get('collaborator_ids', [])
+        
+        # Validate and set approval amount
+        if amount_str:
+            try:
+                amount = Decimal(str(amount_str))
+                if amount <= 0 or amount > overflow.excess_amount:
+                    return Response(
+                        {"detail": "Invalid approval amount"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                overflow.amount_to_approve = amount
+            except (InvalidOperation, ValueError):
+                return Response(
+                    {"detail": "Invalid amount format"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        else:
+            overflow.amount_to_approve = overflow.excess_amount
+        
+        # Update overflow status
+        overflow.status = 'CSO'
+        overflow.approved_at = timezone.now()
+        overflow.save()
+        
+        # Add collaborators
+        if collaborator_ids:
+            collaborators = User.objects.filter(id__in=collaborator_ids)
+            overflow.collaborators.set(collaborators)
+        
+        serializer = self.get_serializer(overflow)
+        return Response({
+            "message": "Approved successfully",
+            "overflow": serializer.data
+        }, status=status.HTTP_200_OK)
+
 
 class TicketListView(generics.ListAPIView):
     queryset = Ticket.objects.all().order_by('-created_at')
     serializer_class = TicketSerializer
-    # permission_classes = [IsAuthenticated]
-    permission_classes = []  #[IsAuthenticatedOrReadOnly] change to IsAuthenticated if user want login required
+    permission_classes = []
+
 
 class TicketDetailView(generics.RetrieveAPIView):
     queryset = Ticket.objects.all()
     serializer_class = TicketSerializer
-    # permission_classes = [IsAuthenticated]
-    permission_classes = []  #[IsAuthenticatedOrReadOnly] change to IsAuthenticated if user want login required
-    lookup_field = 'ticket_number'  # or 'id' if you prefer
+    permission_classes = []
+    lookup_field = 'ticket_number'
 
 
 class CreateTicketWithTransactions(APIView):
@@ -54,7 +144,7 @@ class CreateTicketWithTransactions(APIView):
         ]
     }
     """
-    permission_classes = []  #[IsAuthenticatedOrReadOnly] change to IsAuthenticated if user want login required
+    permission_classes = []
 
     @transaction.atomic
     def post(self, request):
@@ -136,7 +226,7 @@ class CreateTicketWithTransactions(APIView):
                     "ticket_id": ticket.id,
                     "ticket_number": ticket.ticket_number
                 },
-                status=status.HTTP_207_MULTI_STATUS   # or 400 if you prefer strict
+                status=status.HTTP_207_MULTI_STATUS
             )
 
         # 5. Success
