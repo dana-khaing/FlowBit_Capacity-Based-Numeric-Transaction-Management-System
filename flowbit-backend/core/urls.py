@@ -1,6 +1,14 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import CreateTicketWithTransactions, LedgerViewSet, IdentifierViewSet, TransactionViewSet, OverflowViewSet
+from .views import (
+    CreateTicketWithTransactions,
+    LedgerViewSet,
+    IdentifierViewSet,
+    TransactionViewSet,
+    OverflowViewSet,
+    TicketListView,
+    TicketDetailView
+)
 
 router = DefaultRouter()
 router.register(r'ledgers', LedgerViewSet)
@@ -9,9 +17,13 @@ router.register(r'transactions', TransactionViewSet)
 router.register(r'overflows', OverflowViewSet)
 
 urlpatterns = [
-    # Router endpoints (no extra 'api/' here)
+    # All router endpoints (ledgers, identifiers, transactions, overflows)
     path('', include(router.urls)),
-    
-    # Custom view – no extra 'api/' prefix
+
+    # Ticket creation (multiple transactions in one request)
     path('tickets/create-with-items/', CreateTicketWithTransactions.as_view(), name='create-ticket-with-items'),
+
+    # Ticket listing & detail
+    path('tickets/', TicketListView.as_view(), name='ticket-list'),
+    path('tickets/<str:ticket_number>/', TicketDetailView.as_view(), name='ticket-detail'),
 ]
