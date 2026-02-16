@@ -136,7 +136,7 @@ class Transaction(models.Model):
     # Link to Ticket
     ticket = models.ForeignKey(
         Ticket,
-        on_delete=models.SET_NULL,
+        on_delete=models.CASCADE,
         null=True,
         blank=True,
         related_name='transactions'
