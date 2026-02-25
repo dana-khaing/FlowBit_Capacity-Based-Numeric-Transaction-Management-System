@@ -12,6 +12,7 @@ from .models import Ledger, Identifier, Transaction, Overflow, Ticket
 from .serializers import LedgerSerializer, IdentifierSerializer, TransactionSerializer, OverflowSerializer, TicketSerializer
 from django.db import transaction
 
+from rest_framework.decorators import action
 from django.http import HttpResponse
 from django.db.models import Sum
 import csv
@@ -21,7 +22,8 @@ from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-from reportlab.lib.enums import TA_CENTER
+from reportlab.lib.enums import TA_CENTER, TA_LEFT
+from decimal import Decimal
 
 
 class LedgerViewSet(viewsets.ModelViewSet):
@@ -175,8 +177,9 @@ class LedgerViewSet(viewsets.ModelViewSet):
             "ledgers": updated_ledgers
         }, status=status.HTTP_200_OK)
 
+
     # =============================================================================
-    # METHOD 1: CSV EXPORT
+    # METHOD 1: CSV EXPORT WITH IDENTIFIER VISUAL REPRESENTATION
     # =============================================================================
 
     @action(detail=True, methods=['get'], url_path='export-csv')
@@ -184,10 +187,10 @@ class LedgerViewSet(viewsets.ModelViewSet):
         """
         GET /api/ledgers/{id}/export-csv/
         
-        Export ledger data as CSV file
+        Export ledger with identifier visual representation
+        Format: 124: 3250.5000.2500
         """
-        from .models import LedgerAllocation
-        from decimal import Decimal
+        from .models import LedgerAllocation, Identifier
         
         ledger = self.get_object()
         
@@ -206,48 +209,44 @@ class LedgerViewSet(viewsets.ModelViewSet):
         writer.writerow(['Status', 'Active' if ledger.is_active else 'Closed'])
         writer.writerow([])
         
-        # Transaction headers
-        writer.writerow([
-            'Order Number',
-            'Identifier',
-            'Allocated Amount',
-            'Total Transaction Amount',
-            'Timestamp',
-            'Ticket Number',
-            'Has Overflow'
-        ])
+        # Identifier recordings header
+        writer.writerow(['Identifier Recordings'])
+        writer.writerow(['ID', 'Accumulated Values'])
+        writer.writerow([])
         
-        # Get all allocations for this ledger
-        allocations = LedgerAllocation.objects.filter(
-            ledger=ledger
-        ).select_related(
-            'transaction__identifier',
-            'transaction__ticket'
-        ).order_by('-transaction__timestamp')
+        # Get all identifiers (000-999)
+        identifiers = Identifier.objects.all().order_by('number')
         
-        # Write transaction data
-        for allocation in allocations:
-            tx = allocation.transaction
-            has_overflow = tx.overflows.exists()
+        for identifier in identifiers:
+            # Get all transactions for this identifier in this ledger
+            allocations = LedgerAllocation.objects.filter(
+                ledger=ledger,
+                transaction__identifier=identifier
+            ).select_related('transaction').order_by('transaction__timestamp')
             
-            writer.writerow([
-                tx.order_number,
-                tx.identifier.number,
-                str(allocation.amount),
-                str(tx.total_amount),
-                tx.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
-                tx.ticket.ticket_number if tx.ticket else '',
-                'Yes' if has_overflow else 'No'
-            ])
+            if allocations.exists():
+                # Build the visual representation: "3250.5000.2500"
+                values = [str(int(alloc.amount)) for alloc in allocations]
+                visual = '.'.join(values)
+                writer.writerow([identifier.number, visual])
+            else:
+                # No transactions for this identifier
+                writer.writerow([identifier.number, '________'])
         
         # Summary section
         writer.writerow([])
         writer.writerow(['Summary'])
         
-        total_allocated = allocations.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
-        total_capacity = ledger.limit_per_identifier * 1000  # 1000 identifiers
+        total_allocated = LedgerAllocation.objects.filter(
+            ledger=ledger
+        ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
         
-        writer.writerow(['Total Transactions', allocations.count()])
+        total_capacity = ledger.limit_per_identifier * 1000
+        identifiers_used = LedgerAllocation.objects.filter(
+            ledger=ledger
+        ).values('transaction__identifier').distinct().count()
+        
+        writer.writerow(['Total Identifiers Used', identifiers_used])
         writer.writerow(['Total Amount Allocated', str(total_allocated)])
         writer.writerow(['Total Capacity', str(total_capacity)])
         writer.writerow(['Remaining Capacity', str(total_capacity - total_allocated)])
@@ -256,7 +255,7 @@ class LedgerViewSet(viewsets.ModelViewSet):
 
 
     # =============================================================================
-    # METHOD 2: PDF EXPORT
+    # METHOD 2: PDF EXPORT WITH IDENTIFIER VISUAL REPRESENTATION
     # =============================================================================
 
     @action(detail=True, methods=['get'], url_path='export-pdf')
@@ -264,10 +263,10 @@ class LedgerViewSet(viewsets.ModelViewSet):
         """
         GET /api/ledgers/{id}/export-pdf/
         
-        Export ledger data as PDF report
+        Export ledger with identifier visual representation
+        Format: 124: 3250.5000.2500
         """
-        from .models import LedgerAllocation
-        from decimal import Decimal
+        from .models import LedgerAllocation, Identifier
         
         ledger = self.get_object()
         
@@ -321,59 +320,59 @@ class LedgerViewSet(viewsets.ModelViewSet):
         elements.append(info_table)
         elements.append(Spacer(1, 0.3*inch))
         
-        # Transactions
-        heading = Paragraph("Transactions", styles['Heading2'])
+        # Identifier Recordings
+        heading = Paragraph("Identifier Recordings", styles['Heading2'])
         elements.append(heading)
         elements.append(Spacer(1, 0.1*inch))
         
-        # Get allocations
-        allocations = LedgerAllocation.objects.filter(
-            ledger=ledger
-        ).select_related(
-            'transaction__identifier',
-            'transaction__ticket'
-        ).order_by('-transaction__timestamp')
+        # Get all identifiers
+        identifiers = Identifier.objects.all().order_by('number')
         
-        if allocations.exists():
-            # Transaction table (limit to 50 for PDF size)
-            tx_data = [['Order #', 'ID', 'Amount', 'Date', 'Overflow']]
+        # Build identifier data
+        identifier_data = [['ID', 'Accumulated Values']]
+        
+        for identifier in identifiers:
+            # Get all allocations for this identifier in this ledger
+            allocations = LedgerAllocation.objects.filter(
+                ledger=ledger,
+                transaction__identifier=identifier
+            ).select_related('transaction').order_by('transaction__timestamp')
             
-            for allocation in allocations[:50]:
-                tx = allocation.transaction
-                has_overflow = tx.overflows.exists()
-                
-                tx_data.append([
-                    tx.order_number,
-                    tx.identifier.number,
-                    f"{allocation.amount:,.2f}",
-                    tx.timestamp.strftime('%Y-%m-%d %H:%M'),
-                    'Yes' if has_overflow else 'No'
-                ])
+            if allocations.exists():
+                # Build visual: "3250.5000.2500"
+                values = [str(int(alloc.amount)) for alloc in allocations]
+                visual = '.'.join(values)
+                identifier_data.append([identifier.number, visual])
+            else:
+                # No data for this identifier
+                identifier_data.append([identifier.number, '________'])
+        
+        # Create table (split into pages if needed)
+        # Show first 100 identifiers per page
+        chunk_size = 100
+        for i in range(0, len(identifier_data), chunk_size):
+            chunk = identifier_data[i:i+chunk_size+1] if i == 0 else [identifier_data[0]] + identifier_data[i:i+chunk_size]
             
-            tx_table = Table(tx_data, colWidths=[1.2*inch, 0.6*inch, 1*inch, 1.5*inch, 0.8*inch])
-            tx_table.setStyle(TableStyle([
+            id_table = Table(chunk, colWidths=[0.8*inch, 5.5*inch])
+            id_table.setStyle(TableStyle([
                 ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('ALIGN', (0, 0), (0, -1), 'CENTER'),  # ID column centered
+                ('ALIGN', (1, 0), (1, -1), 'LEFT'),    # Values column left
                 ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
                 ('FONTSIZE', (0, 0), (-1, 0), 10),
                 ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
                 ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
                 ('FONTSIZE', (0, 1), (-1, -1), 8),
+                ('FONTNAME', (0, 1), (0, -1), 'Courier'),  # Monospace for IDs
+                ('FONTNAME', (1, 1), (1, -1), 'Courier'),  # Monospace for values
             ]))
             
-            elements.append(tx_table)
+            elements.append(id_table)
             
-            if allocations.count() > 50:
-                note = Paragraph(
-                    f"<i>Showing first 50 of {allocations.count()} transactions</i>",
-                    styles['Italic']
-                )
-                elements.append(Spacer(1, 0.1*inch))
-                elements.append(note)
-        else:
-            no_tx = Paragraph("No transactions allocated to this ledger.", styles['Normal'])
-            elements.append(no_tx)
+            # Add page break between chunks (except last)
+            if i + chunk_size < len(identifier_data):
+                elements.append(Spacer(1, 0.2*inch))
         
         elements.append(Spacer(1, 0.3*inch))
         
@@ -382,15 +381,22 @@ class LedgerViewSet(viewsets.ModelViewSet):
         elements.append(summary_heading)
         elements.append(Spacer(1, 0.1*inch))
         
-        total_allocated = allocations.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+        total_allocated = LedgerAllocation.objects.filter(
+            ledger=ledger
+        ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+        
         total_capacity = ledger.limit_per_identifier * 1000
+        identifiers_used = LedgerAllocation.objects.filter(
+            ledger=ledger
+        ).values('transaction__identifier').distinct().count()
         
         summary_data = [
             ['Summary Statistics', ''],
-            ['Total Transactions:', str(allocations.count())],
+            ['Total Identifiers Used:', str(identifiers_used)],
             ['Total Amount Allocated:', f"{total_allocated:,.2f}"],
             ['Total Capacity:', f"{total_capacity:,.2f}"],
             ['Remaining Capacity:', f"{total_capacity - total_allocated:,.2f}"],
+            ['Utilization:', f"{(total_allocated / total_capacity * 100):.2f}%" if total_capacity > 0 else "0%"],
         ]
         
         summary_table = Table(summary_data, colWidths=[2.5*inch, 2*inch])
@@ -416,7 +422,6 @@ class LedgerViewSet(viewsets.ModelViewSet):
         response.write(pdf)
         
         return response
-
 
 
 class IdentifierViewSet(viewsets.ModelViewSet):
