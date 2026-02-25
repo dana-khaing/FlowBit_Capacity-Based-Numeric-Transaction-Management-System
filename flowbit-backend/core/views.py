@@ -12,6 +12,17 @@ from .models import Ledger, Identifier, Transaction, Overflow, Ticket
 from .serializers import LedgerSerializer, IdentifierSerializer, TransactionSerializer, OverflowSerializer, TicketSerializer
 from django.db import transaction
 
+from django.http import HttpResponse
+from django.db.models import Sum
+import csv
+from io import BytesIO
+from reportlab.lib.pagesizes import letter
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.enums import TA_CENTER
+
 
 class LedgerViewSet(viewsets.ModelViewSet):
     queryset = Ledger.objects.all()
@@ -163,6 +174,249 @@ class LedgerViewSet(viewsets.ModelViewSet):
             "message": "Priorities updated successfully",
             "ledgers": updated_ledgers
         }, status=status.HTTP_200_OK)
+
+    # =============================================================================
+    # METHOD 1: CSV EXPORT
+    # =============================================================================
+
+    @action(detail=True, methods=['get'], url_path='export-csv')
+    def export_csv(self, request, pk=None):
+        """
+        GET /api/ledgers/{id}/export-csv/
+        
+        Export ledger data as CSV file
+        """
+        from .models import LedgerAllocation
+        from decimal import Decimal
+        
+        ledger = self.get_object()
+        
+        # Create CSV response
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = f'attachment; filename="ledger_{ledger.id}_{ledger.name}.csv"'
+        
+        writer = csv.writer(response)
+        
+        # Header section
+        writer.writerow(['Ledger Export'])
+        writer.writerow(['Ledger Name', ledger.name])
+        writer.writerow(['Priority', ledger.priority])
+        writer.writerow(['Limit Per Identifier', str(ledger.limit_per_identifier)])
+        writer.writerow(['End Date', ledger.end_date.strftime('%Y-%m-%d %H:%M:%S')])
+        writer.writerow(['Status', 'Active' if ledger.is_active else 'Closed'])
+        writer.writerow([])
+        
+        # Transaction headers
+        writer.writerow([
+            'Order Number',
+            'Identifier',
+            'Allocated Amount',
+            'Total Transaction Amount',
+            'Timestamp',
+            'Ticket Number',
+            'Has Overflow'
+        ])
+        
+        # Get all allocations for this ledger
+        allocations = LedgerAllocation.objects.filter(
+            ledger=ledger
+        ).select_related(
+            'transaction__identifier',
+            'transaction__ticket'
+        ).order_by('-transaction__timestamp')
+        
+        # Write transaction data
+        for allocation in allocations:
+            tx = allocation.transaction
+            has_overflow = tx.overflows.exists()
+            
+            writer.writerow([
+                tx.order_number,
+                tx.identifier.number,
+                str(allocation.amount),
+                str(tx.total_amount),
+                tx.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+                tx.ticket.ticket_number if tx.ticket else '',
+                'Yes' if has_overflow else 'No'
+            ])
+        
+        # Summary section
+        writer.writerow([])
+        writer.writerow(['Summary'])
+        
+        total_allocated = allocations.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+        total_capacity = ledger.limit_per_identifier * 1000  # 1000 identifiers
+        
+        writer.writerow(['Total Transactions', allocations.count()])
+        writer.writerow(['Total Amount Allocated', str(total_allocated)])
+        writer.writerow(['Total Capacity', str(total_capacity)])
+        writer.writerow(['Remaining Capacity', str(total_capacity - total_allocated)])
+        
+        return response
+
+
+    # =============================================================================
+    # METHOD 2: PDF EXPORT
+    # =============================================================================
+
+    @action(detail=True, methods=['get'], url_path='export-pdf')
+    def export_pdf(self, request, pk=None):
+        """
+        GET /api/ledgers/{id}/export-pdf/
+        
+        Export ledger data as PDF report
+        """
+        from .models import LedgerAllocation
+        from decimal import Decimal
+        
+        ledger = self.get_object()
+        
+        # Create PDF response
+        response = HttpResponse(content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="ledger_{ledger.id}_{ledger.name}.pdf"'
+        
+        # Create PDF
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5*inch, bottomMargin=0.5*inch)
+        
+        elements = []
+        styles = getSampleStyleSheet()
+        
+        # Title
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=20,
+            textColor=colors.HexColor('#1a1a1a'),
+            spaceAfter=20,
+            alignment=TA_CENTER
+        )
+        
+        title = Paragraph(f"Ledger Report: {ledger.name}", title_style)
+        elements.append(title)
+        elements.append(Spacer(1, 0.2*inch))
+        
+        # Ledger Info Table
+        info_data = [
+            ['Ledger Information', ''],
+            ['Name:', ledger.name],
+            ['Priority:', str(ledger.priority)],
+            ['Limit Per Identifier:', f"{ledger.limit_per_identifier:,.2f}"],
+            ['End Date:', ledger.end_date.strftime('%Y-%m-%d %H:%M:%S')],
+            ['Status:', 'Active' if ledger.is_active else 'Closed'],
+        ]
+        
+        info_table = Table(info_data, colWidths=[2*inch, 4*inch])
+        info_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 12),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('FONTNAME', (0, 1), (0, -1), 'Helvetica-Bold'),
+        ]))
+        
+        elements.append(info_table)
+        elements.append(Spacer(1, 0.3*inch))
+        
+        # Transactions
+        heading = Paragraph("Transactions", styles['Heading2'])
+        elements.append(heading)
+        elements.append(Spacer(1, 0.1*inch))
+        
+        # Get allocations
+        allocations = LedgerAllocation.objects.filter(
+            ledger=ledger
+        ).select_related(
+            'transaction__identifier',
+            'transaction__ticket'
+        ).order_by('-transaction__timestamp')
+        
+        if allocations.exists():
+            # Transaction table (limit to 50 for PDF size)
+            tx_data = [['Order #', 'ID', 'Amount', 'Date', 'Overflow']]
+            
+            for allocation in allocations[:50]:
+                tx = allocation.transaction
+                has_overflow = tx.overflows.exists()
+                
+                tx_data.append([
+                    tx.order_number,
+                    tx.identifier.number,
+                    f"{allocation.amount:,.2f}",
+                    tx.timestamp.strftime('%Y-%m-%d %H:%M'),
+                    'Yes' if has_overflow else 'No'
+                ])
+            
+            tx_table = Table(tx_data, colWidths=[1.2*inch, 0.6*inch, 1*inch, 1.5*inch, 0.8*inch])
+            tx_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 10),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                ('FONTSIZE', (0, 1), (-1, -1), 8),
+            ]))
+            
+            elements.append(tx_table)
+            
+            if allocations.count() > 50:
+                note = Paragraph(
+                    f"<i>Showing first 50 of {allocations.count()} transactions</i>",
+                    styles['Italic']
+                )
+                elements.append(Spacer(1, 0.1*inch))
+                elements.append(note)
+        else:
+            no_tx = Paragraph("No transactions allocated to this ledger.", styles['Normal'])
+            elements.append(no_tx)
+        
+        elements.append(Spacer(1, 0.3*inch))
+        
+        # Summary
+        summary_heading = Paragraph("Summary", styles['Heading2'])
+        elements.append(summary_heading)
+        elements.append(Spacer(1, 0.1*inch))
+        
+        total_allocated = allocations.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+        total_capacity = ledger.limit_per_identifier * 1000
+        
+        summary_data = [
+            ['Summary Statistics', ''],
+            ['Total Transactions:', str(allocations.count())],
+            ['Total Amount Allocated:', f"{total_allocated:,.2f}"],
+            ['Total Capacity:', f"{total_capacity:,.2f}"],
+            ['Remaining Capacity:', f"{total_capacity - total_allocated:,.2f}"],
+        ]
+        
+        summary_table = Table(summary_data, colWidths=[2.5*inch, 2*inch])
+        summary_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 12),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('FONTNAME', (0, 1), (0, -1), 'Helvetica-Bold'),
+        ]))
+        
+        elements.append(summary_table)
+        
+        # Build PDF
+        doc.build(elements)
+        
+        # Get PDF from buffer
+        pdf = buffer.getvalue()
+        buffer.close()
+        response.write(pdf)
+        
+        return response
+
 
 
 class IdentifierViewSet(viewsets.ModelViewSet):
