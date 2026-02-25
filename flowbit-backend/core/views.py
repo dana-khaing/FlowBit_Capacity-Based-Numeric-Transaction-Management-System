@@ -10,6 +10,7 @@ from django.db.models import Sum
 from decimal import Decimal, InvalidOperation
 from .models import Ledger, Identifier, Transaction, Overflow, Ticket
 from .serializers import LedgerSerializer, IdentifierSerializer, TransactionSerializer, OverflowSerializer, TicketSerializer
+from django.db import transaction
 
 
 class LedgerViewSet(viewsets.ModelViewSet):
@@ -74,6 +75,93 @@ class LedgerViewSet(viewsets.ModelViewSet):
         return Response({
             "message": f"Closed {len(closed_ledgers)} expired ledger(s)",
             "closed_ledgers": closed_ledgers
+        }, status=status.HTTP_200_OK)
+        
+
+    @action(detail=False, methods=['post'], url_path='reorder-priorities')
+    def reorder_priorities(self, request):
+        """
+        POST /api/ledgers/reorder-priorities/
+        
+        Bulk update ledger priorities (for drag-and-drop reordering)
+        
+        Request body:
+        {
+            "ledger_priorities": [
+                {"id": 1, "priority": 1},
+                {"id": 3, "priority": 2},
+                {"id": 2, "priority": 3}
+            ]
+        }
+        
+        Response:
+        {
+            "message": "Priorities updated successfully",
+            "ledgers": [
+                {"id": 1, "name": "January 2026", "priority": 1},
+                {"id": 3, "name": "March 2026", "priority": 2},
+                {"id": 2, "name": "February 2026", "priority": 3}
+            ]
+        }
+        """
+        ledger_priorities = request.data.get('ledger_priorities', [])
+        
+        # Validate input
+        if not ledger_priorities or not isinstance(ledger_priorities, list):
+            return Response(
+                {"detail": "ledger_priorities must be a non-empty list"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Use atomic transaction to ensure all-or-nothing update
+        with transaction.atomic():
+            updated_ledgers = []
+            
+            for item in ledger_priorities:
+                ledger_id = item.get('id')
+                new_priority = item.get('priority')
+                
+                # Validate each item
+                if ledger_id is None or new_priority is None:
+                    return Response(
+                        {"detail": "Each item must have 'id' and 'priority' fields"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                # Validate priority is a positive integer
+                try:
+                    new_priority = int(new_priority)
+                    if new_priority < 1:
+                        raise ValueError("Priority must be positive")
+                except (TypeError, ValueError):
+                    return Response(
+                        {"detail": f"Invalid priority value: {new_priority}"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                # Update ledger
+                try:
+                    ledger = Ledger.objects.get(id=ledger_id)
+                    ledger.priority = new_priority
+                    ledger.save()
+                    
+                    updated_ledgers.append({
+                        'id': ledger.id,
+                        'name': ledger.name,
+                        'priority': ledger.priority
+                    })
+                except Ledger.DoesNotExist:
+                    return Response(
+                        {"detail": f"Ledger with id {ledger_id} not found"},
+                        status=status.HTTP_404_NOT_FOUND
+                    )
+        
+        # Sort by priority for response
+        updated_ledgers.sort(key=lambda x: x['priority'])
+        
+        return Response({
+            "message": "Priorities updated successfully",
+            "ledgers": updated_ledgers
         }, status=status.HTTP_200_OK)
 
 
