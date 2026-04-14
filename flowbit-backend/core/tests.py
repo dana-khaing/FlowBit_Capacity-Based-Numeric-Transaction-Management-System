@@ -18,12 +18,12 @@ class LedgerArchiveAPITests(APITestCase):
         february_start = timezone.make_aware(datetime(2026, 2, 1, 0, 0, 0))
         december_end = timezone.make_aware(datetime(2026, 12, 31, 23, 59, 59))
 
+        archived_closed_at = timezone.make_aware(datetime(2026, 2, 1, 0, 0, 0))
         self.archived_period = Period.objects.create(
             name='January 2026 Period',
             start_date=january_start,
             end_date=january_end,
-            is_open=False,
-            closed_at=timezone.make_aware(datetime(2026, 2, 1, 0, 0, 0)),
+            is_open=True,
         )
         self.archived_ledger = Ledger.objects.create(
             period=self.archived_period,
@@ -42,9 +42,9 @@ class LedgerArchiveAPITests(APITestCase):
             identifier=self.identifier,
             total_amount=Decimal('150.00'),
         )
-        self.archived_ledger.close(
-            closed_at=timezone.make_aware(datetime(2026, 2, 1, 0, 0, 0))
-        )
+        self.archived_period.close(closed_at=archived_closed_at)
+        self.archived_period.refresh_from_db()
+        self.archived_ledger.refresh_from_db()
 
         self.active_period = Period.objects.create(
             name='Current Period',
@@ -114,6 +114,24 @@ class LedgerArchiveAPITests(APITestCase):
         self.assertFalse(self.active_ledger.is_active)
         self.assertIsNotNone(self.active_ledger.closed_at)
 
+    def test_current_period_returns_open_period(self):
+        response = self.client.get('/api/periods/current/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['id'], self.active_period.id)
+        self.assertTrue(response.data['is_open'])
+
+    def test_period_summary_returns_dashboard_totals(self):
+        response = self.client.get(f'/api/periods/{self.active_period.id}/summary/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['period_id'], self.active_period.id)
+        self.assertEqual(response.data['ledger_count'], 1)
+        self.assertEqual(response.data['transaction_count'], 1)
+        self.assertEqual(response.data['ticket_count'], 1)
+        self.assertEqual(response.data['overflow_count'], 0)
+        self.assertEqual(response.data['total_transaction_amount'], '75')
+
     def test_ledgers_can_be_filtered_by_period_id(self):
         response = self.client.get('/api/ledgers/', {'period_id': self.active_period.id})
 
@@ -162,3 +180,16 @@ class LedgerArchiveAPITests(APITestCase):
         expired_ledger.refresh_from_db()
         self.assertFalse(expired_period.is_open)
         self.assertFalse(expired_ledger.is_active)
+
+    def test_ticket_creation_requires_open_period(self):
+        self.active_period.close(closed_at=timezone.now())
+
+        response = self.client.post('/api/tickets/create-with-items/', {
+            'customer_name': 'Blocked Customer',
+            'items': [
+                {'identifier': self.identifier.id, 'amount': '50.00'},
+            ],
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['detail'], 'No open period available.')
