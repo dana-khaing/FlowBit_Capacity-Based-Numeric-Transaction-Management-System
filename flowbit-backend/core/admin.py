@@ -1,14 +1,21 @@
 from django.contrib import admin
 from django.urls import reverse
 from django.utils.html import format_html
-from .models import Ledger, Identifier, Transaction, LedgerAllocation, Overflow, Profile, AuditLog, Ticket
+from .models import Period, Ledger, Identifier, Transaction, LedgerAllocation, Overflow, Profile, AuditLog, Ticket
+
+
+@admin.register(Period)
+class PeriodAdmin(admin.ModelAdmin):
+    list_display = ('name', 'start_date', 'end_date', 'is_open', 'closed_at')
+    list_filter = ('is_open',)
+    search_fields = ('name',)
 
 
 @admin.register(Ledger)
 class LedgerAdmin(admin.ModelAdmin):
-    list_display = ('name', 'priority', 'limit_per_identifier', 'is_active', 'end_date')
-    list_filter = ('is_active', 'priority')
-    search_fields = ('name',)
+    list_display = ('name', 'period', 'priority', 'limit_per_identifier', 'is_active', 'end_date')
+    list_filter = ('is_active', 'priority', 'period')
+    search_fields = ('name', 'period__name')
 
 
 @admin.register(Identifier)
