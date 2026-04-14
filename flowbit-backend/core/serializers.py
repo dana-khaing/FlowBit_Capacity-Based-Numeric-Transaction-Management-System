@@ -1,11 +1,50 @@
 from rest_framework import serializers
-from .models import Ledger, Identifier, Transaction, LedgerAllocation, Overflow, Profile, Ticket
+from .models import Period, Ledger, Identifier, Transaction, LedgerAllocation, Overflow, Profile, Ticket
+
+
+class PeriodSerializer(serializers.ModelSerializer):
+    ledger_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Period
+        fields = [
+            'id',
+            'name',
+            'start_date',
+            'end_date',
+            'is_open',
+            'closed_at',
+            'created_at',
+            'ledger_count',
+        ]
+        read_only_fields = ['closed_at', 'created_at', 'ledger_count']
+
+    def get_ledger_count(self, obj):
+        return obj.ledgers.count()
 
 
 class LedgerSerializer(serializers.ModelSerializer):
+    period_name = serializers.CharField(source='period.name', read_only=True, allow_null=True)
+
     class Meta:
         model = Ledger
-        fields = '__all__'
+        fields = [
+            'id',
+            'period',
+            'period_name',
+            'name',
+            'end_date',
+            'limit_per_identifier',
+            'priority',
+            'is_active',
+            'closed_at',
+            'created_at',
+        ]
+
+    def validate_period(self, value):
+        if value and not value.is_open:
+            raise serializers.ValidationError("Cannot assign a ledger to a closed period.")
+        return value
 
 
 class TicketSerializer(serializers.ModelSerializer):

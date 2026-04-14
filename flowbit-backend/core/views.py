@@ -19,8 +19,8 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
-from .models import Ledger, Identifier, Transaction, Overflow, Ticket, LedgerAllocation
-from .serializers import LedgerSerializer, IdentifierSerializer, TransactionSerializer, OverflowSerializer, TicketSerializer
+from .models import Period, Ledger, Identifier, Transaction, Overflow, Ticket, LedgerAllocation
+from .serializers import PeriodSerializer, LedgerSerializer, IdentifierSerializer, TransactionSerializer, OverflowSerializer, TicketSerializer
 
 
 def parse_period_value(value):
@@ -46,6 +46,7 @@ def apply_ledger_period_filters(queryset, query_params, ledger_prefix=''):
     period_start = parse_period_value(query_params.get('period_start'))
     period_end = parse_period_value(query_params.get('period_end'))
     ledger_id = query_params.get('ledger_id')
+    period_id = query_params.get('period_id')
 
     if section == 'active':
         queryset = queryset.filter(**{f'{ledger_prefix}is_active': True})
@@ -61,10 +62,58 @@ def apply_ledger_period_filters(queryset, query_params, ledger_prefix=''):
     if ledger_id:
         queryset = queryset.filter(**{f'{ledger_prefix}id': ledger_id})
 
+    if period_id:
+        queryset = queryset.filter(**{f'{ledger_prefix}period_id': period_id})
+
     if ledger_prefix:
         queryset = queryset.distinct()
 
     return queryset
+
+
+class PeriodViewSet(viewsets.ModelViewSet):
+    queryset = Period.objects.all()
+    serializer_class = PeriodSerializer
+    permission_classes = []
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        section = (self.request.query_params.get('section') or '').strip().lower()
+        period_start = parse_period_value(self.request.query_params.get('period_start'))
+        period_end = parse_period_value(self.request.query_params.get('period_end'))
+
+        if section == 'active':
+            queryset = queryset.filter(is_open=True)
+        elif section in {'archive', 'archived', 'closed', 'inactive'}:
+            queryset = queryset.filter(is_open=False)
+
+        if period_start:
+            queryset = queryset.filter(end_date__gte=period_start)
+
+        if period_end:
+            queryset = queryset.filter(start_date__lte=period_end)
+
+        return queryset
+
+    @action(detail=True, methods=['post'], url_path='close')
+    def close_period(self, request, pk=None):
+        period = self.get_object()
+
+        if not period.is_open:
+            return Response(
+                {"detail": "Period is already closed"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        closed_at = timezone.now()
+        period.close(closed_at=closed_at)
+
+        serializer = self.get_serializer(period)
+        return Response({
+            "message": f"Period '{period.name}' closed successfully",
+            "period": serializer.data,
+            "closed_ledgers": period.ledgers.count(),
+        }, status=status.HTTP_200_OK)
 
 
 class LedgerViewSet(viewsets.ModelViewSet):
