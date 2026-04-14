@@ -6,7 +6,64 @@ from django.core.exceptions import ValidationError
 from django.utils import timezone
 
 
+class Period(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    start_date = models.DateTimeField()
+    end_date = models.DateTimeField()
+    is_open = models.BooleanField(default=True)
+    closed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-start_date']
+
+    def __str__(self):
+        return self.name
+
+    def clean(self):
+        if self.start_date >= self.end_date:
+            raise ValidationError("Period end_date must be after start_date.")
+
+        overlapping_periods = Period.objects.exclude(pk=self.pk).filter(
+            start_date__lt=self.end_date,
+            end_date__gt=self.start_date,
+        )
+        if overlapping_periods.exists():
+            raise ValidationError("Period dates overlap with an existing period.")
+
+        if self.is_open and Period.objects.exclude(pk=self.pk).filter(is_open=True).exists():
+            raise ValidationError("Only one period can remain open at a time.")
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def close(self, closed_at=None, save=True):
+        if closed_at is None:
+            closed_at = timezone.now()
+
+        self.is_open = False
+        self.closed_at = closed_at
+
+        if save:
+            self.save(update_fields=['is_open', 'closed_at'])
+
+        self.ledgers.filter(is_active=True).update(
+            is_active=False,
+            closed_at=closed_at,
+        )
+
+        return self
+
+
 class Ledger(models.Model):
+    period = models.ForeignKey(
+        Period,
+        on_delete=models.PROTECT,
+        related_name='ledgers',
+        null=True,
+        blank=True
+    )
     name = models.CharField(max_length=100, default='Default Ledger')
     end_date = models.DateTimeField()
     limit_per_identifier = models.DecimalField(max_digits=12, decimal_places=2, default=100000.00)
