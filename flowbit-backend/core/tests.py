@@ -1,11 +1,12 @@
 from decimal import Decimal
 from datetime import datetime
 
+from django.core.management import call_command
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from core.models import Identifier, Ledger, Overflow, Ticket, Transaction
+from core.models import Period, Identifier, Ledger, Overflow, Ticket, Transaction
 
 
 class LedgerArchiveAPITests(APITestCase):
@@ -17,7 +18,15 @@ class LedgerArchiveAPITests(APITestCase):
         february_start = timezone.make_aware(datetime(2026, 2, 1, 0, 0, 0))
         december_end = timezone.make_aware(datetime(2026, 12, 31, 23, 59, 59))
 
+        self.archived_period = Period.objects.create(
+            name='January 2026 Period',
+            start_date=january_start,
+            end_date=january_end,
+            is_open=False,
+            closed_at=timezone.make_aware(datetime(2026, 2, 1, 0, 0, 0)),
+        )
         self.archived_ledger = Ledger.objects.create(
+            period=self.archived_period,
             name='January 2026',
             end_date=january_end,
             limit_per_identifier=Decimal('100.00'),
@@ -37,7 +46,14 @@ class LedgerArchiveAPITests(APITestCase):
             closed_at=timezone.make_aware(datetime(2026, 2, 1, 0, 0, 0))
         )
 
+        self.active_period = Period.objects.create(
+            name='Current Period',
+            start_date=february_start,
+            end_date=december_end,
+            is_open=True,
+        )
         self.active_ledger = Ledger.objects.create(
+            period=self.active_period,
             name='Current Ledger',
             end_date=december_end,
             limit_per_identifier=Decimal('200.00'),
@@ -88,11 +104,27 @@ class LedgerArchiveAPITests(APITestCase):
         self.assertEqual(len(response.data), 1)
         self.assertEqual(response.data[0]['id'], self.archived_transaction.id)
 
+    def test_period_close_archives_related_ledgers(self):
+        response = self.client.post(f'/api/periods/{self.active_period.id}/close/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.active_period.refresh_from_db()
+        self.active_ledger.refresh_from_db()
+        self.assertFalse(self.active_period.is_open)
+        self.assertFalse(self.active_ledger.is_active)
+        self.assertIsNotNone(self.active_ledger.closed_at)
+
+    def test_ledgers_can_be_filtered_by_period_id(self):
+        response = self.client.get('/api/ledgers/', {'period_id': self.active_period.id})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['id'], self.active_ledger.id)
+
     def test_tickets_can_be_filtered_by_period(self):
         response = self.client.get('/api/tickets/', {
             'section': 'archive',
-            'period_start': '2026-01-01',
-            'period_end': '2026-01-31',
+            'period_id': self.archived_period.id,
         })
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -105,3 +137,28 @@ class LedgerArchiveAPITests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data), 1)
         self.assertEqual(response.data[0]['id'], self.archived_overflow.id)
+
+    def test_close_expired_periods_command_closes_matching_periods(self):
+        self.active_period.close(closed_at=timezone.now())
+
+        expired_period = Period.objects.create(
+            name='Expired Period',
+            start_date=timezone.make_aware(datetime(2025, 12, 1, 0, 0, 0)),
+            end_date=timezone.make_aware(datetime(2025, 12, 31, 23, 59, 59)),
+            is_open=True,
+        )
+        expired_ledger = Ledger.objects.create(
+            period=expired_period,
+            name='Expired Ledger',
+            end_date=expired_period.end_date,
+            limit_per_identifier=Decimal('100.00'),
+            priority=3,
+            is_active=True,
+        )
+
+        call_command('close_expired_periods')
+
+        expired_period.refresh_from_db()
+        expired_ledger.refresh_from_db()
+        self.assertFalse(expired_period.is_open)
+        self.assertFalse(expired_ledger.is_active)
