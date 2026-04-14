@@ -55,6 +55,10 @@ class Period(models.Model):
 
         return self
 
+    @classmethod
+    def get_open_period(cls):
+        return cls.objects.filter(is_open=True).order_by('start_date').first()
+
 
 class Ledger(models.Model):
     period = models.ForeignKey(
@@ -231,9 +235,16 @@ class Transaction(models.Model):
             self._allocate_to_ledgers()
 
     def _allocate_to_ledgers(self):
-        active_ledgers = Ledger.objects.filter(is_active=True).order_by('priority')
+        open_period = Period.get_open_period()
+        if not open_period:
+            raise ValidationError("No open period available.")
+
+        active_ledgers = Ledger.objects.filter(
+            is_active=True,
+            period=open_period
+        ).order_by('priority')
         if not active_ledgers.exists():
-            raise ValidationError("No active ledgers available.")
+            raise ValidationError("No active ledgers available in the current open period.")
 
         remaining = self.total_amount
 

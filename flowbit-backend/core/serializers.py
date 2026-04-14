@@ -138,6 +138,20 @@ class TransactionSerializer(serializers.ModelSerializer):
             'overflows',
         ]
 
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+
+        open_period = Period.get_open_period()
+        if not open_period:
+            raise serializers.ValidationError("No open period available.")
+
+        if not Ledger.objects.filter(is_active=True, period=open_period).exists():
+            raise serializers.ValidationError(
+                "No active ledgers available in the current open period."
+            )
+
+        return attrs
+
 
 class ProfileSerializer(serializers.ModelSerializer):
     class Meta:

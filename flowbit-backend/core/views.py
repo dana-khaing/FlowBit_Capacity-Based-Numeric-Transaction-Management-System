@@ -9,6 +9,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 from django.http import HttpResponse
 from django.db.models import Sum
+from django.core.exceptions import ValidationError
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, time
 import csv
@@ -95,6 +96,18 @@ class PeriodViewSet(viewsets.ModelViewSet):
 
         return queryset
 
+    @action(detail=False, methods=['get'], url_path='current')
+    def current_period(self, request):
+        period = Period.get_open_period()
+        if not period:
+            return Response(
+                {"detail": "No open period found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        serializer = self.get_serializer(period)
+        return Response(serializer.data)
+
     @action(detail=True, methods=['post'], url_path='close')
     def close_period(self, request, pk=None):
         period = self.get_object()
@@ -114,6 +127,51 @@ class PeriodViewSet(viewsets.ModelViewSet):
             "period": serializer.data,
             "closed_ledgers": period.ledgers.count(),
         }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='summary')
+    def summary(self, request, pk=None):
+        period = self.get_object()
+        transactions = Transaction.objects.filter(allocations__ledger__period=period).distinct()
+        overflows = Overflow.objects.filter(transaction__allocations__ledger__period=period).distinct()
+        total_transaction_amount = transactions.aggregate(
+            total=Sum('total_amount')
+        )['total'] or Decimal('0.00')
+        total_allocated_amount = LedgerAllocation.objects.filter(
+            ledger__period=period
+        ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+        total_pending_overflow_amount = overflows.filter(status='TCSO').aggregate(
+            total=Sum('excess_amount')
+        )['total'] or Decimal('0.00')
+        total_approved_overflow_amount = overflows.filter(status='CSO').aggregate(
+            total=Sum('excess_amount')
+        )['total'] or Decimal('0.00')
+
+        ticket_count = Ticket.objects.filter(
+            transactions__allocations__ledger__period=period
+        ).distinct().count()
+
+        summary = {
+            'period_id': period.id,
+            'period_name': period.name,
+            'is_open': period.is_open,
+            'ledger_count': period.ledgers.count(),
+            'active_ledger_count': period.ledgers.filter(is_active=True).count(),
+            'closed_ledger_count': period.ledgers.filter(is_active=False).count(),
+            'transaction_count': transactions.count(),
+            'ticket_count': ticket_count,
+            'overflow_count': overflows.count(),
+            'pending_overflow_count': overflows.filter(status='TCSO').count(),
+            'approved_overflow_count': overflows.filter(status='CSO').count(),
+            'total_transaction_amount': str(total_transaction_amount),
+            'total_allocated_amount': str(total_allocated_amount),
+            'total_pending_overflow_amount': str(total_pending_overflow_amount),
+            'total_approved_overflow_amount': str(total_approved_overflow_amount),
+            'identifier_count': Identifier.objects.filter(
+                transactions__allocations__ledger__period=period
+            ).distinct().count(),
+        }
+
+        return Response(summary)
 
 
 class LedgerViewSet(viewsets.ModelViewSet):
@@ -658,6 +716,19 @@ class CreateTicketWithTransactions(APIView):
     def post(self, request):
         data = request.data
 
+        open_period = Period.get_open_period()
+        if not open_period:
+            return Response(
+                {"detail": "No open period available."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not Ledger.objects.filter(is_active=True, period=open_period).exists():
+            return Response(
+                {"detail": "No active ledgers available in the current open period."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         # 1. Validate required fields
         items = data.get('items')
         if not items or not isinstance(items, list):
@@ -722,6 +793,9 @@ class CreateTicketWithTransactions(APIView):
                 })
 
             except Exception as e:
+                if isinstance(e, ValidationError):
+                    errors.append(f"Item {idx}: {e}")
+                    continue
                 errors.append(f"Item {idx}: unexpected error – {str(e)}")
 
         # 4. If there were errors → rollback is automatic thanks to @transaction.atomic
