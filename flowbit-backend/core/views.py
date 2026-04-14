@@ -6,9 +6,11 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticatedOrReadOnly
 from django.db import transaction as db_transaction, transaction
 from django.utils import timezone
+from django.utils.dateparse import parse_date, parse_datetime
 from django.http import HttpResponse
 from django.db.models import Sum
 from decimal import Decimal, InvalidOperation
+from datetime import datetime, time
 import csv
 from io import BytesIO
 from reportlab.lib.pagesizes import letter
@@ -21,10 +23,58 @@ from .models import Ledger, Identifier, Transaction, Overflow, Ticket, LedgerAll
 from .serializers import LedgerSerializer, IdentifierSerializer, TransactionSerializer, OverflowSerializer, TicketSerializer
 
 
+def parse_period_value(value):
+    if not value:
+        return None
+
+    parsed_datetime = parse_datetime(value)
+    if parsed_datetime:
+        if timezone.is_naive(parsed_datetime):
+            return timezone.make_aware(parsed_datetime, timezone.get_current_timezone())
+        return parsed_datetime
+
+    parsed_date = parse_date(value)
+    if parsed_date:
+        parsed_datetime = datetime.combine(parsed_date, time.min)
+        return timezone.make_aware(parsed_datetime, timezone.get_current_timezone())
+
+    return None
+
+
+def apply_ledger_period_filters(queryset, query_params, ledger_prefix=''):
+    section = (query_params.get('section') or '').strip().lower()
+    period_start = parse_period_value(query_params.get('period_start'))
+    period_end = parse_period_value(query_params.get('period_end'))
+    ledger_id = query_params.get('ledger_id')
+
+    if section == 'active':
+        queryset = queryset.filter(**{f'{ledger_prefix}is_active': True})
+    elif section in {'archive', 'archived', 'closed', 'inactive'}:
+        queryset = queryset.filter(**{f'{ledger_prefix}is_active': False})
+
+    if period_start:
+        queryset = queryset.filter(**{f'{ledger_prefix}end_date__gte': period_start})
+
+    if period_end:
+        queryset = queryset.filter(**{f'{ledger_prefix}created_at__lte': period_end})
+
+    if ledger_id:
+        queryset = queryset.filter(**{f'{ledger_prefix}id': ledger_id})
+
+    if ledger_prefix:
+        queryset = queryset.distinct()
+
+    return queryset
+
+
 class LedgerViewSet(viewsets.ModelViewSet):
     queryset = Ledger.objects.all()
     serializer_class = LedgerSerializer
     permission_classes =[]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        return apply_ledger_period_filters(queryset, self.request.query_params)
 
     @action(detail=True, methods=['post'], url_path='close')
     def close_ledger(self, request, pk=None):
@@ -40,9 +90,8 @@ class LedgerViewSet(viewsets.ModelViewSet):
                 {"detail": "Ledger is already closed"},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
-        ledger.is_active = False
-        ledger.save()
+
+        ledger.close()
         
         serializer = self.get_serializer(ledger)
         return Response({
@@ -71,13 +120,12 @@ class LedgerViewSet(viewsets.ModelViewSet):
         
         with db_transaction.atomic():
             for ledger in expired_ledgers:
-                ledger.is_active = False
-                ledger.save()
+                ledger.close(closed_at=now)
                 closed_ledgers.append({
                     'id': ledger.id,
                     'name': ledger.name,
                     'end_date': ledger.end_date,
-                    'closed_at': now
+                    'closed_at': ledger.closed_at
                 })
         
         return Response({
@@ -428,11 +476,29 @@ class IdentifierViewSet(viewsets.ModelViewSet):
 class TransactionViewSet(viewsets.ModelViewSet):
     queryset = Transaction.objects.all()
     serializer_class = TransactionSerializer
+    permission_classes = []
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        return apply_ledger_period_filters(
+            queryset,
+            self.request.query_params,
+            ledger_prefix='allocations__ledger__'
+        )
 
 
 class OverflowViewSet(viewsets.ModelViewSet):
     queryset = Overflow.objects.all()
     serializer_class = OverflowSerializer
+    permission_classes = []
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        return apply_ledger_period_filters(
+            queryset,
+            self.request.query_params,
+            ledger_prefix='transaction__allocations__ledger__'
+        )
 
     @action(detail=False, methods=['get'], url_path='pending')
     def pending_overflows(self, request):
@@ -505,6 +571,14 @@ class TicketListView(generics.ListAPIView):
     queryset = Ticket.objects.all().order_by('-created_at')
     serializer_class = TicketSerializer
     permission_classes = []
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        return apply_ledger_period_filters(
+            queryset,
+            self.request.query_params,
+            ledger_prefix='transactions__allocations__ledger__'
+        )
 
 
 class TicketDetailView(generics.RetrieveAPIView):
