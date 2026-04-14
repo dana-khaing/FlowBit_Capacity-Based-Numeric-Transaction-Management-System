@@ -101,8 +101,7 @@ class Command(BaseCommand):
                 time_expired = now - ledger.end_date
                 hours_ago = time_expired.total_seconds() / 3600
                 
-                ledger.is_active = False
-                ledger.save()
+                ledger.close(closed_at=now)
                 closed_names.append(ledger.name)
                 
                 self.stdout.write(

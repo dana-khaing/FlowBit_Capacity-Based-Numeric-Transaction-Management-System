@@ -12,6 +12,7 @@ class Ledger(models.Model):
     limit_per_identifier = models.DecimalField(max_digits=12, decimal_places=2, default=100000.00)
     priority = models.IntegerField(default=1)  # lower = higher priority
     is_active = models.BooleanField(default=True)
+    closed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -19,6 +20,18 @@ class Ledger(models.Model):
 
     def __str__(self):
         return f"{self.name} (Priority: {self.priority})"
+
+    def close(self, closed_at=None, save=True):
+        if closed_at is None:
+            closed_at = timezone.now()
+
+        self.is_active = False
+        self.closed_at = closed_at
+
+        if save:
+            self.save(update_fields=['is_active', 'closed_at'])
+
+        return self
 
 
 class Identifier(models.Model):
