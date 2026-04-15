@@ -20,7 +20,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
-from .models import Period, Ledger, Identifier, Transaction, Overflow, Ticket, LedgerAllocation
+from .models import Period, Ledger, Identifier, Transaction, Overflow, Ticket, LedgerAllocation, IdentifierCapacityAdjustment
 from .serializers import PeriodSerializer, LedgerSerializer, IdentifierSerializer, TransactionSerializer, OverflowSerializer, TicketSerializer
 
 
@@ -154,9 +154,9 @@ class PeriodViewSet(viewsets.ModelViewSet):
             'period_id': period.id,
             'period_name': period.name,
             'is_open': period.is_open,
-            'ledger_count': period.ledgers.count(),
-            'active_ledger_count': period.ledgers.filter(is_active=True).count(),
-            'closed_ledger_count': period.ledgers.filter(is_active=False).count(),
+            'ledger_count': period.ledgers.filter(is_capacity_reserve=False).count(),
+            'active_ledger_count': period.ledgers.filter(is_active=True, is_capacity_reserve=False).count(),
+            'closed_ledger_count': period.ledgers.filter(is_active=False, is_capacity_reserve=False).count(),
             'transaction_count': transactions.count(),
             'ticket_count': ticket_count,
             'overflow_count': overflows.count(),
@@ -175,7 +175,7 @@ class PeriodViewSet(viewsets.ModelViewSet):
 
 
 class LedgerViewSet(viewsets.ModelViewSet):
-    queryset = Ledger.objects.all()
+    queryset = Ledger.objects.filter(is_capacity_reserve=False)
     serializer_class = LedgerSerializer
     permission_classes =[]
 
@@ -304,7 +304,7 @@ class LedgerViewSet(viewsets.ModelViewSet):
                 
                 # Update ledger
                 try:
-                    ledger = Ledger.objects.get(id=ledger_id)
+                    ledger = Ledger.objects.get(id=ledger_id, is_capacity_reserve=False)
                     ledger.priority = new_priority
                     ledger.save()
                     
@@ -644,7 +644,7 @@ class OverflowViewSet(viewsets.ModelViewSet):
         if amount_str:
             try:
                 amount = Decimal(str(amount_str))
-                if amount <= 0 or amount > overflow.excess_amount:
+                if amount <= 0:
                     return Response(
                         {"detail": "Invalid approval amount"},
                         status=status.HTTP_400_BAD_REQUEST
@@ -657,10 +657,28 @@ class OverflowViewSet(viewsets.ModelViewSet):
                 )
         else:
             overflow.amount_to_approve = overflow.excess_amount
-        
-        overflow.status = 'CSO'
-        overflow.approved_at = timezone.now()
-        overflow.save()
+
+        extra_amount = overflow.amount_to_approve - overflow.excess_amount
+        target_period = overflow.period
+        if extra_amount > 0 and (not target_period or not target_period.is_open):
+            return Response(
+                {"detail": "Extra approved capacity can only be granted to an open period."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        with db_transaction.atomic():
+            overflow.status = 'CSO'
+            overflow.approved_at = timezone.now()
+            overflow.save()
+
+            if extra_amount > 0:
+                Ledger.get_capacity_reserve(target_period, create=True)
+                IdentifierCapacityAdjustment.objects.create(
+                    identifier=overflow.transaction.identifier,
+                    period=target_period,
+                    overflow=overflow,
+                    amount=extra_amount,
+                )
         
         if collaborator_ids:
             from django.contrib.auth.models import User
@@ -723,7 +741,11 @@ class CreateTicketWithTransactions(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        if not Ledger.objects.filter(is_active=True, period=open_period).exists():
+        if not Ledger.objects.filter(
+            is_active=True,
+            period=open_period,
+            is_capacity_reserve=False,
+        ).exists():
             return Response(
                 {"detail": "No active ledgers available in the current open period."},
                 status=status.HTTP_400_BAD_REQUEST

@@ -148,16 +148,38 @@ class Identifier(models.Model):
 
     @property
     def remaining_capacity(self):
-        total_limit = Ledger.objects.filter(is_active=True).aggregate(
+        open_period = Period.get_open_period()
+        if not open_period:
+            return Decimal('0.00')
+
+        total_limit = Ledger.objects.filter(
+            is_active=True,
+            period=open_period,
+            is_capacity_reserve=False,
+        ).aggregate(
             total=Sum('limit_per_identifier')
         )['total'] or Decimal('0.00')
 
-        # Only count the part booked INSIDE the limits
+        # Count normal allocations plus any identifier-specific reserve usage.
         normal_usage = LedgerAllocation.objects.filter(
-            transaction__identifier=self
+            transaction__identifier=self,
+            ledger__period=open_period,
+            ledger__is_active=True,
+            ledger__is_capacity_reserve=False,
         ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
 
-        return total_limit - normal_usage
+        reserve_granted = IdentifierCapacityAdjustment.objects.filter(
+            identifier=self,
+            period=open_period,
+        ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+
+        reserve_used = LedgerAllocation.objects.filter(
+            transaction__identifier=self,
+            ledger__period=open_period,
+            ledger__is_capacity_reserve=True,
+        ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+
+        return total_limit + reserve_granted - normal_usage - reserve_used
 
     @property
     def current_overflow_amount(self):
@@ -201,7 +223,7 @@ def _resolve_pending_overflows(period, closed_at=None, exclude_ledger_ids=None):
     closed_at = closed_at or timezone.now()
     exclude_ledger_ids = exclude_ledger_ids or []
     target_ledgers = list(
-        Ledger.objects.filter(period=period, is_active=True)
+        Ledger.objects.filter(period=period, is_active=True, is_capacity_reserve=False)
         .exclude(pk__in=exclude_ledger_ids)
         .order_by('priority', 'end_date', 'id')
     )
@@ -345,7 +367,8 @@ class Transaction(models.Model):
 
         active_ledgers = Ledger.objects.filter(
             is_active=True,
-            period=open_period
+            period=open_period,
+            is_capacity_reserve=False,
         ).order_by('priority')
         if not active_ledgers.exists():
             raise ValidationError("No active ledgers available in the current open period.")
@@ -375,6 +398,21 @@ class Transaction(models.Model):
             )
 
             remaining -= assign_amount
+
+        if remaining > 0:
+            reserve_available = IdentifierCapacityAdjustment.get_available_capacity(
+                identifier=self.identifier,
+                period=open_period,
+            )
+            if reserve_available > 0:
+                reserve_ledger = Ledger.get_capacity_reserve(open_period, create=True)
+                reserve_amount = min(remaining, reserve_available)
+                LedgerAllocation.objects.create(
+                    transaction=self,
+                    ledger=reserve_ledger,
+                    amount=reserve_amount,
+                )
+                remaining -= reserve_amount
 
         if remaining > 0:
             Overflow.objects.create(
