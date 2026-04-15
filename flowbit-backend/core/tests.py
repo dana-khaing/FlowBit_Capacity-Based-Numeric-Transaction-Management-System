@@ -267,3 +267,35 @@ class LedgerArchiveAPITests(APITestCase):
         self.assertEqual(overflow.amount_to_approve, Decimal('50.00'))
         self.assertEqual(overflow.excess_amount, Decimal('50.00'))
         self.assertEqual(overflow.approved_at, now)
+
+    def test_period_create_accepts_date_only_and_defaults_close_time(self):
+        self.active_period.close(closed_at=timezone.now())
+
+        response = self.client.post('/api/periods/', {
+            'name': 'Date Only Period',
+            'start_date': '2027-04-01',
+            'end_date': '2027-04-30',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        period = Period.objects.get(id=response.data['id'])
+        self.assertEqual(period.start_date.hour, 0)
+        self.assertEqual(period.start_date.minute, 0)
+        self.assertEqual(period.end_date.hour, 15)
+        self.assertEqual(period.end_date.minute, 0)
+        self.assertEqual(period.end_date.date().isoformat(), '2027-04-30')
+
+    def test_period_create_accepts_date_only_with_custom_close_time(self):
+        self.active_period.close(closed_at=timezone.now())
+
+        response = self.client.post('/api/periods/', {
+            'name': 'Custom Close Time Period',
+            'start_date': '2027-05-01',
+            'end_date': '2027-05-31',
+            'close_time': '17:30:00',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        period = Period.objects.get(id=response.data['id'])
+        self.assertEqual(period.end_date.hour, 17)
+        self.assertEqual(period.end_date.minute, 30)
