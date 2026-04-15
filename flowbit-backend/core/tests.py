@@ -6,7 +6,15 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from core.models import Period, Identifier, Ledger, Overflow, Ticket, Transaction
+from core.models import (
+    Period,
+    Identifier,
+    IdentifierCapacityAdjustment,
+    Ledger,
+    Overflow,
+    Ticket,
+    Transaction,
+)
 
 
 class LedgerArchiveAPITests(APITestCase):
@@ -340,3 +348,63 @@ class LedgerArchiveAPITests(APITestCase):
             response.data['priority'][0],
             'An active ledger with this priority already exists in the selected period.'
         )
+
+    def test_approving_overflow_above_excess_creates_identifier_capacity_adjustment(self):
+        tx = Transaction.objects.create(
+            identifier=self.identifier,
+            total_amount=Decimal('250.00'),
+        )
+        overflow = Overflow.objects.get(transaction=tx)
+
+        response = self.client.post(
+            f'/api/overflows/{overflow.id}/approve/',
+            {'amount_to_approve': '180.00'},
+            format='json'
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        overflow.refresh_from_db()
+        self.assertEqual(overflow.status, 'CSO')
+        self.assertEqual(overflow.amount_to_approve, Decimal('180.00'))
+
+        adjustment = IdentifierCapacityAdjustment.objects.get(overflow=overflow)
+        self.assertEqual(adjustment.identifier, self.identifier)
+        self.assertEqual(adjustment.period, self.active_period)
+        self.assertEqual(adjustment.amount, Decimal('55.00'))
+
+        reserve_ledger = Ledger.objects.get(period=self.active_period, is_capacity_reserve=True)
+        self.assertEqual(reserve_ledger.limit_per_identifier, Decimal('0.00'))
+
+    def test_extra_approved_capacity_is_consumed_only_by_same_identifier(self):
+        tx = Transaction.objects.create(
+            identifier=self.identifier,
+            total_amount=Decimal('250.00'),
+        )
+        overflow = Overflow.objects.get(transaction=tx)
+        approval_response = self.client.post(
+            f'/api/overflows/{overflow.id}/approve/',
+            {'amount_to_approve': '180.00'},
+            format='json'
+        )
+        self.assertEqual(approval_response.status_code, status.HTTP_200_OK)
+
+        follow_up_tx = Transaction.objects.create(
+            identifier=self.identifier,
+            total_amount=Decimal('30.00'),
+        )
+        self.assertFalse(Overflow.objects.filter(transaction=follow_up_tx).exists())
+        self.assertTrue(
+            follow_up_tx.allocations.filter(
+                ledger__period=self.active_period,
+                ledger__is_capacity_reserve=True,
+                amount=Decimal('30.00'),
+            ).exists()
+        )
+
+        other_identifier = Identifier.objects.get(number='102')
+        blocked_tx = Transaction.objects.create(
+            identifier=other_identifier,
+            total_amount=Decimal('250.00'),
+        )
+        blocked_overflow = Overflow.objects.get(transaction=blocked_tx)
+        self.assertEqual(blocked_overflow.excess_amount, Decimal('50.00'))
