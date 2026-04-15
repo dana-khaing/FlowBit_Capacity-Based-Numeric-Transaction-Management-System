@@ -1,9 +1,69 @@
+from datetime import datetime, time
+
+from django.utils import timezone
+from django.utils.dateparse import parse_date, parse_datetime
 from rest_framework import serializers
 from .models import Period, Ledger, Identifier, Transaction, LedgerAllocation, Overflow, Profile, Ticket
 
 
+DEFAULT_PERIOD_CLOSE_TIME = time(hour=15, minute=0)
+
+
+def _aware_datetime_from_date(value, fallback_time):
+    naive_datetime = datetime.combine(value, fallback_time)
+    return timezone.make_aware(naive_datetime, timezone.get_current_timezone())
+
+
+class FlexibleDateTimeField(serializers.DateTimeField):
+    def __init__(self, *args, default_time=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.default_time = default_time or time.min
+
+    def to_internal_value(self, value):
+        if isinstance(value, datetime):
+            if timezone.is_naive(value):
+                return timezone.make_aware(value, timezone.get_current_timezone())
+            return value
+
+        if isinstance(value, str):
+            stripped_value = value.strip()
+            parsed_date = parse_date(stripped_value)
+            is_date_only = parsed_date and 'T' not in stripped_value and ':' not in stripped_value and ' ' not in stripped_value
+            if is_date_only:
+                close_time = self._resolve_default_time()
+                return _aware_datetime_from_date(parsed_date, close_time)
+
+            parsed_datetime = parse_datetime(stripped_value)
+            if parsed_datetime:
+                if timezone.is_naive(parsed_datetime):
+                    return timezone.make_aware(parsed_datetime, timezone.get_current_timezone())
+                return parsed_datetime
+
+        return super().to_internal_value(value)
+
+    def _resolve_default_time(self):
+        if callable(self.default_time):
+            return self.default_time(self)
+        return self.default_time
+
+
+def _serializer_close_time(field):
+    serializer = field.parent
+    raw_close_time = serializer.initial_data.get('close_time') if serializer and serializer.initial_data else None
+    if not raw_close_time:
+        return DEFAULT_PERIOD_CLOSE_TIME
+
+    parsed_close_time = serializers.TimeField().to_internal_value(raw_close_time)
+    if getattr(parsed_close_time, 'tzinfo', None) is not None:
+        return parsed_close_time.replace(tzinfo=None)
+    return parsed_close_time
+
+
 class PeriodSerializer(serializers.ModelSerializer):
     ledger_count = serializers.SerializerMethodField()
+    start_date = FlexibleDateTimeField(default_time=time.min)
+    end_date = FlexibleDateTimeField(default_time=_serializer_close_time)
+    close_time = serializers.TimeField(write_only=True, required=False)
 
     class Meta:
         model = Period
@@ -16,11 +76,17 @@ class PeriodSerializer(serializers.ModelSerializer):
             'closed_at',
             'created_at',
             'ledger_count',
+            'close_time',
         ]
         read_only_fields = ['closed_at', 'created_at', 'ledger_count']
 
     def get_ledger_count(self, obj):
         return obj.ledgers.count()
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        attrs.pop('close_time', None)
+        return attrs
 
 
 class LedgerSerializer(serializers.ModelSerializer):
