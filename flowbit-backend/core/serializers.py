@@ -91,6 +91,8 @@ class PeriodSerializer(serializers.ModelSerializer):
 
 class LedgerSerializer(serializers.ModelSerializer):
     period_name = serializers.CharField(source='period.name', read_only=True, allow_null=True)
+    end_date = FlexibleDateTimeField(default_time=_serializer_close_time, required=False)
+    close_time = serializers.TimeField(write_only=True, required=False)
 
     class Meta:
         model = Ledger
@@ -105,12 +107,45 @@ class LedgerSerializer(serializers.ModelSerializer):
             'is_active',
             'closed_at',
             'created_at',
+            'close_time',
         ]
 
     def validate_period(self, value):
         if value and not value.is_open:
             raise serializers.ValidationError("Cannot assign a ledger to a closed period.")
         return value
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+
+        period = attrs.get('period', getattr(self.instance, 'period', None))
+        priority = attrs.get('priority', getattr(self.instance, 'priority', None))
+        is_active = attrs.get('is_active', getattr(self.instance, 'is_active', True))
+        close_time = attrs.pop('close_time', None)
+
+        if 'end_date' not in attrs and period:
+            if close_time:
+                attrs['end_date'] = _aware_datetime_from_date(period.end_date.date(), close_time)
+            else:
+                attrs['end_date'] = period.end_date
+
+        if 'end_date' not in attrs:
+            raise serializers.ValidationError({'end_date': 'This field is required.'})
+
+        if period and priority is not None and is_active:
+            conflicting_ledgers = Ledger.objects.filter(
+                period=period,
+                is_active=True,
+                priority=priority,
+            )
+            if self.instance:
+                conflicting_ledgers = conflicting_ledgers.exclude(pk=self.instance.pk)
+            if conflicting_ledgers.exists():
+                raise serializers.ValidationError({
+                    'priority': 'An active ledger with this priority already exists in the selected period.'
+                })
+
+        return attrs
 
 
 class TicketSerializer(serializers.ModelSerializer):

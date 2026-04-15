@@ -299,3 +299,44 @@ class LedgerArchiveAPITests(APITestCase):
         period = Period.objects.get(id=response.data['id'])
         self.assertEqual(period.end_date.hour, 17)
         self.assertEqual(period.end_date.minute, 30)
+
+    def test_ledger_create_defaults_end_date_from_period(self):
+        response = self.client.post('/api/ledgers/', {
+            'period': self.active_period.id,
+            'name': 'Inherited Ledger',
+            'limit_per_identifier': '100.00',
+            'priority': 2,
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        ledger = Ledger.objects.get(id=response.data['id'])
+        self.assertEqual(ledger.end_date, self.active_period.end_date)
+
+    def test_ledger_create_uses_period_date_with_custom_close_time(self):
+        response = self.client.post('/api/ledgers/', {
+            'period': self.active_period.id,
+            'name': 'Custom Time Ledger',
+            'limit_per_identifier': '100.00',
+            'priority': 2,
+            'close_time': '16:45:00',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        ledger = Ledger.objects.get(id=response.data['id'])
+        self.assertEqual(ledger.end_date.date(), self.active_period.end_date.date())
+        self.assertEqual(ledger.end_date.hour, 16)
+        self.assertEqual(ledger.end_date.minute, 45)
+
+    def test_ledger_create_rejects_duplicate_active_priority_in_same_period(self):
+        response = self.client.post('/api/ledgers/', {
+            'period': self.active_period.id,
+            'name': 'Duplicate Priority Ledger',
+            'limit_per_identifier': '100.00',
+            'priority': 1,
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data['priority'][0],
+            'An active ledger with this priority already exists in the selected period.'
+        )
