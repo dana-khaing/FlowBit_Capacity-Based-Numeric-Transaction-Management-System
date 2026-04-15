@@ -81,7 +81,7 @@ class PeriodSerializer(serializers.ModelSerializer):
         read_only_fields = ['closed_at', 'created_at', 'ledger_count']
 
     def get_ledger_count(self, obj):
-        return obj.ledgers.count()
+        return obj.ledgers.filter(is_capacity_reserve=False).count()
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
@@ -137,6 +137,7 @@ class LedgerSerializer(serializers.ModelSerializer):
                 period=period,
                 is_active=True,
                 priority=priority,
+                is_capacity_reserve=False,
             )
             if self.instance:
                 conflicting_ledgers = conflicting_ledgers.exclude(pk=self.instance.pk)
@@ -246,7 +247,11 @@ class TransactionSerializer(serializers.ModelSerializer):
         if not open_period:
             raise serializers.ValidationError("No open period available.")
 
-        if not Ledger.objects.filter(is_active=True, period=open_period).exists():
+        if not Ledger.objects.filter(
+            is_active=True,
+            period=open_period,
+            is_capacity_reserve=False,
+        ).exists():
             raise serializers.ValidationError(
                 "No active ledgers available in the current open period."
             )
