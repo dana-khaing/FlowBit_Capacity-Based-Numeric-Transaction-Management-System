@@ -1,6 +1,6 @@
-from django.db import models
+from django.db import models, transaction
 from django.contrib.auth.models import User
-from django.db.models import Sum
+from django.db.models import Q, Sum
 from decimal import Decimal
 from django.core.exceptions import ValidationError
 from django.utils import timezone
@@ -42,16 +42,19 @@ class Period(models.Model):
         if closed_at is None:
             closed_at = timezone.now()
 
-        self.is_open = False
-        self.closed_at = closed_at
+        with transaction.atomic():
+            _resolve_pending_overflows(self, closed_at=closed_at)
 
-        if save:
-            self.save(update_fields=['is_open', 'closed_at'])
+            self.is_open = False
+            self.closed_at = closed_at
 
-        self.ledgers.filter(is_active=True).update(
-            is_active=False,
-            closed_at=closed_at,
-        )
+            if save:
+                self.save(update_fields=['is_open', 'closed_at'])
+
+            self.ledgers.filter(is_active=True).update(
+                is_active=False,
+                closed_at=closed_at,
+            )
 
         return self
 
@@ -86,11 +89,18 @@ class Ledger(models.Model):
         if closed_at is None:
             closed_at = timezone.now()
 
-        self.is_active = False
-        self.closed_at = closed_at
+        with transaction.atomic():
+            _resolve_pending_overflows(
+                self.period,
+                closed_at=closed_at,
+                exclude_ledger_ids=[self.pk],
+            )
 
-        if save:
-            self.save(update_fields=['is_active', 'closed_at'])
+            self.is_active = False
+            self.closed_at = closed_at
+
+            if save:
+                self.save(update_fields=['is_active', 'closed_at'])
 
         return self
 
@@ -147,6 +157,78 @@ class Identifier(models.Model):
         return Overflow.objects.filter(
             transaction__identifier=self
         ).aggregate(total=Sum('excess_amount'))['total'] or Decimal('0.00')
+
+
+def _period_overflow_filter(period):
+    if period is None:
+        return Q(transaction__allocations__ledger__period__isnull=True)
+
+    return (
+        Q(transaction__allocations__ledger__period=period) |
+        Q(
+            transaction__timestamp__gte=period.start_date,
+            transaction__timestamp__lte=period.end_date,
+        )
+    )
+
+
+def _resolve_pending_overflows(period, closed_at=None, exclude_ledger_ids=None):
+    if period is None:
+        return
+
+    closed_at = closed_at or timezone.now()
+    exclude_ledger_ids = exclude_ledger_ids or []
+    target_ledgers = list(
+        Ledger.objects.filter(period=period, is_active=True)
+        .exclude(pk__in=exclude_ledger_ids)
+        .order_by('priority', 'end_date', 'id')
+    )
+
+    pending_overflows = (
+        Overflow.objects.filter(_period_overflow_filter(period), status='TCSO')
+        .select_related('transaction__identifier')
+        .distinct()
+        .order_by('transaction__timestamp', 'id')
+    )
+
+    for overflow in pending_overflows:
+        remaining = overflow.excess_amount
+
+        for ledger in target_ledgers:
+            if remaining <= 0:
+                break
+
+            current_usage = LedgerAllocation.objects.filter(
+                transaction__identifier=overflow.transaction.identifier,
+                ledger=ledger,
+            ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+
+            available = ledger.limit_per_identifier - current_usage
+            if available <= 0:
+                continue
+
+            assign_amount = min(remaining, available)
+            LedgerAllocation.objects.create(
+                transaction=overflow.transaction,
+                ledger=ledger,
+                amount=assign_amount,
+            )
+            remaining -= assign_amount
+
+        if remaining <= 0:
+            overflow.delete()
+            continue
+
+        overflow.excess_amount = remaining
+        overflow.amount_to_approve = remaining
+        overflow.status = 'CSO'
+        overflow.approved_at = closed_at
+        overflow.save(update_fields=[
+            'excess_amount',
+            'amount_to_approve',
+            'status',
+            'approved_at',
+        ])
 
 
 class Ticket(models.Model):
