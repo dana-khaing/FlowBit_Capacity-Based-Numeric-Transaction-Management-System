@@ -64,6 +64,8 @@ class Period(models.Model):
 
 
 class Ledger(models.Model):
+    CAPACITY_RESERVE_PRIORITY = 999999
+
     period = models.ForeignKey(
         Period,
         on_delete=models.PROTECT,
@@ -76,6 +78,7 @@ class Ledger(models.Model):
     limit_per_identifier = models.DecimalField(max_digits=12, decimal_places=2, default=100000.00)
     priority = models.IntegerField(default=1)  # lower = higher priority
     is_active = models.BooleanField(default=True)
+    is_capacity_reserve = models.BooleanField(default=False)
     closed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -84,6 +87,25 @@ class Ledger(models.Model):
 
     def __str__(self):
         return f"{self.name} (Priority: {self.priority})"
+
+    @classmethod
+    def get_capacity_reserve(cls, period, create=False):
+        reserve = cls.objects.filter(
+            period=period,
+            is_capacity_reserve=True,
+        ).order_by('id').first()
+        if reserve or not create or period is None:
+            return reserve
+
+        return cls.objects.create(
+            period=period,
+            name=f"{period.name} Capacity Reserve",
+            end_date=period.end_date,
+            limit_per_identifier=Decimal('0.00'),
+            priority=cls.CAPACITY_RESERVE_PRIORITY,
+            is_active=period.is_open,
+            is_capacity_reserve=True,
+        )
 
     def close(self, closed_at=None, save=True):
         if closed_at is None:
@@ -387,6 +409,23 @@ class Overflow(models.Model):
     collaborators = models.ManyToManyField(User, blank=True, related_name='approved_overflows')
     approved_at = models.DateTimeField(null=True, blank=True)
 
+    @property
+    def period(self):
+        period = Period.objects.filter(
+            start_date__lte=self.transaction.timestamp,
+            end_date__gte=self.transaction.timestamp,
+        ).order_by('start_date').first()
+        if period:
+            return period
+
+        period_id = self.transaction.allocations.exclude(
+            ledger__period__isnull=True
+        ).values_list('ledger__period', flat=True).first()
+        if period_id:
+            return Period.objects.filter(pk=period_id).first()
+
+        return None
+
     def save(self, *args, **kwargs):
         if self.approved_at and self.status != 'CSO':
             self.status = 'CSO'
@@ -410,6 +449,49 @@ class Overflow(models.Model):
 
     def __str__(self):
         return f"{self.status} - {self.transaction.order_number}"
+
+
+class IdentifierCapacityAdjustment(models.Model):
+    identifier = models.ForeignKey(
+        Identifier,
+        on_delete=models.CASCADE,
+        related_name='capacity_adjustments',
+    )
+    period = models.ForeignKey(
+        Period,
+        on_delete=models.CASCADE,
+        related_name='capacity_adjustments',
+    )
+    overflow = models.ForeignKey(
+        Overflow,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='capacity_adjustments',
+    )
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at', 'id']
+
+    def __str__(self):
+        return f"{self.identifier.number} +{self.amount} ({self.period.name})"
+
+    @classmethod
+    def get_available_capacity(cls, identifier, period):
+        granted = cls.objects.filter(
+            identifier=identifier,
+            period=period,
+        ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+
+        used = LedgerAllocation.objects.filter(
+            transaction__identifier=identifier,
+            ledger__period=period,
+            ledger__is_capacity_reserve=True,
+        ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+
+        return granted - used
 
 
 class Profile(models.Model):
