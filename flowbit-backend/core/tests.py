@@ -193,3 +193,77 @@ class LedgerArchiveAPITests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(response.data['detail'], 'No open period available.')
+
+    def test_closing_ledger_reallocates_pending_overflow_into_other_active_ledgers(self):
+        self.active_period.close(closed_at=timezone.now())
+
+        now = timezone.make_aware(datetime(2027, 1, 1, 12, 0, 0))
+        period = Period.objects.create(
+            name='Overflow Resolution Period',
+            start_date=now,
+            end_date=now + timezone.timedelta(days=30),
+            is_open=True,
+        )
+        primary_ledger = Ledger.objects.create(
+            period=period,
+            name='Primary Ledger',
+            end_date=period.end_date,
+            limit_per_identifier=Decimal('100.00'),
+            priority=1,
+            is_active=True,
+        )
+        tx = Transaction.objects.create(
+            identifier=self.identifier,
+            total_amount=Decimal('150.00'),
+        )
+        overflow = Overflow.objects.get(transaction=tx)
+
+        backup_ledger = Ledger.objects.create(
+            period=period,
+            name='Backup Ledger',
+            end_date=period.end_date,
+            limit_per_identifier=Decimal('100.00'),
+            priority=2,
+            is_active=True,
+        )
+
+        primary_ledger.close(closed_at=now)
+
+        primary_ledger.refresh_from_db()
+        self.assertFalse(primary_ledger.is_active)
+        self.assertTrue(
+            tx.allocations.filter(ledger=backup_ledger, amount=Decimal('50.00')).exists()
+        )
+        self.assertFalse(Overflow.objects.filter(pk=overflow.pk).exists())
+
+    def test_closing_period_converts_remaining_pending_overflow(self):
+        self.active_period.close(closed_at=timezone.now())
+
+        now = timezone.make_aware(datetime(2027, 3, 1, 12, 0, 0))
+        period = Period.objects.create(
+            name='Final Overflow Period',
+            start_date=now - timezone.timedelta(days=1),
+            end_date=now + timezone.timedelta(days=30),
+            is_open=True,
+        )
+        Ledger.objects.create(
+            period=period,
+            name='Only Ledger',
+            end_date=period.end_date,
+            limit_per_identifier=Decimal('100.00'),
+            priority=1,
+            is_active=True,
+        )
+        tx = Transaction.objects.create(
+            identifier=self.identifier,
+            total_amount=Decimal('150.00'),
+        )
+        overflow = Overflow.objects.get(transaction=tx)
+
+        period.close(closed_at=now)
+
+        overflow.refresh_from_db()
+        self.assertEqual(overflow.status, 'CSO')
+        self.assertEqual(overflow.amount_to_approve, Decimal('50.00'))
+        self.assertEqual(overflow.excess_amount, Decimal('50.00'))
+        self.assertEqual(overflow.approved_at, now)
