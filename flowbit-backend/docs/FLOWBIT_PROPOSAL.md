@@ -17,6 +17,7 @@ FlowBit is a period-based capacity allocation and overflow-resolution platform b
 - export ledger reports and support archive review
 - export collaborator approval reports in CSV and PDF
 - support token-based sign-in with Google account integration
+- enforce admin-controlled override security for sensitive actions
 
 FlowBit is suitable for controlled environments where capacity must be distributed carefully and exceptions must be tracked clearly.
 
@@ -130,6 +131,8 @@ Business value:
 - Authenticated audit trail API for operational review
 - Audit logging for scheduled close and notification commands
 - token-based authentication with username/password and Google sign-in
+- role-based API permission enforcement
+- admin-controlled override codes for sensitive actions
 - Archive filtering for historical analysis
 - Admin visibility for operations staff
 
@@ -154,6 +157,9 @@ FlowBit currently includes:
 - Audit logging across key write flows and scheduled automation
 - token auth endpoints with Google sign-in support
 - Admin support for core operational entities
+- Admin-only user listing and role management
+- Admin-only override code setup for admin accounts
+- Admin override code requirement for non-admin refunds and protected period or ledger changes
 - Scheduled close and notification management commands
 
 ## 8. Business Workflows Supported
@@ -203,6 +209,13 @@ When capacity returns:
 - download the report in CSV or PDF
 - review collaborator totals for audit and operational control
 
+### 8.7 Control Sensitive Operations
+
+- admins manage roles, audit access, and override codes
+- override codes are configured only on admin accounts
+- non-admin users can perform protected period, ledger, or refund actions only when they provide a valid admin override code
+- refund actions remain controlled even when daily transaction entry is open to normal authenticated users
+
 ## 9. Target Users
 
 FlowBit is appropriate for:
@@ -232,6 +245,7 @@ FlowBit is not just a ledger tracker. Its differentiators are:
 - collaborator-level approval reporting
 - operational audit visibility across user and system actions
 - multiple sign-in paths for operators without changing FlowBit tokens
+- admin override control for high-risk actions
 
 These features make it more operationally useful than a simple static ledger system.
 
@@ -253,17 +267,29 @@ The backend now supports:
 
 This makes FlowBit more suitable for guided operator workflows and richer frontend interaction.
 
-## 12. Recommended Next Improvements
+## 12. Security And Control Model
+
+FlowBit now enforces role-based permissions in the API.
+
+Current control rules:
+
+- admins can manage periods, ledgers, identifiers, audit access, user roles, and admin override codes
+- normal authenticated users can perform daily operational workflows
+- non-admin users cannot refund tickets or change protected period or ledger records unless they provide a valid admin override code
+- override codes only work when attached to admin accounts
+
+This gives the platform a practical dual-control model for sensitive actions without blocking normal day-to-day usage.
+
+## 13. Recommended Next Improvements
 
 The highest-value future improvements would be:
 
-- permission enforcement by role
 - dashboard views for overflow and reserve capacity
 - explicit ticket workflow states
 - delivery channels for notifications such as email or push
 - reporting for refunds and helper activity
 
-## 13. Conclusion
+## 14. Conclusion
 
 FlowBit is already a strong operational platform for period-based capacity allocation and overflow control. Its most valuable qualities are:
 
