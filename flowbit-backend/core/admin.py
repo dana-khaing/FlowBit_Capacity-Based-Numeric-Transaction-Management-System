@@ -12,6 +12,7 @@ from .models import (
     Overflow,
     Profile,
     AuditLog,
+    PasswordResetToken,
     Ticket,
 )
 
@@ -212,6 +213,20 @@ class AuditLogAdmin(admin.ModelAdmin):
     search_fields = ('action', 'details', 'target_model', 'user__username')
     readonly_fields = ('user', 'action', 'timestamp', 'ip_address', 'target_model', 'target_id', 'details', 'changes')
     date_hierarchy = 'timestamp'
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(PasswordResetToken)
+class PasswordResetTokenAdmin(admin.ModelAdmin):
+    list_display = ('user', 'selector', 'expires_at', 'used_at', 'created_at')
+    search_fields = ('user__username', 'user__email', 'selector')
+    list_filter = ('expires_at', 'used_at', 'created_at')
+    readonly_fields = ('user', 'selector', 'expires_at', 'used_at', 'created_at')
 
     def has_add_permission(self, request):
         return False
