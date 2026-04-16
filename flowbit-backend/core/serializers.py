@@ -3,7 +3,17 @@ from datetime import datetime, time
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 from rest_framework import serializers
-from .models import Period, Ledger, Identifier, Transaction, LedgerAllocation, Overflow, Profile, Ticket
+from .models import (
+    Period,
+    Ledger,
+    Identifier,
+    Transaction,
+    LedgerAllocation,
+    Overflow,
+    OverflowNotification,
+    Profile,
+    Ticket,
+)
 
 
 DEFAULT_PERIOD_CLOSE_TIME = time(hour=15, minute=0)
@@ -164,10 +174,19 @@ class TicketSerializer(serializers.ModelSerializer):
             'created_by_username',
             'customer_name',
             'notes',
+            'is_refunded',
+            'refunded_at',
             'total_amount',
             'transaction_count',
         ]
-        read_only_fields = ['ticket_number', 'created_at', 'total_amount', 'transaction_count']
+        read_only_fields = [
+            'ticket_number',
+            'created_at',
+            'is_refunded',
+            'refunded_at',
+            'total_amount',
+            'transaction_count',
+        ]
 
 
 class IdentifierSerializer(serializers.ModelSerializer):
@@ -203,6 +222,25 @@ class OverflowSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+class OverflowNotificationSerializer(serializers.ModelSerializer):
+    overflow_id = serializers.IntegerField(source='overflow_id', read_only=True)
+    order_number = serializers.CharField(source='overflow.transaction.order_number', read_only=True)
+    identifier_number = serializers.CharField(source='overflow.transaction.identifier.number', read_only=True)
+
+    class Meta:
+        model = OverflowNotification
+        fields = [
+            'id',
+            'overflow_id',
+            'period',
+            'notification_type',
+            'message',
+            'created_at',
+            'order_number',
+            'identifier_number',
+        ]
+
+
 class TransactionSerializer(serializers.ModelSerializer):
     allocations = LedgerAllocationSerializer(many=True, read_only=True)
     overflows = OverflowSerializer(many=True, read_only=True)
@@ -228,6 +266,8 @@ class TransactionSerializer(serializers.ModelSerializer):
             'timestamp',
             'order_number',
             'created_by',
+            'is_refunded',
+            'refunded_at',
             'allocations',
             'overflows',
         ]
@@ -236,6 +276,8 @@ class TransactionSerializer(serializers.ModelSerializer):
             'timestamp',
             'created_by',
             'ticket_number',
+            'is_refunded',
+            'refunded_at',
             'allocations',
             'overflows',
         ]
