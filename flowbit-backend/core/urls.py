@@ -10,6 +10,10 @@ from .views import (
     OverflowNotificationViewSet,
     AuditLogViewSet,
     CollaboratorViewSet,
+    LoginView,
+    LogoutView,
+    MeView,
+    ChangePasswordView,
     TicketListView,
     TicketDetailView
 )
@@ -27,6 +31,11 @@ router.register(r'collaborators', CollaboratorViewSet)
 urlpatterns = [
     # All router endpoints (ledgers, identifiers, transactions, overflows)
     path('', include(router.urls)),
+
+    path('auth/login/', LoginView.as_view(), name='auth-login'),
+    path('auth/logout/', LogoutView.as_view(), name='auth-logout'),
+    path('auth/me/', MeView.as_view(), name='auth-me'),
+    path('auth/change-password/', ChangePasswordView.as_view(), name='auth-change-password'),
 
     # Ticket creation (multiple transactions in one request)
     path('tickets/create-with-items/', CreateTicketWithTransactions.as_view(), name='create-ticket-with-items'),
