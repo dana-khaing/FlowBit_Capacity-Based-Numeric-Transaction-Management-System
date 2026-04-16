@@ -941,6 +941,9 @@ class Profile(models.Model):
         self.master_override_password = ''
 
     def check_master_override_password(self, raw_password):
+        if self.role != 'admin':
+            return False
+
         stored_value = (self.master_override_password or '').strip()
         if not stored_value:
             return False
