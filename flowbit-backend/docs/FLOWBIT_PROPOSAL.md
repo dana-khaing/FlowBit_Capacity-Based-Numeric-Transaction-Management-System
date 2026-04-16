@@ -126,6 +126,8 @@ Business value:
 - Collaborator approval export in CSV and PDF
 - Pre-close overflow notification support
 - Period and ledger auto-close operations
+- Authenticated audit trail API for operational review
+- Audit logging for scheduled close and notification commands
 - Archive filtering for historical analysis
 - Admin visibility for operations staff
 
@@ -147,6 +149,7 @@ FlowBit currently includes:
 - Identifier-specific reserve capacity adjustments
 - Pre-close overflow notifications
 - Collaborator-based approval reporting with period and sort options
+- Audit logging across key write flows and scheduled automation
 - Admin support for core operational entities
 - Scheduled close and notification management commands
 
@@ -224,6 +227,7 @@ FlowBit is not just a ledger tracker. Its differentiators are:
 - refund-triggered capacity recovery
 - automated pre-close operational controls
 - collaborator-level approval reporting
+- operational audit visibility across user and system actions
 
 These features make it more operationally useful than a simple static ledger system.
 
@@ -250,7 +254,6 @@ This makes FlowBit more suitable for guided operator workflows and richer fronte
 The highest-value future improvements would be:
 
 - permission enforcement by role
-- richer audit logging for every resolution event
 - dashboard views for overflow and reserve capacity
 - explicit ticket workflow states
 - delivery channels for notifications such as email or push
