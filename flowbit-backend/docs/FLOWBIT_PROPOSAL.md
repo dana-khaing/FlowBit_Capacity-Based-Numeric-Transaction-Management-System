@@ -15,6 +15,7 @@ FlowBit is a period-based capacity allocation and overflow-resolution platform b
 - manage refund-driven capacity recovery
 - maintain operational discipline at period close
 - export ledger reports and support archive review
+- export collaborator approval reports in CSV and PDF
 
 FlowBit is suitable for controlled environments where capacity must be distributed carefully and exceptions must be tracked clearly.
 
@@ -122,6 +123,7 @@ Business value:
 - Refund-driven capacity restoration
 - Ticket-level batch transaction creation
 - Ledger report export in CSV and PDF
+- Collaborator approval export in CSV and PDF
 - Pre-close overflow notification support
 - Period and ledger auto-close operations
 - Archive filtering for historical analysis
@@ -144,6 +146,7 @@ FlowBit currently includes:
 - Overflow refund at overflow, transaction, and ticket level
 - Identifier-specific reserve capacity adjustments
 - Pre-close overflow notifications
+- Collaborator-based approval reporting with period and sort options
 - Admin support for core operational entities
 - Scheduled close and notification management commands
 
@@ -186,6 +189,14 @@ When capacity returns:
 - auto-convert unresolved `TCSO` to `CSO`
 - close ledgers and archive the period
 
+### 8.6 Export Collaborator Approval Reports
+
+- export approved `CSO` activity for one collaborator
+- filter the report by period
+- sort rows by identifier or approval time
+- download the report in CSV or PDF
+- review collaborator totals for audit and operational control
+
 ## 9. Target Users
 
 FlowBit is appropriate for:
@@ -212,6 +223,7 @@ FlowBit is not just a ledger tracker. Its differentiators are:
 - helper-specific reserve capacity
 - refund-triggered capacity recovery
 - automated pre-close operational controls
+- collaborator-level approval reporting
 
 These features make it more operationally useful than a simple static ledger system.
 
