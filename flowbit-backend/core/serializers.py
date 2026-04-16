@@ -246,6 +246,8 @@ class TransactionSerializer(serializers.ModelSerializer):
     overflows = OverflowSerializer(many=True, read_only=True)
     identifier_number = serializers.CharField(source='identifier.number', read_only=True)
     ticket_number = serializers.CharField(source='ticket.ticket_number', read_only=True, allow_null=True)
+    manual_allocations = serializers.JSONField(write_only=True, required=False)
+    allow_overflow = serializers.BooleanField(write_only=True, required=False, default=True)
     ticket_id = serializers.PrimaryKeyRelatedField(
         source='ticket',
         queryset=Ticket.objects.all(),
@@ -268,6 +270,8 @@ class TransactionSerializer(serializers.ModelSerializer):
             'created_by',
             'is_refunded',
             'refunded_at',
+            'manual_allocations',
+            'allow_overflow',
             'allocations',
             'overflows',
         ]
@@ -284,6 +288,8 @@ class TransactionSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
+        attrs.pop('manual_allocations', None)
+        attrs.pop('allow_overflow', None)
 
         open_period = Period.get_open_period()
         if not open_period:

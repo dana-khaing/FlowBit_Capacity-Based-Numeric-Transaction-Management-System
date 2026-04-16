@@ -31,6 +31,7 @@ from .models import (
     Ticket,
     LedgerAllocation,
     IdentifierCapacityAdjustment,
+    preview_transaction_allocation,
     refund_overflow,
     refund_transactions,
 )
@@ -100,6 +101,68 @@ def helper_name_from_request(request):
     if getattr(request, 'user', None) and request.user.is_authenticated:
         return request.user.username
     return DEFAULT_HELPER_NAME
+
+
+def parse_manual_allocations_input(identifier, period, manual_allocations):
+    parsed_allocations = []
+    seen_ledgers = set()
+
+    for index, item in enumerate(manual_allocations or [], start=1):
+        ledger_id = item.get('ledger')
+        amount = item.get('amount')
+
+        if ledger_id is None or amount is None:
+            raise ValidationError(f"Manual allocation item {index} must include 'ledger' and 'amount'.")
+
+        if ledger_id in seen_ledgers:
+            raise ValidationError(f"Ledger {ledger_id} is listed more than once in manual allocations.")
+        seen_ledgers.add(ledger_id)
+
+        try:
+            ledger = Ledger.objects.get(
+                id=ledger_id,
+                period=period,
+                is_active=True,
+                is_capacity_reserve=False,
+            )
+        except Ledger.DoesNotExist:
+            raise ValidationError(f"Ledger {ledger_id} is not an active ledger in the current period.")
+
+        try:
+            allocation_amount = Decimal(str(amount))
+        except (InvalidOperation, ValueError):
+            raise ValidationError(f"Invalid allocation amount for ledger {ledger_id}.")
+
+        if allocation_amount <= 0:
+            raise ValidationError(f"Allocation amount for ledger {ledger_id} must be positive.")
+
+        parsed_allocations.append({
+            'ledger': ledger,
+            'amount': allocation_amount,
+        })
+
+    return parsed_allocations
+
+
+def serialize_allocation_preview(preview):
+    return {
+        'ledger_allocations': [
+            {
+                'ledger_id': item['ledger'].id,
+                'ledger_name': item['ledger'].name,
+                'available_amount': str(item['available_amount']),
+                'requested_amount': str(item['requested_amount']),
+                'allocated_amount': str(item['allocated_amount']),
+                'overflow_amount': str(item['overflow_amount']),
+                'fits': item['overflow_amount'] == 0,
+            }
+            for item in preview['ledger_allocations']
+        ],
+        'reserve_available': str(preview['reserve_available']),
+        'reserve_allocated': str(preview['reserve_allocated']),
+        'overflow_amount': str(preview['overflow_amount']),
+        'has_overflow': preview['overflow_amount'] > 0,
+    }
 
 
 class PeriodViewSet(viewsets.ModelViewSet):
@@ -626,6 +689,132 @@ class TransactionViewSet(viewsets.ModelViewSet):
             ledger_prefix='allocations__ledger__'
         )
 
+    def create(self, request, *args, **kwargs):
+        open_period = Period.get_open_period()
+        if not open_period:
+            return Response(
+                {"detail": "No open period available."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        identifier = serializer.validated_data['identifier']
+        total_amount = serializer.validated_data['total_amount']
+        manual_allocations_input = request.data.get('manual_allocations') or []
+        allow_overflow = request.data.get('allow_overflow', True)
+
+        if isinstance(allow_overflow, str):
+            allow_overflow = allow_overflow.strip().lower() not in {'false', '0', 'no'}
+
+        parsed_allocations = []
+        preview = None
+        if manual_allocations_input:
+            try:
+                parsed_allocations = parse_manual_allocations_input(
+                    identifier=identifier,
+                    period=open_period,
+                    manual_allocations=manual_allocations_input,
+                )
+            except ValidationError as exc:
+                return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+            preview = preview_transaction_allocation(
+                identifier=identifier,
+                total_amount=total_amount,
+                period=open_period,
+                manual_allocations=parsed_allocations,
+            )
+        else:
+            preview = preview_transaction_allocation(
+                identifier=identifier,
+                total_amount=total_amount,
+                period=open_period,
+            )
+
+        if preview['overflow_amount'] > 0 and not allow_overflow:
+            return Response(
+                {
+                    "detail": "Transaction does not fit available capacity.",
+                    "preview": serialize_allocation_preview(preview),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        transaction_obj = serializer.save(
+            created_by=request.user if request.user.is_authenticated else None
+        )
+        if parsed_allocations:
+            transaction_obj._manual_allocations = parsed_allocations
+            transaction_obj.allocations.all().delete()
+            transaction_obj.overflows.all().delete()
+            transaction_obj._allocate_to_ledgers()
+
+        response_serializer = self.get_serializer(transaction_obj)
+        response_payload = response_serializer.data
+        if preview is not None:
+            response_payload['allocation_preview'] = serialize_allocation_preview(preview)
+        headers = self.get_success_headers(response_payload)
+        return Response(response_payload, status=status.HTTP_201_CREATED, headers=headers)
+
+    @action(detail=False, methods=['post'], url_path='allocation-preview')
+    def allocation_preview(self, request):
+        open_period = Period.get_open_period()
+        if not open_period:
+            return Response(
+                {"detail": "No open period available."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        identifier_id = request.data.get('identifier')
+        total_amount = request.data.get('total_amount')
+
+        if not identifier_id or total_amount is None:
+            return Response(
+                {"detail": "'identifier' and 'total_amount' are required."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            identifier = Identifier.objects.get(id=identifier_id)
+        except Identifier.DoesNotExist:
+            return Response(
+                {"detail": "Identifier not found."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        try:
+            total_amount = Decimal(str(total_amount))
+        except (InvalidOperation, ValueError):
+            return Response(
+                {"detail": "Invalid total_amount format."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if total_amount <= 0:
+            return Response(
+                {"detail": "total_amount must be positive."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        manual_allocations_input = request.data.get('manual_allocations') or []
+        try:
+            parsed_allocations = parse_manual_allocations_input(
+                identifier=identifier,
+                period=open_period,
+                manual_allocations=manual_allocations_input,
+            ) if manual_allocations_input else None
+        except ValidationError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        preview = preview_transaction_allocation(
+            identifier=identifier,
+            total_amount=total_amount,
+            period=open_period,
+            manual_allocations=parsed_allocations,
+        )
+        return Response(serialize_allocation_preview(preview), status=status.HTTP_200_OK)
+
 
 class OverflowViewSet(viewsets.ModelViewSet):
     queryset = Overflow.objects.all()
@@ -904,18 +1093,49 @@ class CreateTicketWithTransactions(APIView):
                     continue
 
                 # Create transaction → this triggers allocation & overflow logic
+                manual_allocations_input = item.get('manual_allocations') or []
+                allow_overflow = item.get('allow_overflow', True)
+                if isinstance(allow_overflow, str):
+                    allow_overflow = allow_overflow.strip().lower() not in {'false', '0', 'no'}
+
+                parsed_allocations = []
+                if manual_allocations_input:
+                    parsed_allocations = parse_manual_allocations_input(
+                        identifier=identifier,
+                        period=open_period,
+                        manual_allocations=manual_allocations_input,
+                    )
+
+                preview = preview_transaction_allocation(
+                    identifier=identifier,
+                    total_amount=amount,
+                    period=open_period,
+                    manual_allocations=parsed_allocations or None,
+                )
+                if preview['overflow_amount'] > 0 and not allow_overflow:
+                    errors.append(
+                        f"Item {idx}: transaction does not fit available capacity and allow_overflow is false"
+                    )
+                    continue
+
                 tx = Transaction.objects.create(
                     ticket=ticket,
                     identifier=identifier,
                     total_amount=amount,
                     created_by=request.user if request.user.is_authenticated else None
                 )
+                if parsed_allocations:
+                    tx._manual_allocations = parsed_allocations
+                    tx.allocations.all().delete()
+                    tx.overflows.all().delete()
+                    tx._allocate_to_ledgers()
 
                 created_items.append({
                     "order_number": tx.order_number,
                     "identifier": identifier.number,
                     "amount": str(tx.total_amount),
-                    "id": tx.id
+                    "id": tx.id,
+                    "allocation_preview": serialize_allocation_preview(preview),
                 })
 
             except Exception as e:
