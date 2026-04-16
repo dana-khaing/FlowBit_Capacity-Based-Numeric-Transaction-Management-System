@@ -6,6 +6,9 @@ from django.core.exceptions import ValidationError
 from django.utils import timezone
 
 
+DEFAULT_HELPER_NAME = 'system'
+
+
 class Period(models.Model):
     name = models.CharField(max_length=100, unique=True)
     start_date = models.DateTimeField()
@@ -38,12 +41,16 @@ class Period(models.Model):
         self.full_clean()
         super().save(*args, **kwargs)
 
-    def close(self, closed_at=None, save=True):
+    def close(self, closed_at=None, save=True, helper_name=DEFAULT_HELPER_NAME):
         if closed_at is None:
             closed_at = timezone.now()
 
         with transaction.atomic():
-            _resolve_pending_overflows(self, closed_at=closed_at)
+            _auto_close_pending_overflows(
+                self,
+                closed_at=closed_at,
+                helper_name=helper_name,
+            )
 
             self.is_open = False
             self.closed_at = closed_at
@@ -114,7 +121,6 @@ class Ledger(models.Model):
         with transaction.atomic():
             _resolve_pending_overflows(
                 self.period,
-                closed_at=closed_at,
                 exclude_ledger_ids=[self.pk],
             )
 
@@ -216,20 +222,121 @@ def _period_overflow_filter(period):
     )
 
 
-def _resolve_pending_overflows(period, closed_at=None, exclude_ledger_ids=None):
+def _get_transaction_period(transaction_obj):
+    period = Period.objects.filter(
+        start_date__lte=transaction_obj.timestamp,
+        end_date__gte=transaction_obj.timestamp,
+    ).order_by('start_date').first()
+    if period:
+        return period
+
+    period_id = transaction_obj.allocations.exclude(
+        ledger__period__isnull=True
+    ).values_list('ledger__period', flat=True).first()
+    if period_id:
+        return Period.objects.filter(pk=period_id).first()
+
+    return None
+
+
+def _allocate_transaction_amount(transaction_obj, amount, period):
+    remaining = amount
+    active_ledgers = Ledger.objects.filter(
+        is_active=True,
+        period=period,
+        is_capacity_reserve=False,
+    ).order_by('priority', 'end_date', 'id')
+
+    for ledger in active_ledgers:
+        if remaining <= 0:
+            break
+
+        current_usage = LedgerAllocation.objects.filter(
+            transaction__identifier=transaction_obj.identifier,
+            ledger=ledger,
+        ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+
+        available = ledger.limit_per_identifier - current_usage
+        if available <= 0:
+            continue
+
+        assign_amount = min(remaining, available)
+        LedgerAllocation.objects.create(
+            transaction=transaction_obj,
+            ledger=ledger,
+            amount=assign_amount,
+        )
+        remaining -= assign_amount
+
+    if remaining > 0:
+        reserve_available = IdentifierCapacityAdjustment.get_available_capacity(
+            identifier=transaction_obj.identifier,
+            period=period,
+        )
+        if reserve_available > 0:
+            reserve_ledger = Ledger.get_capacity_reserve(period, create=True)
+            reserve_amount = min(remaining, reserve_available)
+            LedgerAllocation.objects.create(
+                transaction=transaction_obj,
+                ledger=reserve_ledger,
+                amount=reserve_amount,
+            )
+            remaining -= reserve_amount
+
+    return remaining
+
+
+def _retry_pending_overflows(period, identifier):
     if period is None:
         return
 
-    closed_at = closed_at or timezone.now()
+    pending_overflows = (
+        Overflow.objects.filter(
+            _period_overflow_filter(period),
+            status=Overflow.STATUS_TCSO,
+            transaction__identifier=identifier,
+        )
+        .select_related('transaction__identifier')
+        .distinct()
+        .order_by('transaction__timestamp', 'id')
+    )
+
+    for overflow in pending_overflows:
+        remaining = _allocate_transaction_amount(
+            overflow.transaction,
+            overflow.excess_amount,
+            period,
+        )
+
+        if remaining <= 0:
+            overflow.delete()
+            continue
+
+        if remaining != overflow.excess_amount:
+            overflow.excess_amount = remaining
+            overflow.save(update_fields=['excess_amount'])
+
+
+def _resolve_pending_overflows(period, exclude_ledger_ids=None):
+    if period is None:
+        return
+
     exclude_ledger_ids = exclude_ledger_ids or []
     target_ledgers = list(
-        Ledger.objects.filter(period=period, is_active=True, is_capacity_reserve=False)
+        Ledger.objects.filter(
+            period=period,
+            is_active=True,
+            is_capacity_reserve=False,
+        )
         .exclude(pk__in=exclude_ledger_ids)
         .order_by('priority', 'end_date', 'id')
     )
 
     pending_overflows = (
-        Overflow.objects.filter(_period_overflow_filter(period), status='TCSO')
+        Overflow.objects.filter(
+            _period_overflow_filter(period),
+            status=Overflow.STATUS_TCSO,
+        )
         .select_related('transaction__identifier')
         .distinct()
         .order_by('transaction__timestamp', 'id')
@@ -263,15 +370,33 @@ def _resolve_pending_overflows(period, closed_at=None, exclude_ledger_ids=None):
             overflow.delete()
             continue
 
-        overflow.excess_amount = remaining
-        overflow.amount_to_approve = remaining
-        overflow.status = 'CSO'
+        if remaining != overflow.excess_amount:
+            overflow.excess_amount = remaining
+            overflow.save(update_fields=['excess_amount'])
+
+
+def _auto_close_pending_overflows(period, closed_at=None, helper_name=DEFAULT_HELPER_NAME):
+    if period is None:
+        return
+
+    closed_at = closed_at or timezone.now()
+    pending_overflows = Overflow.objects.filter(
+        _period_overflow_filter(period),
+        status=Overflow.STATUS_TCSO,
+    ).distinct()
+
+    for overflow in pending_overflows:
+        overflow.status = Overflow.STATUS_CSO
+        overflow.amount_to_approve = overflow.excess_amount
         overflow.approved_at = closed_at
+        overflow.helper_name = helper_name or DEFAULT_HELPER_NAME
+        overflow.resolution_type = Overflow.RESOLUTION_AUTO_CLOSE
         overflow.save(update_fields=[
-            'excess_amount',
-            'amount_to_approve',
             'status',
+            'amount_to_approve',
             'approved_at',
+            'helper_name',
+            'resolution_type',
         ])
 
 
@@ -295,6 +420,8 @@ class Ticket(models.Model):
     )
     customer_name = models.CharField(max_length=150, blank=True, null=True)
     notes = models.TextField(blank=True, null=True)
+    is_refunded = models.BooleanField(default=False)
+    refunded_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ['-created_at']
@@ -325,6 +452,13 @@ class Ticket(models.Model):
     def transaction_count(self):
         return self.transactions.count()
 
+    def refresh_refund_state(self):
+        transactions_exist = self.transactions.exists()
+        all_refunded = transactions_exist and not self.transactions.filter(is_refunded=False).exists()
+        self.is_refunded = all_refunded
+        self.refunded_at = timezone.now() if all_refunded else None
+        self.save(update_fields=['is_refunded', 'refunded_at'])
+
 
 class Transaction(models.Model):
     identifier = models.ForeignKey(Identifier, on_delete=models.CASCADE, related_name='transactions')
@@ -332,6 +466,8 @@ class Transaction(models.Model):
     timestamp = models.DateTimeField(auto_now_add=True)
     order_number = models.CharField(max_length=20, unique=True, blank=True)
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    is_refunded = models.BooleanField(default=False)
+    refunded_at = models.DateTimeField(null=True, blank=True)
 
     # Link to Ticket
     ticket = models.ForeignKey(
@@ -347,6 +483,10 @@ class Transaction(models.Model):
 
     def __str__(self):
         return f"{self.order_number} | {self.identifier} ← {self.total_amount}"
+
+    @property
+    def period(self):
+        return _get_transaction_period(self)
 
     def save(self, *args, **kwargs):
         if not self.order_number:
@@ -373,52 +513,13 @@ class Transaction(models.Model):
         if not active_ledgers.exists():
             raise ValidationError("No active ledgers available in the current open period.")
 
-        remaining = self.total_amount
-
-        for ledger in active_ledgers:
-            if remaining <= 0:
-                break
-
-            current_usage = LedgerAllocation.objects.filter(
-                transaction__identifier=self.identifier,
-                ledger=ledger
-            ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
-
-            available = ledger.limit_per_identifier - current_usage
-
-            if available <= 0:
-                continue
-
-            assign_amount = min(remaining, available)
-
-            LedgerAllocation.objects.create(
-                transaction=self,
-                ledger=ledger,
-                amount=assign_amount
-            )
-
-            remaining -= assign_amount
-
-        if remaining > 0:
-            reserve_available = IdentifierCapacityAdjustment.get_available_capacity(
-                identifier=self.identifier,
-                period=open_period,
-            )
-            if reserve_available > 0:
-                reserve_ledger = Ledger.get_capacity_reserve(open_period, create=True)
-                reserve_amount = min(remaining, reserve_available)
-                LedgerAllocation.objects.create(
-                    transaction=self,
-                    ledger=reserve_ledger,
-                    amount=reserve_amount,
-                )
-                remaining -= reserve_amount
+        remaining = _allocate_transaction_amount(self, self.total_amount, open_period)
 
         if remaining > 0:
             Overflow.objects.create(
                 transaction=self,
                 excess_amount=remaining,
-                status='TCSO'
+                status=Overflow.STATUS_TCSO
             )
 
 
@@ -435,46 +536,61 @@ class LedgerAllocation(models.Model):
 
 
 class Overflow(models.Model):
+    STATUS_TCSO = 'TCSO'
+    STATUS_CSO = 'CSO'
+    STATUS_REFUNDED = 'RFND'
+
+    RESOLUTION_APPROVE = 'APPROVE'
+    RESOLUTION_AUTO_CLOSE = 'AUTO_CLOSE'
+    RESOLUTION_REFUND_OVERFLOW = 'REFUND_OVERFLOW'
+    RESOLUTION_REFUND_TRANSACTION = 'REFUND_TRANSACTION'
+    RESOLUTION_REFUND_TICKET = 'REFUND_TICKET'
+
     STATUS_CHOICES = (
-        ('TCSO', 'Take Care Spill Over'),
-        ('CSO', 'Completed Spill Over'),
+        (STATUS_TCSO, 'Take Care Spill Over'),
+        (STATUS_CSO, 'Completed Spill Over'),
+        (STATUS_REFUNDED, 'Refunded'),
+    )
+    RESOLUTION_CHOICES = (
+        (RESOLUTION_APPROVE, 'Approved'),
+        (RESOLUTION_AUTO_CLOSE, 'Auto Close'),
+        (RESOLUTION_REFUND_OVERFLOW, 'Refund Overflow'),
+        (RESOLUTION_REFUND_TRANSACTION, 'Refund Transaction'),
+        (RESOLUTION_REFUND_TICKET, 'Refund Ticket'),
     )
 
     transaction = models.ForeignKey(Transaction, on_delete=models.CASCADE, related_name='overflows')
     excess_amount = models.DecimalField(max_digits=12, decimal_places=2)
-    status = models.CharField(max_length=4, choices=STATUS_CHOICES, default='TCSO')
+    status = models.CharField(max_length=4, choices=STATUS_CHOICES, default=STATUS_TCSO)
     amount_to_approve = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     collaborators = models.ManyToManyField(User, blank=True, related_name='approved_overflows')
     approved_at = models.DateTimeField(null=True, blank=True)
+    helper_name = models.CharField(max_length=150, blank=True, default='')
+    resolution_type = models.CharField(max_length=32, choices=RESOLUTION_CHOICES, blank=True, default='')
+    refunded_at = models.DateTimeField(null=True, blank=True)
+    refund_amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
 
     @property
     def period(self):
-        period = Period.objects.filter(
-            start_date__lte=self.transaction.timestamp,
-            end_date__gte=self.transaction.timestamp,
-        ).order_by('start_date').first()
-        if period:
-            return period
+        return _get_transaction_period(self.transaction)
 
-        period_id = self.transaction.allocations.exclude(
-            ledger__period__isnull=True
-        ).values_list('ledger__period', flat=True).first()
-        if period_id:
-            return Period.objects.filter(pk=period_id).first()
-
-        return None
+    @property
+    def approved_capacity_amount(self):
+        return self.amount_to_approve or self.excess_amount
 
     def save(self, *args, **kwargs):
-        if self.approved_at and self.status != 'CSO':
-            self.status = 'CSO'
-        elif self.status == 'CSO' and self.approved_at is None:
+        if self.status == self.STATUS_REFUNDED:
+            pass
+        elif self.approved_at and self.status != self.STATUS_CSO:
+            self.status = self.STATUS_CSO
+        elif self.status == self.STATUS_CSO and self.approved_at is None:
             self.approved_at = timezone.now()
-        elif self.status == 'TCSO' and self.approved_at is not None:
+        elif self.status == self.STATUS_TCSO and self.approved_at is not None:
             self.approved_at = None
 
         super().save(*args, **kwargs)
 
-        if self.status == 'CSO':
+        if self.status == self.STATUS_CSO:
             leftover = self.excess_amount - (self.amount_to_approve or Decimal('0.00'))
             if leftover > 0:
                 self.excess_amount = self.amount_to_approve or Decimal('0.00')
@@ -482,7 +598,7 @@ class Overflow(models.Model):
                 Overflow.objects.create(
                     transaction=self.transaction,
                     excess_amount=leftover,
-                    status='TCSO'
+                    status=self.STATUS_TCSO
                 )
 
     def __str__(self):
@@ -490,6 +606,14 @@ class Overflow(models.Model):
 
 
 class IdentifierCapacityAdjustment(models.Model):
+    TYPE_APPROVAL_EXTRA = 'APPROVAL_EXTRA'
+    TYPE_REFUND_CSO = 'REFUND_CSO'
+
+    TYPE_CHOICES = (
+        (TYPE_APPROVAL_EXTRA, 'Approved Extra Capacity'),
+        (TYPE_REFUND_CSO, 'Refunded CSO Capacity'),
+    )
+
     identifier = models.ForeignKey(
         Identifier,
         on_delete=models.CASCADE,
@@ -508,6 +632,12 @@ class IdentifierCapacityAdjustment(models.Model):
         related_name='capacity_adjustments',
     )
     amount = models.DecimalField(max_digits=12, decimal_places=2)
+    adjustment_type = models.CharField(
+        max_length=32,
+        choices=TYPE_CHOICES,
+        default=TYPE_APPROVAL_EXTRA,
+    )
+    helper_name = models.CharField(max_length=150, blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -530,6 +660,137 @@ class IdentifierCapacityAdjustment(models.Model):
         ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
 
         return granted - used
+
+
+class OverflowNotification(models.Model):
+    TYPE_PRE_CLOSE = 'PRE_CLOSE'
+
+    TYPE_CHOICES = (
+        (TYPE_PRE_CLOSE, 'Pre-close pending overflow'),
+    )
+
+    overflow = models.ForeignKey(
+        Overflow,
+        on_delete=models.CASCADE,
+        related_name='notifications',
+    )
+    period = models.ForeignKey(
+        Period,
+        on_delete=models.CASCADE,
+        related_name='overflow_notifications',
+    )
+    notification_type = models.CharField(max_length=32, choices=TYPE_CHOICES)
+    message = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['overflow', 'notification_type'],
+                name='unique_overflow_notification_type',
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.notification_type} - {self.overflow}"
+
+
+def _grant_capacity_adjustment(overflow, amount, adjustment_type, helper_name):
+    if amount <= 0:
+        return None
+
+    period = overflow.period
+    if period is None:
+        return None
+
+    Ledger.get_capacity_reserve(period, create=True)
+    return IdentifierCapacityAdjustment.objects.create(
+        identifier=overflow.transaction.identifier,
+        period=period,
+        overflow=overflow,
+        amount=amount,
+        adjustment_type=adjustment_type,
+        helper_name=helper_name or DEFAULT_HELPER_NAME,
+    )
+
+
+def _refund_capacity_amount_for_overflow(overflow):
+    approval_extra = overflow.capacity_adjustments.filter(
+        adjustment_type=IdentifierCapacityAdjustment.TYPE_APPROVAL_EXTRA,
+    ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+    return max((overflow.amount_to_approve or Decimal('0.00')) - approval_extra, Decimal('0.00'))
+
+
+def refund_overflow(overflow, helper_name, resolution_type, refunded_at=None):
+    refunded_at = refunded_at or timezone.now()
+    helper_name = helper_name or DEFAULT_HELPER_NAME
+    period = overflow.period
+
+    if overflow.status == Overflow.STATUS_REFUNDED:
+        return overflow
+
+    if overflow.status == Overflow.STATUS_CSO:
+        refund_capacity = _refund_capacity_amount_for_overflow(overflow)
+        _grant_capacity_adjustment(
+            overflow,
+            refund_capacity,
+            IdentifierCapacityAdjustment.TYPE_REFUND_CSO,
+            helper_name,
+        )
+
+    overflow.status = Overflow.STATUS_REFUNDED
+    overflow.refunded_at = refunded_at
+    overflow.refund_amount = overflow.amount_to_approve or overflow.excess_amount
+    overflow.helper_name = helper_name
+    overflow.resolution_type = resolution_type
+    overflow.save(update_fields=[
+        'status',
+        'refunded_at',
+        'refund_amount',
+        'helper_name',
+        'resolution_type',
+    ])
+
+    if period:
+        _retry_pending_overflows(period, overflow.transaction.identifier)
+    return overflow
+
+
+def refund_transactions(transactions, helper_name, resolution_type, refunded_at=None):
+    refunded_at = refunded_at or timezone.now()
+    helper_name = helper_name or DEFAULT_HELPER_NAME
+    affected_pairs = set()
+
+    for transaction_obj in transactions:
+        if transaction_obj.is_refunded:
+            continue
+
+        period = transaction_obj.period
+        if period:
+            affected_pairs.add((period.id, transaction_obj.identifier_id))
+
+        for overflow in transaction_obj.overflows.exclude(status=Overflow.STATUS_REFUNDED):
+            refund_overflow(
+                overflow,
+                helper_name=helper_name,
+                resolution_type=resolution_type,
+                refunded_at=refunded_at,
+            )
+
+        transaction_obj.allocations.all().delete()
+        transaction_obj.is_refunded = True
+        transaction_obj.refunded_at = refunded_at
+        transaction_obj.save(update_fields=['is_refunded', 'refunded_at'])
+
+        if transaction_obj.ticket_id:
+            transaction_obj.ticket.refresh_refund_state()
+
+    for period_id, identifier_id in affected_pairs:
+        period = Period.objects.filter(pk=period_id).first()
+        identifier = Identifier.objects.filter(pk=identifier_id).first()
+        if period and identifier:
+            _retry_pending_overflows(period, identifier)
 
 
 class Profile(models.Model):
