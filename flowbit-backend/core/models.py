@@ -662,6 +662,25 @@ class LedgerAllocation(models.Model):
         return f"{self.transaction.order_number} ← {self.amount} ({self.ledger.name})"
 
 
+class Collaborator(models.Model):
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='collaborators')
+    username = models.CharField(max_length=150)
+    full_name = models.CharField(max_length=150)
+    email = models.EmailField()
+    phone_number = models.CharField(max_length=50)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['username', 'id']
+        constraints = [
+            models.UniqueConstraint(fields=['owner', 'username'], name='unique_collaborator_username_per_owner'),
+        ]
+
+    def __str__(self):
+        return f"{self.username} ({self.owner.username})"
+
+
 class Overflow(models.Model):
     STATUS_TCSO = 'TCSO'
     STATUS_CSO = 'CSO'
@@ -690,7 +709,7 @@ class Overflow(models.Model):
     excess_amount = models.DecimalField(max_digits=12, decimal_places=2)
     status = models.CharField(max_length=4, choices=STATUS_CHOICES, default=STATUS_TCSO)
     amount_to_approve = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
-    collaborators = models.ManyToManyField(User, blank=True, related_name='approved_overflows')
+    collaborators = models.ManyToManyField(Collaborator, blank=True, related_name='approved_overflows')
     approved_at = models.DateTimeField(null=True, blank=True)
     helper_name = models.CharField(max_length=150, blank=True, default='')
     resolution_type = models.CharField(max_length=32, choices=RESOLUTION_CHOICES, blank=True, default='')

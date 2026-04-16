@@ -10,6 +10,7 @@ from .models import (
     Transaction,
     LedgerAllocation,
     Overflow,
+    Collaborator,
     Profile,
     AuditLog,
     PasswordResetToken,
@@ -197,6 +198,13 @@ class OverflowNotificationAdmin(admin.ModelAdmin):
     list_display = ('overflow', 'period', 'notification_type', 'created_at')
     list_filter = ('notification_type', 'period')
     search_fields = ('overflow__transaction__order_number', 'message')
+
+
+@admin.register(Collaborator)
+class CollaboratorAdmin(admin.ModelAdmin):
+    list_display = ('username', 'full_name', 'owner', 'email', 'phone_number', 'created_at')
+    list_filter = ('owner',)
+    search_fields = ('username', 'full_name', 'email', 'phone_number', 'owner__username')
 
 
 @admin.register(Profile)
