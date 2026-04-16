@@ -147,6 +147,74 @@ class AuthAPITests(APITestCase):
         self.assertEqual(response.data['detail'], 'Google account email is not verified.')
 
 
+class RolePermissionTests(APITestCase):
+    def setUp(self):
+        self.admin_user = User.objects.create_user(
+            username='admin_role_user',
+            password='password123',
+        )
+        self.admin_user.profile.role = 'admin'
+        self.admin_user.profile.save(update_fields=['role', 'updated_at'])
+
+        self.regular_user = User.objects.create_user(
+            username='regular_role_user',
+            password='password123',
+        )
+
+        self.period = Period.objects.create(
+            name='Role Permission Period',
+            start_date=timezone.make_aware(datetime(2027, 1, 1, 0, 0, 0)),
+            end_date=timezone.make_aware(datetime(2027, 12, 31, 23, 59, 59)),
+            is_open=True,
+        )
+        self.ledger = Ledger.objects.create(
+            period=self.period,
+            name='Role Ledger',
+            end_date=self.period.end_date,
+            limit_per_identifier=Decimal('100.00'),
+            priority=1,
+            is_active=True,
+        )
+        self.identifier = Identifier.objects.get(number='101')
+
+    def test_regular_user_cannot_create_period(self):
+        self.client.force_authenticate(user=self.regular_user)
+
+        response = self.client.post('/api/periods/', {
+            'name': 'Blocked Period',
+            'start_date': '2027-02-01',
+            'end_date': '2027-02-28',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_regular_user_can_create_ticket_with_transactions(self):
+        self.client.force_authenticate(user=self.regular_user)
+
+        response = self.client.post('/api/tickets/create-with-items/', {
+            'customer_name': 'Regular User Customer',
+            'items': [
+                {'identifier': self.identifier.id, 'amount': '50.00'},
+            ],
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_regular_user_cannot_view_audit_logs(self):
+        self.client.force_authenticate(user=self.regular_user)
+
+        response = self.client.get('/api/audit-logs/')
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_regular_user_cannot_close_ledger(self):
+        self.client.force_authenticate(user=self.regular_user)
+
+        response = self.client.post(f'/api/ledgers/{self.ledger.id}/close/')
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
 class LedgerArchiveAPITests(APITestCase):
     def setUp(self):
         self.identifier = Identifier.objects.create(number='101')
@@ -162,6 +230,9 @@ class LedgerArchiveAPITests(APITestCase):
             last_name='User',
             password='password123',
         )
+        self.approver.profile.role = 'admin'
+        self.approver.profile.save(update_fields=['role', 'updated_at'])
+        self.client.force_authenticate(user=self.approver)
 
         january_start = timezone.make_aware(datetime(2026, 1, 1, 0, 0, 0))
         january_end = timezone.make_aware(datetime(2026, 1, 31, 23, 59, 59))
@@ -767,6 +838,7 @@ class LedgerArchiveAPITests(APITestCase):
         self.assertEqual(response.data[0]['username'], self.approver.username)
 
     def test_audit_logs_endpoint_requires_authentication(self):
+        self.client.force_authenticate(user=None)
         response = self.client.get('/api/audit-logs/')
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
