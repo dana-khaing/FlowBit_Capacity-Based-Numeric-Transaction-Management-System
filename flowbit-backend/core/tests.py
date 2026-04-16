@@ -14,6 +14,7 @@ from core.models import (
     Ledger,
     Overflow,
     OverflowNotification,
+    AuditLog,
     Ticket,
     Transaction,
 )
@@ -135,6 +136,18 @@ class LedgerArchiveAPITests(APITestCase):
         self.assertFalse(self.active_period.is_open)
         self.assertFalse(self.active_ledger.is_active)
         self.assertIsNotNone(self.active_ledger.closed_at)
+
+    def test_period_close_creates_audit_log(self):
+        self.client.force_authenticate(user=self.approver)
+
+        response = self.client.post(f'/api/periods/{self.active_period.id}/close/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        audit_entry = AuditLog.objects.get(action='period.closed')
+        self.assertEqual(audit_entry.user, self.approver)
+        self.assertEqual(audit_entry.target_model, 'Period')
+        self.assertEqual(audit_entry.target_id, self.active_period.id)
+        self.assertEqual(audit_entry.ip_address, '127.0.0.1')
 
     def test_current_period_returns_open_period(self):
         response = self.client.get('/api/periods/current/')
@@ -585,6 +598,46 @@ class LedgerArchiveAPITests(APITestCase):
         self.assertIn(self.collaborator.id, collaborator_ids)
         collaborator_row = next(item for item in response.data if item['id'] == self.collaborator.id)
         self.assertEqual(collaborator_row['full_name'], 'Helper User')
+
+    def test_overflow_approval_creates_audit_log(self):
+        self.client.force_authenticate(user=self.approver)
+        tx = Transaction.objects.create(
+            identifier=self.identifier,
+            total_amount=Decimal('250.00'),
+        )
+        overflow = Overflow.objects.get(transaction=tx)
+
+        response = self.client.post(
+            f'/api/overflows/{overflow.id}/approve/',
+            {
+                'amount_to_approve': '125.00',
+                'collaborator_ids': [self.collaborator.id],
+            },
+            format='json'
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        audit_entry = AuditLog.objects.get(action='overflow.approved', target_id=overflow.id)
+        self.assertEqual(audit_entry.user, self.approver)
+        self.assertEqual(audit_entry.target_model, 'Overflow')
+        self.assertEqual(audit_entry.changes['collaborator_ids'], [self.collaborator.id])
+
+    def test_audit_logs_endpoint_can_filter_by_action_and_target(self):
+        self.client.force_authenticate(user=self.approver)
+        self.client.post(f'/api/periods/{self.active_period.id}/close/')
+
+        response = self.client.get('/api/audit-logs/', {
+            'action': 'period.closed',
+            'target_model': 'Period',
+            'target_id': self.active_period.id,
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['action'], 'period.closed')
+        self.assertEqual(response.data[0]['target_model'], 'Period')
+        self.assertEqual(response.data[0]['target_id'], self.active_period.id)
+        self.assertEqual(response.data[0]['username'], self.approver.username)
 
     def test_collaborator_export_transactions_uses_requested_format(self):
         tx1 = Transaction.objects.create(
