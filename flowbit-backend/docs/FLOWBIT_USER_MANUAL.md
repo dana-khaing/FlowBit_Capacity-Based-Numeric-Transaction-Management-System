@@ -38,6 +38,7 @@ FlowBit supports:
 - username and password login
 - Google account sign-in
 - token-based API access after login
+- admin-only master override codes for protected actions
 
 ### 3.1 Period
 
@@ -226,6 +227,18 @@ Admin pages are available for:
 - current-user profile endpoint
 - change password endpoint
 - automatic user profile creation
+- admin-only user list API
+- admin-only role change API
+- admin-only override code setup for admin accounts
+
+### 4.12 Role And Permission Features
+
+- admins can manage periods, ledgers, identifiers, audit access, user roles, and override codes
+- normal authenticated users can perform daily transaction and overflow operations
+- non-admin users need a valid admin override code for protected period changes
+- non-admin users need a valid admin override code for protected ledger changes
+- non-admin users need a valid admin override code for refund actions
+- override codes only work when configured on admin accounts
 
 ## 5. Main Business Workflows
 
@@ -236,6 +249,10 @@ Admin pages are available for:
 3. Confirm only that period is open.
 4. Begin posting transactions.
 
+Protected action rule:
+
+- if the acting user is not an admin, the request must include a valid `admin_override_code`
+
 ### 5.2 Create Ledgers
 
 1. Choose period.
@@ -243,6 +260,10 @@ Admin pages are available for:
 3. Set `limit_per_identifier`.
 4. Set priority.
 5. Optionally set `close_time`.
+
+Protected action rule:
+
+- if the acting user is not an admin, create, update, close, delete, and reorder actions require a valid `admin_override_code`
 
 ### 5.3 Create A Ticket With Transactions
 
@@ -289,6 +310,10 @@ Effects:
 - approved `CSO` refunds return helper reserve capacity
 - pending overflow for the same identifier is retried
 
+Protected action rule:
+
+- if the acting user is not an admin, refund actions require a valid `admin_override_code`
+
 ### 5.7 Close Period
 
 1. Review pending overflow.
@@ -330,7 +355,8 @@ Example:
 {
   "name": "April 2027 Period",
   "start_date": "2027-04-01",
-  "end_date": "2027-04-30"
+  "end_date": "2027-04-30",
+  "admin_override_code": "ADMIN-CODE-123"
 }
 ```
 
@@ -346,7 +372,8 @@ Custom close time:
   "name": "April 2027 Period",
   "start_date": "2027-04-01",
   "end_date": "2027-04-30",
-  "close_time": "17:30:00"
+  "close_time": "17:30:00",
+  "admin_override_code": "ADMIN-CODE-123"
 }
 ```
 
@@ -359,7 +386,8 @@ Example:
   "period": 5,
   "name": "Primary April Ledger",
   "limit_per_identifier": "100.00",
-  "priority": 1
+  "priority": 1,
+  "admin_override_code": "ADMIN-CODE-123"
 }
 ```
 
@@ -371,7 +399,8 @@ Custom close time:
   "name": "Primary April Ledger",
   "limit_per_identifier": "100.00",
   "priority": 1,
-  "close_time": "16:45:00"
+  "close_time": "16:45:00",
+  "admin_override_code": "ADMIN-CODE-123"
 }
 ```
 
@@ -528,7 +557,6 @@ Example:
 ```json
 {
   "amount_to_approve": "180.00",
-  "helper_name": "Alice",
   "collaborator_ids": [2, 4]
 }
 ```
@@ -537,7 +565,9 @@ Rules:
 
 - no amount means approve the current overflow amount
 - higher approval amount creates extra reserve capacity
-- helper name is stored with the overflow
+- collaborator names are used as helper names in the stored overflow record
+- current time becomes `approved_at`
+- current user cannot be selected as a collaborator
 
 ### 6.9 Resolve Overflow Through Unified Action
 
@@ -551,7 +581,7 @@ Approve:
 {
   "action": "approve",
   "amount_to_approve": "180.00",
-  "helper_name": "Alice"
+  "collaborator_ids": [2, 4]
 }
 ```
 
@@ -560,7 +590,8 @@ Refund overflow only:
 ```json
 {
   "action": "refund_overflow_only",
-  "helper_name": "Bob"
+  "helper_name": "Bob",
+  "admin_override_code": "ADMIN-CODE-123"
 }
 ```
 
@@ -569,7 +600,8 @@ Refund transaction:
 ```json
 {
   "action": "refund_transaction",
-  "helper_name": "Bob"
+  "helper_name": "Bob",
+  "admin_override_code": "ADMIN-CODE-123"
 }
 ```
 
@@ -578,7 +610,8 @@ Refund ticket:
 ```json
 {
   "action": "refund_ticket",
-  "helper_name": "Bob"
+  "helper_name": "Bob",
+  "admin_override_code": "ADMIN-CODE-123"
 }
 ```
 
@@ -765,6 +798,10 @@ Exports include:
 - `GET /api/auth/me/`
 - `POST /api/auth/change-password/`
 
+Login note:
+
+- master override password login works only for admin accounts
+
 ## 15. API Endpoint Summary
 
 ### 15.1 Periods
@@ -846,6 +883,12 @@ Exports include:
 - `POST /api/tickets/create-with-items/`
 - `GET /api/tickets/`
 - `GET /api/tickets/{ticket_number}/`
+
+### 15.10 User Management
+
+- `GET /api/users/`
+- `POST /api/users/{id}/set-role/`
+- `POST /api/users/{id}/set-master-override-password/`
 
 ## 14. Filtering Options
 
@@ -935,7 +978,9 @@ Identifiers:
 
 ## 19. Important Notes
 
-- role data exists in the backend, but API permissions are still broad
+- role-based API permissions are enforced
+- master override passwords work only for admin accounts
+- non-admin users must provide a valid admin override code for protected period, ledger, and refund actions
 - reserve ledgers are internal implementation details
 - Google sign-in requires `GOOGLE_OAUTH_CLIENT_ID` to be configured in the backend environment
 - notifications are stored in the database, not sent by email yet
