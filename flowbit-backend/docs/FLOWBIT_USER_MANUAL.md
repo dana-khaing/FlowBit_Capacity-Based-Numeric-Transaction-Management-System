@@ -147,6 +147,9 @@ It is stored through `IdentifierCapacityAdjustment` and consumed through an inte
 
 - create transactions
 - allocate across active ledgers by priority
+- preview allocation before creating a transaction
+- support manual ledger-by-ledger allocation
+- allow transaction creation to be blocked when overflow is not accepted
 - consume reserve capacity if available
 - create overflow for any remaining amount
 - mark transactions refunded
@@ -214,14 +217,26 @@ Admin pages are available for:
    - ledger allocations
    - overflow where needed
 
-### 5.4 Approve Overflow
+### 5.4 Choose Allocation Mode
+
+Transactions can be created in two modes:
+
+- automatic allocation, where FlowBit fills ledgers by priority
+- manual allocation, where the user chooses which ledger receives which amount
+
+Recommended use:
+
+- use automatic allocation for standard daily work
+- use manual allocation when an operator needs direct control over ledger usage
+
+### 5.5 Approve Overflow
 
 1. Review `TCSO`.
 2. Approve exact amount or higher amount.
 3. Store helper name.
 4. If approved amount is greater than overflow amount, the extra becomes reserve capacity for the identifier.
 
-### 5.5 Refund Overflow Or Transactions
+### 5.6 Refund Overflow Or Transactions
 
 Available actions:
 
@@ -235,7 +250,7 @@ Effects:
 - approved `CSO` refunds return helper reserve capacity
 - pending overflow for the same identifier is retried
 
-### 5.6 Close Period
+### 5.7 Close Period
 
 1. Review pending overflow.
 2. Run pre-close notification if needed.
@@ -319,7 +334,114 @@ Example:
 }
 ```
 
-### 6.4 Review Pending Overflow
+Each item can also include:
+
+- `manual_allocations`
+- `allow_overflow`
+
+Example:
+
+```json
+{
+  "customer_name": "ABC Trading",
+  "notes": "Manual split batch",
+  "items": [
+    {
+      "identifier": 1,
+      "amount": "230.00",
+      "manual_allocations": [
+        {"ledger": 10, "amount": "100.00"},
+        {"ledger": 12, "amount": "80.00"}
+      ],
+      "allow_overflow": true
+    }
+  ]
+}
+```
+
+### 6.4 Preview Allocation Before Create
+
+Endpoint:
+
+- `POST /api/transactions/allocation-preview/`
+
+Automatic preview example:
+
+```json
+{
+  "identifier": 1,
+  "total_amount": "180.00"
+}
+```
+
+Manual preview example:
+
+```json
+{
+  "identifier": 1,
+  "total_amount": "230.00",
+  "manual_allocations": [
+    {"ledger": 10, "amount": "100.00"},
+    {"ledger": 12, "amount": "80.00"}
+  ]
+}
+```
+
+Preview response includes:
+
+- ledger available amount
+- requested amount
+- allocated amount
+- overflow amount per ledger request
+- reserve available and reserve allocated
+- total overflow amount
+- `has_overflow`
+
+This endpoint is intended for instant frontend feedback while the user is typing.
+
+### 6.5 Create Transaction Automatically By Priority
+
+Example:
+
+```json
+{
+  "identifier": 1,
+  "total_amount": "180.00",
+  "allow_overflow": true
+}
+```
+
+Behavior:
+
+- FlowBit fills ledgers by priority
+- if there is not enough capacity, the remainder becomes `TCSO`
+- if `allow_overflow` is `false`, the request is rejected with preview feedback instead
+
+### 6.6 Create Transaction With Manual Allocation
+
+Example:
+
+```json
+{
+  "identifier": 1,
+  "total_amount": "230.00",
+  "manual_allocations": [
+    {"ledger": 10, "amount": "100.00"},
+    {"ledger": 12, "amount": "80.00"}
+  ],
+  "allow_overflow": true
+}
+```
+
+Behavior:
+
+- the user-selected ledger order is respected
+- each requested amount is checked against actual ledger capacity
+- if the full request does not fit, the system reports the shortfall
+- if `allow_overflow` is `true`, the remainder becomes `TCSO`
+- if `allow_overflow` is `false`, the transaction is rejected and preview feedback is returned
+
+### 6.7 Review Pending Overflow
 
 Use:
 
@@ -334,7 +456,7 @@ Important fields:
 - `approved_at`
 - `resolution_type`
 
-### 6.5 Approve Overflow
+### 6.8 Approve Overflow
 
 Endpoint:
 
@@ -356,7 +478,7 @@ Rules:
 - higher approval amount creates extra reserve capacity
 - helper name is stored with the overflow
 
-### 6.6 Resolve Overflow Through Unified Action
+### 6.9 Resolve Overflow Through Unified Action
 
 Endpoint:
 
@@ -399,15 +521,43 @@ Refund ticket:
 }
 ```
 
-## 7. Refund And Retry Behavior
+## 7. Allocation Feedback Rules
 
-### 7.1 Refund Overflow Only
+### 7.1 Default Rule
+
+If the user does not supply `manual_allocations`:
+
+- the system allocates by ledger priority automatically
+
+### 7.2 Manual Rule
+
+If the user supplies `manual_allocations`:
+
+- the system uses the user-provided ledger order and amount requests
+
+### 7.3 Capacity Check Rule
+
+For both automatic and manual modes:
+
+- the backend checks actual remaining ledger capacity
+- reserve capacity is considered after normal ledgers
+
+### 7.4 Overflow Confirmation Rule
+
+If capacity is insufficient:
+
+- and `allow_overflow` is `true`, the remaining amount becomes `TCSO`
+- and `allow_overflow` is `false`, the request is rejected with preview information
+
+## 8. Refund And Retry Behavior
+
+### 8.1 Refund Overflow Only
 
 - overflow status becomes refunded
 - if it had approved `CSO`, helper reserve capacity is returned
 - pending overflow for the same identifier is retried
 
-### 7.2 Refund Transaction
+### 8.2 Refund Transaction
 
 - allocations are removed
 - related overflow entries are refunded
@@ -415,14 +565,14 @@ Refund ticket:
 - ticket refund state is refreshed
 - pending overflow for the same identifier is retried
 
-### 7.3 Refund Ticket
+### 8.3 Refund Ticket
 
 - all transactions in the ticket are refunded
 - all related overflow entries are refunded
 - all allocations are removed
 - ticket becomes refunded when every child transaction is refunded
 
-### 7.4 Retry Rules
+### 8.4 Retry Rules
 
 When capacity is restored:
 
@@ -432,7 +582,7 @@ When capacity is restored:
 - delete overflow if fully absorbed
 - reduce overflow amount if only partially absorbed
 
-## 8. Period Close Behavior
+## 9. Period Close Behavior
 
 When a period closes:
 
@@ -442,9 +592,9 @@ When a period closes:
 - `helper_name` defaults to the helper performing close or `system`
 - active ledgers are closed
 
-## 9. Notifications
+## 10. Notifications
 
-### 9.1 Pre-Close Notifications
+### 10.1 Pre-Close Notifications
 
 Run:
 
@@ -463,9 +613,9 @@ API:
 - `GET /api/overflow-notifications/`
 - `GET /api/overflow-notifications/{id}/`
 
-## 10. Management Commands
+## 11. Management Commands
 
-### 10.1 Close Expired Periods
+### 11.1 Close Expired Periods
 
 ```bash
 python manage.py close_expired_periods
@@ -477,7 +627,7 @@ Dry run:
 python manage.py close_expired_periods --dry-run
 ```
 
-### 10.2 Close Expired Ledgers
+### 11.2 Close Expired Ledgers
 
 ```bash
 python manage.py close_expired_ledgers
@@ -495,19 +645,19 @@ Dry run:
 python manage.py close_expired_ledgers --dry-run
 ```
 
-### 10.3 Notify Pending Overflows
+### 11.3 Notify Pending Overflows
 
 ```bash
 python manage.py notify_pending_overflows
 ```
 
-## 11. Exporting Reports
+## 12. Exporting Reports
 
-### 11.1 CSV Export
+### 12.1 CSV Export
 
 - `GET /api/ledgers/{id}/export-csv/`
 
-### 11.2 PDF Export
+### 12.2 PDF Export
 
 - `GET /api/ledgers/{id}/export-pdf/`
 
@@ -517,9 +667,9 @@ Exports include:
 - identifier-by-identifier values
 - summary statistics
 
-## 12. API Endpoint Summary
+## 13. API Endpoint Summary
 
-### 12.1 Periods
+### 13.1 Periods
 
 - `GET /api/periods/`
 - `POST /api/periods/`
@@ -531,7 +681,7 @@ Exports include:
 - `POST /api/periods/{id}/close/`
 - `GET /api/periods/{id}/summary/`
 
-### 12.2 Ledgers
+### 13.2 Ledgers
 
 - `GET /api/ledgers/`
 - `POST /api/ledgers/`
@@ -545,7 +695,7 @@ Exports include:
 - `GET /api/ledgers/{id}/export-csv/`
 - `GET /api/ledgers/{id}/export-pdf/`
 
-### 12.3 Identifiers
+### 13.3 Identifiers
 
 - `GET /api/identifiers/`
 - `POST /api/identifiers/`
@@ -554,7 +704,7 @@ Exports include:
 - `PATCH /api/identifiers/{id}/`
 - `DELETE /api/identifiers/{id}/`
 
-### 12.4 Transactions
+### 13.4 Transactions
 
 - `GET /api/transactions/`
 - `POST /api/transactions/`
@@ -562,8 +712,9 @@ Exports include:
 - `PUT /api/transactions/{id}/`
 - `PATCH /api/transactions/{id}/`
 - `DELETE /api/transactions/{id}/`
+- `POST /api/transactions/allocation-preview/`
 
-### 12.5 Overflows
+### 13.5 Overflows
 
 - `GET /api/overflows/`
 - `POST /api/overflows/`
@@ -576,18 +727,18 @@ Exports include:
 - `POST /api/overflows/{id}/approve/`
 - `POST /api/overflows/{id}/resolve/`
 
-### 12.6 Overflow Notifications
+### 13.6 Overflow Notifications
 
 - `GET /api/overflow-notifications/`
 - `GET /api/overflow-notifications/{id}/`
 
-### 12.7 Tickets
+### 13.7 Tickets
 
 - `POST /api/tickets/create-with-items/`
 - `GET /api/tickets/`
 - `GET /api/tickets/{ticket_number}/`
 
-## 13. Filtering Options
+## 14. Filtering Options
 
 Supported list filters include:
 
@@ -605,9 +756,9 @@ Archive-aware filters are used by:
 - overflows
 - tickets
 
-## 14. Admin Guide
+## 15. Admin Guide
 
-### 14.1 Most Important Admin Screens
+### 15.1 Most Important Admin Screens
 
 - Periods
 - Ledgers
@@ -616,7 +767,7 @@ Archive-aware filters are used by:
 - Identifier Capacity Adjustments
 - Overflow Notifications
 
-### 14.2 What To Inspect
+### 15.2 What To Inspect
 
 Transactions:
 
@@ -639,35 +790,36 @@ Identifiers:
 - pending overflow
 - confirmed overflow
 
-## 15. Operational Runbook
+## 16. Operational Runbook
 
-### 15.1 Daily Start
+### 16.1 Daily Start
 
 1. Confirm correct period is open.
 2. Confirm required ledgers are active.
 3. Review pending overflow.
 
-### 15.2 During The Day
+### 16.2 During The Day
 
 1. Create tickets and transactions.
-2. Review `TCSO`.
-3. Approve or refund exceptions.
-4. Review reserve-capacity adjustments.
+2. Use allocation preview when operators need manual placement.
+3. Review `TCSO`.
+4. Approve or refund exceptions.
+5. Review reserve-capacity adjustments.
 
-### 15.3 Thirty Minutes Before Close
+### 16.3 Thirty Minutes Before Close
 
 1. Run `notify_pending_overflows`.
 2. Review notification records.
 3. Resolve critical pending overflow manually.
 
-### 15.4 End Of Period
+### 16.4 End Of Period
 
 1. Close the period manually or by scheduled command.
 2. Confirm pending `TCSO` became `CSO`.
 3. Confirm ledgers are archived.
 4. Export ledger reports if required.
 
-## 16. Important Notes
+## 17. Important Notes
 
 - role data exists in the backend, but API permissions are still broad
 - reserve ledgers are internal implementation details

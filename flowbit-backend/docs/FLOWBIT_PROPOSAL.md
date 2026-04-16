@@ -136,6 +136,10 @@ FlowBit currently includes:
 - Identifier capacity and overflow visibility
 - Ticket creation with multiple transactions
 - Transaction allocation across active ledgers
+- Default transaction allocation by ledger priority
+- Manual transaction allocation by user-selected ledger and amount
+- Allocation preview before transaction creation
+- Overflow confirmation support when requested allocation exceeds capacity
 - Overflow approval and unified overflow resolution
 - Overflow refund at overflow, transaction, and ticket level
 - Identifier-specific reserve capacity adjustments
@@ -154,6 +158,9 @@ FlowBit currently includes:
 ### 8.2 Allocate Transactions
 
 - allocate to active ledgers in priority order
+- optionally let the user choose which ledgers receive which amounts first
+- preview capacity before create
+- reject create when overflow is not allowed
 - consume reserve capacity if available
 - create overflow for any remainder
 
@@ -208,7 +215,25 @@ FlowBit is not just a ledger tracker. Its differentiators are:
 
 These features make it more operationally useful than a simple static ledger system.
 
-## 11. Recommended Next Improvements
+## 11. Manual Allocation Capability
+
+FlowBit now supports two transaction allocation modes:
+
+- automatic mode, where capacity is filled by ledger priority
+- manual mode, where the user chooses which ledger should absorb which amount
+
+This is important because some teams want system-default behavior most of the time, but still need manual override for operational exceptions.
+
+The backend now supports:
+
+- previewing available capacity before transaction creation
+- returning ledger-level fit or overflow feedback
+- allowing the user to continue and create `TCSO` when capacity is short
+- blocking creation when the user has not agreed to overflow
+
+This makes FlowBit more suitable for guided operator workflows and richer frontend interaction.
+
+## 12. Recommended Next Improvements
 
 The highest-value future improvements would be:
 
@@ -219,12 +244,13 @@ The highest-value future improvements would be:
 - delivery channels for notifications such as email or push
 - reporting for refunds and helper activity
 
-## 12. Conclusion
+## 13. Conclusion
 
 FlowBit is already a strong operational platform for period-based capacity allocation and overflow control. Its most valuable qualities are:
 
 - structured period governance
 - prioritized ledger allocation
+- optional manual allocation override
 - clear overflow visibility
 - helper-driven exception handling
 - reserve-capacity flexibility
