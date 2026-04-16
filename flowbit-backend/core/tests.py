@@ -696,6 +696,40 @@ class LedgerArchiveAPITests(APITestCase):
         self.assertIn('Name,Later Helper', csv_body)
         self.assertIn('Total Amount,,250.00', csv_body)
 
+    def test_collaborator_export_transactions_pdf_returns_pdf_file(self):
+        tx = Transaction.objects.create(
+            identifier=self.identifier,
+            total_amount=Decimal('250.00'),
+        )
+        overflow = Overflow.objects.get(transaction=tx)
+        approve_response = self.client.post(
+            f'/api/overflows/{overflow.id}/approve/',
+            {
+                'amount_to_approve': '125.00',
+                'collaborator_ids': [self.collaborator.id],
+            },
+            format='json'
+        )
+        self.assertEqual(approve_response.status_code, status.HTTP_200_OK)
+
+        response = self.client.get(
+            f'/api/collaborators/{self.collaborator.id}/export-transactions-pdf/',
+            {'period_id': self.active_period.id}
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response['Content-Type'], 'application/pdf')
+        self.assertIn('collaborator_', response['Content-Disposition'])
+        self.assertTrue(response.content.startswith(b'%PDF'))
+
+    def test_ledger_export_pdf_returns_pdf_file(self):
+        response = self.client.get(f'/api/ledgers/{self.active_ledger.id}/export-pdf/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response['Content-Type'], 'application/pdf')
+        self.assertIn(f'ledger_{self.active_ledger.id}', response['Content-Disposition'])
+        self.assertTrue(response.content.startswith(b'%PDF'))
+
     def test_allocation_preview_uses_priority_by_default(self):
         backup_ledger = Ledger.objects.create(
             period=self.active_period,
