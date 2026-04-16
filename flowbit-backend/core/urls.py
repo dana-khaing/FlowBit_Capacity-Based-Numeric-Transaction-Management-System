@@ -8,6 +8,7 @@ from .views import (
     TransactionViewSet,
     OverflowViewSet,
     OverflowNotificationViewSet,
+    AuditLogViewSet,
     CollaboratorViewSet,
     TicketListView,
     TicketDetailView
@@ -20,6 +21,7 @@ router.register(r'identifiers', IdentifierViewSet)
 router.register(r'transactions', TransactionViewSet)
 router.register(r'overflows', OverflowViewSet)
 router.register(r'overflow-notifications', OverflowNotificationViewSet)
+router.register(r'audit-logs', AuditLogViewSet)
 router.register(r'collaborators', CollaboratorViewSet)
 
 urlpatterns = [

@@ -12,6 +12,7 @@ from .models import (
     LedgerAllocation,
     Overflow,
     OverflowNotification,
+    AuditLog,
     Profile,
     Ticket,
 )
@@ -323,3 +324,22 @@ class ProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = Profile
         fields = '__all__'
+
+
+class AuditLogSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(source='user.username', read_only=True)
+
+    class Meta:
+        model = AuditLog
+        fields = [
+            'id',
+            'user',
+            'username',
+            'action',
+            'timestamp',
+            'ip_address',
+            'target_model',
+            'target_id',
+            'details',
+            'changes',
+        ]
