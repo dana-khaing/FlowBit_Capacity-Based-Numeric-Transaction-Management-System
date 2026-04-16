@@ -239,6 +239,91 @@ def _get_transaction_period(transaction_obj):
     return None
 
 
+def _get_ledger_available_capacity(identifier, ledger):
+    current_usage = LedgerAllocation.objects.filter(
+        transaction__identifier=identifier,
+        ledger=ledger,
+    ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+    return ledger.limit_per_identifier - current_usage
+
+
+def _normalize_manual_allocations(manual_allocations):
+    normalized = []
+    for item in manual_allocations or []:
+        ledger = item.get('ledger')
+        amount = item.get('amount', Decimal('0.00'))
+        normalized.append({
+            'ledger': ledger,
+            'amount': Decimal(str(amount)),
+        })
+    return normalized
+
+
+def preview_transaction_allocation(identifier, total_amount, period, manual_allocations=None):
+    total_amount = Decimal(str(total_amount))
+    remaining = total_amount
+    allocation_preview = []
+    seen_ledgers = set()
+
+    if manual_allocations:
+        allocation_plan = _normalize_manual_allocations(manual_allocations)
+    else:
+        allocation_plan = [
+            {'ledger': ledger, 'amount': None}
+            for ledger in Ledger.objects.filter(
+                is_active=True,
+                period=period,
+                is_capacity_reserve=False,
+            ).order_by('priority', 'end_date', 'id')
+        ]
+
+    for item in allocation_plan:
+        ledger = item['ledger']
+        if ledger is None or ledger.pk in seen_ledgers:
+            continue
+
+        seen_ledgers.add(ledger.pk)
+        available = _get_ledger_available_capacity(identifier, ledger)
+        requested = item['amount']
+
+        if requested is None:
+            allocate_amount = min(max(available, Decimal('0.00')), remaining)
+        else:
+            allocate_amount = min(requested, remaining)
+
+        overflow_amount = Decimal('0.00')
+        if allocate_amount > available:
+            overflow_amount = allocate_amount - max(available, Decimal('0.00'))
+            allocate_amount = max(available, Decimal('0.00'))
+
+        allocation_preview.append({
+            'ledger': ledger,
+            'requested_amount': requested if requested is not None else allocate_amount,
+            'allocated_amount': allocate_amount,
+            'available_amount': max(available, Decimal('0.00')),
+            'overflow_amount': overflow_amount,
+        })
+        remaining -= allocate_amount + overflow_amount
+
+        if remaining <= 0:
+            remaining = Decimal('0.00')
+            break
+
+    reserve_available = IdentifierCapacityAdjustment.get_available_capacity(
+        identifier=identifier,
+        period=period,
+    )
+    reserve_allocated = min(max(reserve_available, Decimal('0.00')), remaining)
+    remaining -= reserve_allocated
+
+    return {
+        'ledger_allocations': allocation_preview,
+        'reserve_available': max(reserve_available, Decimal('0.00')),
+        'reserve_allocated': reserve_allocated,
+        'overflow_amount': max(remaining, Decimal('0.00')),
+    }
+
+
 def _allocate_transaction_amount(transaction_obj, amount, period):
     remaining = amount
     active_ledgers = Ledger.objects.filter(
@@ -284,6 +369,35 @@ def _allocate_transaction_amount(transaction_obj, amount, period):
             remaining -= reserve_amount
 
     return remaining
+
+
+def _allocate_manual_transaction_amount(transaction_obj, amount, period, manual_allocations):
+    preview = preview_transaction_allocation(
+        identifier=transaction_obj.identifier,
+        total_amount=amount,
+        period=period,
+        manual_allocations=manual_allocations,
+    )
+
+    for item in preview['ledger_allocations']:
+        allocated_amount = item['allocated_amount']
+        if allocated_amount <= 0:
+            continue
+        LedgerAllocation.objects.create(
+            transaction=transaction_obj,
+            ledger=item['ledger'],
+            amount=allocated_amount,
+        )
+
+    if preview['reserve_allocated'] > 0:
+        reserve_ledger = Ledger.get_capacity_reserve(period, create=True)
+        LedgerAllocation.objects.create(
+            transaction=transaction_obj,
+            ledger=reserve_ledger,
+            amount=preview['reserve_allocated'],
+        )
+
+    return preview['overflow_amount']
 
 
 def _retry_pending_overflows(period, identifier):
@@ -513,7 +627,16 @@ class Transaction(models.Model):
         if not active_ledgers.exists():
             raise ValidationError("No active ledgers available in the current open period.")
 
-        remaining = _allocate_transaction_amount(self, self.total_amount, open_period)
+        manual_allocations = getattr(self, '_manual_allocations', None)
+        if manual_allocations:
+            remaining = _allocate_manual_transaction_amount(
+                self,
+                self.total_amount,
+                open_period,
+                manual_allocations,
+            )
+        else:
+            remaining = _allocate_transaction_amount(self, self.total_amount, open_period)
 
         if remaining > 0:
             Overflow.objects.create(
