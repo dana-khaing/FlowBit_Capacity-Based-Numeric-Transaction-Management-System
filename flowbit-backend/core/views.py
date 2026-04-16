@@ -1,16 +1,19 @@
 # All imports organized in ONE place at the top
 from rest_framework import viewsets, generics, status
+from rest_framework.permissions import AllowAny
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
 from django.contrib.auth.models import User
+from django.contrib.auth import authenticate
 from django.db import transaction as db_transaction, transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 from django.http import HttpResponse
 from django.db.models import Sum
 from django.core.exceptions import ValidationError
+from rest_framework.authtoken.models import Token
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, time
 import csv
@@ -30,6 +33,7 @@ from .models import (
     Overflow,
     OverflowNotification,
     AuditLog,
+    Profile,
     Ticket,
     LedgerAllocation,
     IdentifierCapacityAdjustment,
@@ -48,6 +52,9 @@ from .serializers import (
     OverflowNotificationSerializer,
     TicketSerializer,
     AuditLogSerializer,
+    LoginSerializer,
+    UserProfileSerializer,
+    ChangePasswordSerializer,
 )
 
 
@@ -1424,6 +1431,98 @@ class CollaboratorViewSet(viewsets.ReadOnlyModelViewSet):
         response.write(buffer.getvalue())
         buffer.close()
         return response
+
+
+class LoginView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = LoginSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        user = authenticate(
+            request=request,
+            username=serializer.validated_data['username'],
+            password=serializer.validated_data['password'],
+        )
+        if user is None:
+            return Response(
+                {'detail': 'Invalid username or password.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        profile, _ = Profile.objects.get_or_create(user=user)
+        profile.last_activity = timezone.now()
+        profile.save(update_fields=['last_activity', 'updated_at'])
+        token, _ = Token.objects.get_or_create(user=user)
+
+        record_audit_log(
+            request,
+            'auth.login',
+            target=user,
+            details=f"User '{user.username}' logged in",
+            changes={'role': profile.role},
+        )
+
+        return Response({
+            'token': token.key,
+            'user': UserProfileSerializer(user).data,
+        }, status=status.HTTP_200_OK)
+
+
+class LogoutView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        Token.objects.filter(user=request.user).delete()
+        record_audit_log(
+            request,
+            'auth.logout',
+            target=request.user,
+            details=f"User '{request.user.username}' logged out",
+        )
+        return Response({'message': 'Logged out successfully.'}, status=status.HTTP_200_OK)
+
+
+class MeView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        profile, _ = Profile.objects.get_or_create(user=request.user)
+        profile.last_activity = timezone.now()
+        profile.save(update_fields=['last_activity', 'updated_at'])
+        return Response({'user': UserProfileSerializer(request.user).data}, status=status.HTTP_200_OK)
+
+
+class ChangePasswordView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = ChangePasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        if not request.user.check_password(serializer.validated_data['current_password']):
+            return Response(
+                {'detail': 'Current password is incorrect.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        request.user.set_password(serializer.validated_data['new_password'])
+        request.user.save(update_fields=['password'])
+        Token.objects.filter(user=request.user).delete()
+        token = Token.objects.create(user=request.user)
+
+        record_audit_log(
+            request,
+            'auth.password_changed',
+            target=request.user,
+            details=f"User '{request.user.username}' changed password",
+        )
+
+        return Response({
+            'message': 'Password changed successfully.',
+            'token': token.key,
+        }, status=status.HTTP_200_OK)
 
 
 class TicketListView(generics.ListAPIView):
