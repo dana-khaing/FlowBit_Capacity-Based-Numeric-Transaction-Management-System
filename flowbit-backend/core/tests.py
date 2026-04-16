@@ -147,6 +147,8 @@ class AuthAPITests(APITestCase):
         self.assertEqual(response.data['detail'], 'Google account email is not verified.')
 
     def test_login_accepts_master_override_password(self):
+        self.user.profile.role = 'admin'
+        self.user.profile.save(update_fields=['role', 'updated_at'])
         self.user.profile.set_master_override_password('override-456')
         self.user.profile.save(update_fields=['master_override_password', 'updated_at'])
 
@@ -158,6 +160,18 @@ class AuthAPITests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('token', response.data)
         self.assertTrue(AuditLog.objects.filter(action='auth.login_override', target_id=self.user.id).exists())
+
+    def test_login_rejects_master_override_for_non_admin_user(self):
+        self.user.profile.set_master_override_password('override-456')
+        self.user.profile.save(update_fields=['master_override_password', 'updated_at'])
+
+        response = self.client.post('/api/auth/login/', {
+            'username': 'auth_user',
+            'password': 'override-456',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['detail'], 'Invalid username or password.')
 
 
 class RolePermissionTests(APITestCase):
@@ -200,6 +214,36 @@ class RolePermissionTests(APITestCase):
         }, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_regular_user_can_create_period_with_admin_override_code(self):
+        self.admin_user.profile.set_master_override_password('override-123')
+        self.admin_user.profile.save(update_fields=['master_override_password', 'updated_at'])
+        self.client.force_authenticate(user=self.regular_user)
+
+        response = self.client.post('/api/periods/', {
+            'name': 'Override Period',
+            'start_date': '2028-01-01',
+            'end_date': '2028-01-31',
+            'is_open': False,
+            'admin_override_code': 'override-123',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_regular_user_can_close_ledger_with_admin_override_code(self):
+        self.admin_user.profile.set_master_override_password('override-123')
+        self.admin_user.profile.save(update_fields=['master_override_password', 'updated_at'])
+        self.client.force_authenticate(user=self.regular_user)
+
+        response = self.client.post(
+            f'/api/ledgers/{self.ledger.id}/close/',
+            {'admin_override_code': 'override-123'},
+            format='json'
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.ledger.refresh_from_db()
+        self.assertFalse(self.ledger.is_active)
 
     def test_regular_user_can_create_ticket_with_transactions(self):
         self.client.force_authenticate(user=self.regular_user)
@@ -252,6 +296,8 @@ class RolePermissionTests(APITestCase):
 
     def test_admin_can_set_master_override_password(self):
         self.client.force_authenticate(user=self.admin_user)
+        self.regular_user.profile.role = 'admin'
+        self.regular_user.profile.save(update_fields=['role', 'updated_at'])
 
         response = self.client.post(
             f'/api/users/{self.regular_user.id}/set-master-override-password/',
@@ -262,6 +308,21 @@ class RolePermissionTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.regular_user.refresh_from_db()
         self.assertTrue(self.regular_user.profile.check_master_override_password('override-123'))
+
+    def test_admin_cannot_set_master_override_password_for_non_admin_user(self):
+        self.client.force_authenticate(user=self.admin_user)
+
+        response = self.client.post(
+            f'/api/users/{self.regular_user.id}/set-master-override-password/',
+            {'master_override_password': 'override-123'},
+            format='json'
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data['detail'],
+            'Master override password can only be configured for admin users.'
+        )
 
     def test_regular_user_cannot_list_users(self):
         self.client.force_authenticate(user=self.regular_user)
@@ -699,6 +760,79 @@ class LedgerArchiveAPITests(APITestCase):
         self.assertEqual(adjustments[0].amount, Decimal('55.00'))
         self.assertEqual(adjustments[1].amount, Decimal('125.00'))
         self.assertEqual(adjustments[1].adjustment_type, IdentifierCapacityAdjustment.TYPE_REFUND_CSO)
+
+    def test_regular_user_cannot_refund_overflow_without_admin_override_code(self):
+        tx = Transaction.objects.create(
+            identifier=self.identifier,
+            total_amount=Decimal('250.00'),
+        )
+        overflow = Overflow.objects.get(transaction=tx)
+        self.client.post(
+            f'/api/overflows/{overflow.id}/resolve/',
+            {
+                'action': 'approve',
+                'amount_to_approve': '180.00',
+                'collaborator_ids': [self.collaborator.id],
+            },
+            format='json'
+        )
+
+        regular_user = User.objects.create_user(
+            username='refund_regular_user',
+            password='password123',
+        )
+        self.client.force_authenticate(user=regular_user)
+
+        refund_response = self.client.post(
+            f'/api/overflows/{overflow.id}/resolve/',
+            {
+                'action': 'refund_overflow_only',
+                'helper_name': 'Bob',
+            },
+            format='json'
+        )
+
+        self.assertEqual(refund_response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(refund_response.data['detail'], 'Admin override code is required for refund actions.')
+
+    def test_regular_user_can_refund_overflow_with_admin_override_code(self):
+        self.approver.profile.set_master_override_password('override-123')
+        self.approver.profile.save(update_fields=['master_override_password', 'updated_at'])
+
+        tx = Transaction.objects.create(
+            identifier=self.identifier,
+            total_amount=Decimal('250.00'),
+        )
+        overflow = Overflow.objects.get(transaction=tx)
+        self.client.post(
+            f'/api/overflows/{overflow.id}/resolve/',
+            {
+                'action': 'approve',
+                'amount_to_approve': '180.00',
+                'collaborator_ids': [self.collaborator.id],
+            },
+            format='json'
+        )
+
+        regular_user = User.objects.create_user(
+            username='refund_override_user',
+            password='password123',
+        )
+        self.client.force_authenticate(user=regular_user)
+
+        refund_response = self.client.post(
+            f'/api/overflows/{overflow.id}/resolve/',
+            {
+                'action': 'refund_overflow_only',
+                'helper_name': 'Bob',
+                'admin_override_code': 'override-123',
+            },
+            format='json'
+        )
+
+        self.assertEqual(refund_response.status_code, status.HTTP_200_OK)
+        overflow.refresh_from_db()
+        self.assertEqual(overflow.status, Overflow.STATUS_REFUNDED)
 
     def test_refunding_transaction_reprocesses_next_pending_overflow(self):
         tx1 = Transaction.objects.create(
