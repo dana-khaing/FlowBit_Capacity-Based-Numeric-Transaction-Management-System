@@ -1,7 +1,8 @@
 from django.db.models.signals import post_save
 from django.dispatch import receiver
-from django.apps import apps
-from .models import Ledger, Identifier
+from django.contrib.auth.models import User
+
+from .models import Ledger, Identifier, Profile
 
 @receiver(post_save, sender=Ledger)
 def create_identifiers_on_first_ledger(sender, instance, created, **kwargs):
@@ -24,3 +25,9 @@ def create_identifiers_on_first_ledger(sender, instance, created, **kwargs):
         Identifier.objects.bulk_create(identifiers_to_create, ignore_conflicts=True)
 
         print(f"Created {len(identifiers_to_create)} identifiers (000–999)")
+
+
+@receiver(post_save, sender=User)
+def create_profile_for_user(sender, instance, created, **kwargs):
+    if created:
+        Profile.objects.get_or_create(user=instance)
