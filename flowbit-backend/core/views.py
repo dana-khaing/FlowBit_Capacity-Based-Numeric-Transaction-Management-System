@@ -37,6 +37,7 @@ from .models import (
     AuditLog,
     Profile,
     PasswordResetToken,
+    Collaborator,
     Ticket,
     LedgerAllocation,
     IdentifierCapacityAdjustment,
@@ -154,9 +155,9 @@ def collaborator_snapshot(user):
     return {
         'id': user.id,
         'username': user.username,
-        'first_name': user.first_name,
-        'last_name': user.last_name,
+        'full_name': user.full_name,
         'email': user.email,
+        'phone_number': user.phone_number,
     }
 
 
@@ -235,13 +236,14 @@ def resolve_collaborators_for_approval(request, collaborator_ids):
     if not collaborator_ids or not isinstance(collaborator_ids, list):
         raise ValidationError("At least one collaborator must be selected.")
 
-    collaborators = list(User.objects.filter(id__in=collaborator_ids).order_by('id'))
+    if not getattr(request, 'user', None) or not request.user.is_authenticated:
+        raise ValidationError("Authentication is required.")
+
+    collaborators = list(
+        Collaborator.objects.filter(owner=request.user, id__in=collaborator_ids).order_by('id')
+    )
     if len(collaborators) != len(set(collaborator_ids)):
         raise ValidationError("One or more selected collaborators do not exist.")
-
-    if getattr(request, 'user', None) and request.user.is_authenticated:
-        if any(collaborator.id == request.user.id for collaborator in collaborators):
-            raise ValidationError("Current user cannot be selected as a collaborator.")
 
     return collaborators
 
@@ -1224,7 +1226,7 @@ class OverflowViewSet(viewsets.ModelViewSet):
             overflow.amount_to_approve = overflow.excess_amount
 
         helper_name = ", ".join(
-            filter(None, [collaborator.get_full_name().strip() or collaborator.username for collaborator in collaborators])
+            filter(None, [collaborator.full_name.strip() or collaborator.username for collaborator in collaborators])
         )
         extra_amount = overflow.amount_to_approve - overflow.excess_amount
         target_period = overflow.period
@@ -1402,26 +1404,23 @@ class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class CollaboratorViewSet(viewsets.ModelViewSet):
-    queryset = User.objects.all().order_by('username')
+    queryset = Collaborator.objects.all().order_by('username')
     serializer_class = CollaboratorSerializer
     permission_classes = [IsAuthenticated]
-
-    def get_permissions(self):
-        if self.action in {'create', 'update', 'partial_update', 'destroy'}:
-            return [IsAdminRole()]
-        return [permission() for permission in self.permission_classes]
 
     def get_serializer_class(self):
         if self.action in {'create', 'update', 'partial_update'}:
             return CollaboratorManageSerializer
         return CollaboratorSerializer
 
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        if not self.request.user.is_authenticated:
+            return queryset.none()
+        return queryset.filter(owner=self.request.user)
+
     def perform_create(self, serializer):
         collaborator = serializer.save()
-        profile, _ = Profile.objects.get_or_create(user=collaborator)
-        if profile.role != 'user':
-            profile.role = 'user'
-            profile.save(update_fields=['role', 'updated_at'])
         record_audit_log(
             self.request,
             'collaborator.created',
@@ -1433,10 +1432,6 @@ class CollaboratorViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         before = collaborator_snapshot(self.get_object())
         collaborator = serializer.save()
-        profile, _ = Profile.objects.get_or_create(user=collaborator)
-        if profile.role != 'user':
-            profile.role = 'user'
-            profile.save(update_fields=['role', 'updated_at'])
         record_audit_log(
             self.request,
             'collaborator.updated',
@@ -1509,7 +1504,7 @@ class CollaboratorViewSet(viewsets.ModelViewSet):
         except Period.DoesNotExist as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_404_NOT_FOUND)
 
-        collaborator_name = collaborator.get_full_name().strip() or collaborator.username
+        collaborator_name = collaborator.full_name.strip() or collaborator.username
         response = HttpResponse(content_type='text/csv')
         response['Content-Disposition'] = (
             f'attachment; filename="collaborator_{collaborator.id}_transactions.csv"'
@@ -1545,7 +1540,7 @@ class CollaboratorViewSet(viewsets.ModelViewSet):
         except Period.DoesNotExist as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_404_NOT_FOUND)
 
-        collaborator_name = collaborator.get_full_name().strip() or collaborator.username
+        collaborator_name = collaborator.full_name.strip() or collaborator.username
         response = HttpResponse(content_type='application/pdf')
         response['Content-Disposition'] = (
             f'attachment; filename="collaborator_{collaborator.id}_transactions.pdf"'
