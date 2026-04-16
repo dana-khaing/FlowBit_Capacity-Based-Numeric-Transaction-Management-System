@@ -16,6 +16,7 @@ from .models import (
     AuditLog,
     Profile,
     PasswordResetToken,
+    Collaborator,
     Ticket,
 )
 
@@ -227,66 +228,31 @@ class OverflowSerializer(serializers.ModelSerializer):
 
 
 class CollaboratorSerializer(serializers.ModelSerializer):
-    full_name = serializers.SerializerMethodField()
-
     class Meta:
-        model = User
-        fields = ['id', 'username', 'first_name', 'last_name', 'full_name']
-
-    def get_full_name(self, obj):
-        return obj.get_full_name().strip()
+        model = Collaborator
+        fields = ['id', 'username', 'full_name', 'email', 'phone_number']
 
 
 class CollaboratorManageSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(write_only=True, required=False, allow_blank=True)
-    full_name = serializers.SerializerMethodField(read_only=True)
-
     class Meta:
-        model = User
-        fields = ['id', 'username', 'first_name', 'last_name', 'email', 'password', 'full_name']
-
-    def get_full_name(self, obj):
-        return obj.get_full_name().strip()
+        model = Collaborator
+        fields = ['id', 'username', 'full_name', 'email', 'phone_number']
 
     def validate_username(self, value):
-        queryset = User.objects.filter(username=value)
+        owner = self.context['request'].user
+        queryset = Collaborator.objects.filter(owner=owner, username=value)
         if self.instance is not None:
             queryset = queryset.exclude(pk=self.instance.pk)
         if queryset.exists():
-            raise serializers.ValidationError('A user with this username already exists.')
+            raise serializers.ValidationError('A collaborator with this username already exists.')
         return value
 
     def validate_email(self, value):
-        if not value:
-            return value
-        queryset = User.objects.filter(email__iexact=value)
-        if self.instance is not None:
-            queryset = queryset.exclude(pk=self.instance.pk)
-        if queryset.exists():
-            raise serializers.ValidationError('A user with this email already exists.')
         return value
 
     def create(self, validated_data):
-        password = validated_data.pop('password', '')
-        user = User(**validated_data)
-        if password:
-            user.set_password(password)
-        else:
-            user.set_unusable_password()
-        user.save()
-        return user
-
-    def update(self, instance, validated_data):
-        password = validated_data.pop('password', None)
-        for field, value in validated_data.items():
-            setattr(instance, field, value)
-        if password is not None:
-            if password:
-                instance.set_password(password)
-            else:
-                instance.set_unusable_password()
-        instance.save()
-        return instance
+        validated_data['owner'] = self.context['request'].user
+        return super().create(validated_data)
 
 
 class OverflowNotificationSerializer(serializers.ModelSerializer):
