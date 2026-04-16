@@ -136,6 +136,9 @@ STATIC_URL = "static/"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 CORS_ALLOW_ALL_ORIGINS = True # dev only - restrict later
 GOOGLE_OAUTH_CLIENT_ID = config('GOOGLE_OAUTH_CLIENT_ID', default='')
+DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='noreply@flowbit.local')
+FRONTEND_PASSWORD_RESET_URL = config('FRONTEND_PASSWORD_RESET_URL', default='')
+PASSWORD_RESET_TOKEN_EXPIRY_HOURS = config('PASSWORD_RESET_TOKEN_EXPIRY_HOURS', cast=int, default=2)
 
 REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
