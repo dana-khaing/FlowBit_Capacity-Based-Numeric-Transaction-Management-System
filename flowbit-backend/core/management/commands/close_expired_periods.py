@@ -1,6 +1,7 @@
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
+from core.audit import record_system_audit_log, serialize_audit_value
 from core.models import DEFAULT_HELPER_NAME, Period
 
 
@@ -37,6 +38,15 @@ class Command(BaseCommand):
 
         for period in expired_periods:
             period.close(closed_at=now, helper_name=DEFAULT_HELPER_NAME)
+            record_system_audit_log(
+                'period.auto_closed',
+                target=period,
+                details=f"Auto-closed period '{period.name}'",
+                changes={
+                    'closed_at': serialize_audit_value(now),
+                    'closed_ledgers': period.ledgers.filter(is_capacity_reserve=False).count(),
+                },
+            )
             self.stdout.write(
                 self.style.SUCCESS(
                     f"Closed period '{period.name}' and archived {period.ledgers.filter(is_capacity_reserve=False).count()} ledger(s)"

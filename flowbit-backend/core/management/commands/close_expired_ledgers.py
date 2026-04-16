@@ -20,6 +20,7 @@ Recommended Cron Setup:
 
 from django.core.management.base import BaseCommand
 from django.utils import timezone
+from core.audit import record_system_audit_log, serialize_audit_value
 from core.models import Ledger
 from datetime import datetime
 
@@ -102,6 +103,15 @@ class Command(BaseCommand):
                 hours_ago = time_expired.total_seconds() / 3600
                 
                 ledger.close(closed_at=now)
+                record_system_audit_log(
+                    'ledger.auto_closed',
+                    target=ledger,
+                    details=f"Auto-closed ledger '{ledger.name}'",
+                    changes={
+                        'closed_at': serialize_audit_value(now),
+                        'period_id': ledger.period_id,
+                    },
+                )
                 closed_names.append(ledger.name)
                 
                 self.stdout.write(
