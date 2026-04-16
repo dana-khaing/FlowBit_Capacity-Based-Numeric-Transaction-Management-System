@@ -3,7 +3,7 @@ from rest_framework import viewsets, generics, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticatedOrReadOnly
+from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
 from django.contrib.auth.models import User
 from django.db import transaction as db_transaction, transaction
 from django.utils import timezone
@@ -37,6 +37,7 @@ from .models import (
     refund_overflow,
     refund_transactions,
 )
+from .audit import record_audit_log, serialize_audit_value, snapshot_instance
 from .serializers import (
     PeriodSerializer,
     LedgerSerializer,
@@ -105,44 +106,6 @@ def helper_name_from_request(request):
     if getattr(request, 'user', None) and request.user.is_authenticated:
         return request.user.username
     return DEFAULT_HELPER_NAME
-
-
-def _serialize_audit_value(value):
-    if isinstance(value, Decimal):
-        return str(value)
-    if isinstance(value, datetime):
-        if timezone.is_aware(value):
-            value = timezone.localtime(value)
-        return value.isoformat()
-    if hasattr(value, 'pk'):
-        return value.pk
-    return value
-
-
-def _snapshot_instance(instance):
-    return {
-        field.name: _serialize_audit_value(getattr(instance, field.name))
-        for field in instance._meta.concrete_fields
-    }
-
-
-def _request_ip(request):
-    forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-    if forwarded_for:
-        return forwarded_for.split(',')[0].strip()
-    return request.META.get('REMOTE_ADDR')
-
-
-def record_audit_log(request, action, target=None, details='', changes=None):
-    AuditLog.objects.create(
-        user=request.user if getattr(request, 'user', None) and request.user.is_authenticated else None,
-        action=action,
-        ip_address=_request_ip(request),
-        target_model=target.__class__.__name__ if target is not None else '',
-        target_id=getattr(target, 'pk', None) if target is not None else None,
-        details=details,
-        changes=changes or {},
-    )
 
 
 def resolve_collaborators_for_approval(request, collaborator_ids):
@@ -234,22 +197,22 @@ class PeriodViewSet(viewsets.ModelViewSet):
             'period.created',
             target=period,
             details=f"Created period '{period.name}'",
-            changes={'after': _snapshot_instance(period)},
+            changes={'after': snapshot_instance(period)},
         )
 
     def perform_update(self, serializer):
-        before = _snapshot_instance(self.get_object())
+        before = snapshot_instance(self.get_object())
         period = serializer.save()
         record_audit_log(
             self.request,
             'period.updated',
             target=period,
             details=f"Updated period '{period.name}'",
-            changes={'before': before, 'after': _snapshot_instance(period)},
+            changes={'before': before, 'after': snapshot_instance(period)},
         )
 
     def perform_destroy(self, instance):
-        before = _snapshot_instance(instance)
+        before = snapshot_instance(instance)
         period_name = instance.name
         super().perform_destroy(instance)
         record_audit_log(
@@ -311,7 +274,7 @@ class PeriodViewSet(viewsets.ModelViewSet):
             target=period,
             details=f"Closed period '{period.name}'",
             changes={
-                'closed_at': _serialize_audit_value(closed_at),
+                'closed_at': serialize_audit_value(closed_at),
                 'closed_ledgers': period.ledgers.filter(is_capacity_reserve=False).count(),
             },
         )
@@ -381,22 +344,22 @@ class LedgerViewSet(viewsets.ModelViewSet):
             'ledger.created',
             target=ledger,
             details=f"Created ledger '{ledger.name}'",
-            changes={'after': _snapshot_instance(ledger)},
+            changes={'after': snapshot_instance(ledger)},
         )
 
     def perform_update(self, serializer):
-        before = _snapshot_instance(self.get_object())
+        before = snapshot_instance(self.get_object())
         ledger = serializer.save()
         record_audit_log(
             self.request,
             'ledger.updated',
             target=ledger,
             details=f"Updated ledger '{ledger.name}'",
-            changes={'before': before, 'after': _snapshot_instance(ledger)},
+            changes={'before': before, 'after': snapshot_instance(ledger)},
         )
 
     def perform_destroy(self, instance):
-        before = _snapshot_instance(instance)
+        before = snapshot_instance(instance)
         ledger_name = instance.name
         super().perform_destroy(instance)
         record_audit_log(
@@ -431,7 +394,7 @@ class LedgerViewSet(viewsets.ModelViewSet):
             'ledger.closed',
             target=ledger,
             details=f"Closed ledger '{ledger.name}'",
-            changes={'after': _snapshot_instance(ledger)},
+            changes={'after': snapshot_instance(ledger)},
         )
         
         serializer = self.get_serializer(ledger)
@@ -827,11 +790,65 @@ class IdentifierViewSet(viewsets.ModelViewSet):
     serializer_class = IdentifierSerializer
     # permission_classes =[IsAuthenticatedOrReadOnly]
 
+    def perform_create(self, serializer):
+        identifier = serializer.save()
+        record_audit_log(
+            self.request,
+            'identifier.created',
+            target=identifier,
+            details=f"Created identifier '{identifier.number}'",
+            changes={'after': snapshot_instance(identifier)},
+        )
+
+    def perform_update(self, serializer):
+        before = snapshot_instance(self.get_object())
+        identifier = serializer.save()
+        record_audit_log(
+            self.request,
+            'identifier.updated',
+            target=identifier,
+            details=f"Updated identifier '{identifier.number}'",
+            changes={'before': before, 'after': snapshot_instance(identifier)},
+        )
+
+    def perform_destroy(self, instance):
+        before = snapshot_instance(instance)
+        identifier_number = instance.number
+        super().perform_destroy(instance)
+        record_audit_log(
+            self.request,
+            'identifier.deleted',
+            details=f"Deleted identifier '{identifier_number}'",
+            changes={'before': before},
+        )
+
 
 class TransactionViewSet(viewsets.ModelViewSet):
     queryset = Transaction.objects.all()
     serializer_class = TransactionSerializer
     permission_classes = []
+
+    def perform_update(self, serializer):
+        before = snapshot_instance(self.get_object())
+        transaction_obj = serializer.save()
+        record_audit_log(
+            self.request,
+            'transaction.updated',
+            target=transaction_obj,
+            details=f"Updated transaction '{transaction_obj.order_number}'",
+            changes={'before': before, 'after': snapshot_instance(transaction_obj)},
+        )
+
+    def perform_destroy(self, instance):
+        before = snapshot_instance(instance)
+        order_number = instance.order_number
+        super().perform_destroy(instance)
+        record_audit_log(
+            self.request,
+            'transaction.deleted',
+            details=f"Deleted transaction '{order_number}'",
+            changes={'before': before},
+        )
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -912,7 +929,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
             target=transaction_obj,
             details=f"Created transaction '{transaction_obj.order_number}'",
             changes={
-                'after': _snapshot_instance(transaction_obj),
+                'after': snapshot_instance(transaction_obj),
                 'allocation_preview': response_payload.get('allocation_preview', {}),
             },
         )
@@ -981,6 +998,38 @@ class OverflowViewSet(viewsets.ModelViewSet):
     queryset = Overflow.objects.all()
     serializer_class = OverflowSerializer
     permission_classes = []
+
+    def perform_create(self, serializer):
+        overflow = serializer.save()
+        record_audit_log(
+            self.request,
+            'overflow.created',
+            target=overflow,
+            details='Created overflow entry',
+            changes={'after': snapshot_instance(overflow)},
+        )
+
+    def perform_update(self, serializer):
+        before = snapshot_instance(self.get_object())
+        overflow = serializer.save()
+        record_audit_log(
+            self.request,
+            'overflow.updated',
+            target=overflow,
+            details='Updated overflow entry',
+            changes={'before': before, 'after': snapshot_instance(overflow)},
+        )
+
+    def perform_destroy(self, instance):
+        before = snapshot_instance(instance)
+        target_id = instance.pk
+        super().perform_destroy(instance)
+        record_audit_log(
+            self.request,
+            'overflow.deleted',
+            details=f"Deleted overflow entry '{target_id}'",
+            changes={'before': before},
+        )
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -1185,7 +1234,7 @@ class OverflowNotificationViewSet(viewsets.ReadOnlyModelViewSet):
 class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = AuditLog.objects.select_related('user')
     serializer_class = AuditLogSerializer
-    permission_classes = []
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         queryset = super().get_queryset()
