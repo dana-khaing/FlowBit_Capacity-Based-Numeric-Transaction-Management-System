@@ -4,6 +4,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticatedOrReadOnly
+from django.contrib.auth.models import User
 from django.db import transaction as db_transaction, transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
@@ -41,6 +42,7 @@ from .serializers import (
     IdentifierSerializer,
     TransactionSerializer,
     OverflowSerializer,
+    CollaboratorSerializer,
     OverflowNotificationSerializer,
     TicketSerializer,
 )
@@ -101,6 +103,21 @@ def helper_name_from_request(request):
     if getattr(request, 'user', None) and request.user.is_authenticated:
         return request.user.username
     return DEFAULT_HELPER_NAME
+
+
+def resolve_collaborators_for_approval(request, collaborator_ids):
+    if not collaborator_ids or not isinstance(collaborator_ids, list):
+        raise ValidationError("At least one collaborator must be selected.")
+
+    collaborators = list(User.objects.filter(id__in=collaborator_ids).order_by('id'))
+    if len(collaborators) != len(set(collaborator_ids)):
+        raise ValidationError("One or more selected collaborators do not exist.")
+
+    if getattr(request, 'user', None) and request.user.is_authenticated:
+        if any(collaborator.id == request.user.id for collaborator in collaborators):
+            raise ValidationError("Current user cannot be selected as a collaborator.")
+
+    return collaborators
 
 
 def parse_manual_allocations_input(identifier, period, manual_allocations):
@@ -858,6 +875,10 @@ class OverflowViewSet(viewsets.ModelViewSet):
 
         amount_str = request.data.get('amount_to_approve')
         collaborator_ids = request.data.get('collaborator_ids', [])
+        try:
+            collaborators = resolve_collaborators_for_approval(request, collaborator_ids)
+        except ValidationError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         if amount_str:
             try:
@@ -876,7 +897,9 @@ class OverflowViewSet(viewsets.ModelViewSet):
         else:
             overflow.amount_to_approve = overflow.excess_amount
 
-        helper_name = helper_name_from_request(request)
+        helper_name = ", ".join(
+            filter(None, [collaborator.get_full_name().strip() or collaborator.username for collaborator in collaborators])
+        )
         extra_amount = overflow.amount_to_approve - overflow.excess_amount
         target_period = overflow.period
         if extra_amount > 0 and (not target_period or not target_period.is_open):
@@ -904,10 +927,7 @@ class OverflowViewSet(viewsets.ModelViewSet):
                 if adjustment:
                     Ledger.get_capacity_reserve(target_period, create=True)
 
-        if collaborator_ids:
-            from django.contrib.auth.models import User
-            collaborators = User.objects.filter(id__in=collaborator_ids)
-            overflow.collaborators.set(collaborators)
+        overflow.collaborators.set(collaborators)
         
         serializer = self.get_serializer(overflow)
         return Response({
@@ -982,6 +1002,12 @@ class OverflowNotificationViewSet(viewsets.ReadOnlyModelViewSet):
         'overflow__transaction__identifier',
     )
     serializer_class = OverflowNotificationSerializer
+    permission_classes = []
+
+
+class CollaboratorViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = User.objects.all().order_by('username')
+    serializer_class = CollaboratorSerializer
     permission_classes = []
 
 

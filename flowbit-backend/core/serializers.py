@@ -1,5 +1,6 @@
 from datetime import datetime, time
 
+from django.contrib.auth.models import User
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 from rest_framework import serializers
@@ -220,6 +221,17 @@ class OverflowSerializer(serializers.ModelSerializer):
     class Meta:
         model = Overflow
         fields = '__all__'
+
+
+class CollaboratorSerializer(serializers.ModelSerializer):
+    full_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'first_name', 'last_name', 'full_name']
+
+    def get_full_name(self, obj):
+        return obj.get_full_name().strip()
 
 
 class OverflowNotificationSerializer(serializers.ModelSerializer):
