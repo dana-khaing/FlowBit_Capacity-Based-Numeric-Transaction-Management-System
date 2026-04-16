@@ -6,6 +6,7 @@ from django.contrib.auth.models import User
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
+from rest_framework.authtoken.models import Token
 
 from core.models import (
     Period,
@@ -15,9 +16,77 @@ from core.models import (
     Overflow,
     OverflowNotification,
     AuditLog,
+    Profile,
     Ticket,
     Transaction,
 )
+
+
+class AuthAPITests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username='auth_user',
+            password='password123',
+            first_name='Auth',
+            last_name='User',
+            email='auth@example.com',
+        )
+
+    def test_profile_is_created_for_new_user(self):
+        self.assertTrue(Profile.objects.filter(user=self.user).exists())
+        self.assertEqual(self.user.profile.role, 'user')
+
+    def test_login_returns_token_and_user_payload(self):
+        response = self.client.post('/api/auth/login/', {
+            'username': 'auth_user',
+            'password': 'password123',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('token', response.data)
+        self.assertEqual(response.data['user']['username'], 'auth_user')
+        self.assertEqual(response.data['user']['role'], 'user')
+        self.assertTrue(Token.objects.filter(user=self.user, key=response.data['token']).exists())
+        self.assertTrue(AuditLog.objects.filter(action='auth.login', target_id=self.user.id).exists())
+
+    def test_me_requires_authentication(self):
+        response = self.client.get('/api/auth/me/')
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_me_returns_authenticated_user(self):
+        token = Token.objects.create(user=self.user)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {token.key}')
+
+        response = self.client.get('/api/auth/me/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['user']['username'], 'auth_user')
+
+    def test_logout_deletes_token(self):
+        token = Token.objects.create(user=self.user)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {token.key}')
+
+        response = self.client.post('/api/auth/logout/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(Token.objects.filter(user=self.user).exists())
+        self.assertTrue(AuditLog.objects.filter(action='auth.logout', target_id=self.user.id).exists())
+
+    def test_change_password_rotates_token(self):
+        token = Token.objects.create(user=self.user)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {token.key}')
+
+        response = self.client.post('/api/auth/change-password/', {
+            'current_password': 'password123',
+            'new_password': 'new-password-456',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertNotEqual(response.data['token'], token.key)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password('new-password-456'))
+        self.assertTrue(AuditLog.objects.filter(action='auth.password_changed', target_id=self.user.id).exists())
 
 
 class LedgerArchiveAPITests(APITestCase):
