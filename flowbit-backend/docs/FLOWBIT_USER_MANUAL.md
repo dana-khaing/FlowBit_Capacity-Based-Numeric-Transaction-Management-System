@@ -31,6 +31,14 @@ Main objects:
 
 ## 3. Core Concepts
 
+### 3.0 Authentication
+
+FlowBit supports:
+
+- username and password login
+- Google account sign-in
+- token-based API access after login
+
 ### 3.1 Period
 
 A period is a date-bounded operating window.
@@ -210,6 +218,15 @@ Admin pages are available for:
 - create audit logs for scheduled close and notification commands
 - expose audit logs through authenticated read-only API
 
+### 4.11 Authentication Features
+
+- login with username and password
+- login with Google account ID token
+- logout and token invalidation
+- current-user profile endpoint
+- change password endpoint
+- automatic user profile creation
+
 ## 5. Main Business Workflows
 
 ### 5.1 Open A New Period
@@ -295,6 +312,13 @@ Effects:
 2. Filter by action, target model, target id, user, or date range.
 3. Review who performed the action and what changed.
 4. Use the audit trail when investigating period close, refund, overflow, or ledger actions.
+
+### 5.10 Sign In With Google
+
+1. Frontend opens Google sign-in.
+2. Frontend receives Google `id_token`.
+3. Frontend sends that token to FlowBit.
+4. FlowBit verifies the token, matches or creates the user, and returns a FlowBit API token.
 
 ## 6. How To Use FlowBit
 
@@ -730,12 +754,20 @@ Exports include:
   - `target_id`
   - `user_id`
   - `date_from`
-  - `date_to`
+- `date_to`
 - authentication is required
 
-## 14. API Endpoint Summary
+## 14. Authentication API
 
-### 14.1 Periods
+- `POST /api/auth/login/`
+- `POST /api/auth/google/`
+- `POST /api/auth/logout/`
+- `GET /api/auth/me/`
+- `POST /api/auth/change-password/`
+
+## 15. API Endpoint Summary
+
+### 15.1 Periods
 
 - `GET /api/periods/`
 - `POST /api/periods/`
@@ -747,7 +779,7 @@ Exports include:
 - `POST /api/periods/{id}/close/`
 - `GET /api/periods/{id}/summary/`
 
-### 14.2 Ledgers
+### 15.2 Ledgers
 
 - `GET /api/ledgers/`
 - `POST /api/ledgers/`
@@ -761,7 +793,7 @@ Exports include:
 - `GET /api/ledgers/{id}/export-csv/`
 - `GET /api/ledgers/{id}/export-pdf/`
 
-### 14.3 Identifiers
+### 15.3 Identifiers
 
 - `GET /api/identifiers/`
 - `POST /api/identifiers/`
@@ -770,7 +802,7 @@ Exports include:
 - `PATCH /api/identifiers/{id}/`
 - `DELETE /api/identifiers/{id}/`
 
-### 14.4 Transactions
+### 15.4 Transactions
 
 - `GET /api/transactions/`
 - `POST /api/transactions/`
@@ -780,14 +812,14 @@ Exports include:
 - `DELETE /api/transactions/{id}/`
 - `POST /api/transactions/allocation-preview/`
 
-### 14.5 Collaborators
+### 15.5 Collaborators
 
 - `GET /api/collaborators/`
 - `GET /api/collaborators/{id}/`
 - `GET /api/collaborators/{id}/export-transactions/`
 - `GET /api/collaborators/{id}/export-transactions-pdf/`
 
-### 14.6 Overflows
+### 15.6 Overflows
 
 - `GET /api/overflows/`
 - `POST /api/overflows/`
@@ -800,16 +832,16 @@ Exports include:
 - `POST /api/overflows/{id}/approve/`
 - `POST /api/overflows/{id}/resolve/`
 
-### 14.7 Overflow Notifications
+### 15.7 Overflow Notifications
 
 - `GET /api/overflow-notifications/`
 - `GET /api/overflow-notifications/{id}/`
 
-### 14.8 Audit Logs
+### 15.8 Audit Logs
 
 - `GET /api/audit-logs/`
 
-### 14.9 Tickets
+### 15.9 Tickets
 
 - `POST /api/tickets/create-with-items/`
 - `GET /api/tickets/`
@@ -867,7 +899,7 @@ Identifiers:
 - pending overflow
 - confirmed overflow
 
-## 17. Operational Runbook
+## 18. Operational Runbook
 
 ### 16.1 Daily Start
 
@@ -884,6 +916,7 @@ Identifiers:
 5. Use collaborator exports when approval activity needs review.
 6. Review reserve-capacity adjustments.
 7. Review audit logs for critical operational actions when needed.
+8. Confirm authentication is healthy if users report sign-in issues.
 
 ### 16.3 Thirty Minutes Before Close
 
@@ -900,9 +933,10 @@ Identifiers:
 5. Export collaborator reports if approval audit is required.
 6. Review audit logs for close and notification actions if reconciliation is needed.
 
-## 18. Important Notes
+## 19. Important Notes
 
 - role data exists in the backend, but API permissions are still broad
 - reserve ledgers are internal implementation details
+- Google sign-in requires `GOOGLE_OAUTH_CLIENT_ID` to be configured in the backend environment
 - notifications are stored in the database, not sent by email yet
 - refund behavior restores capacity through tracked adjustments rather than silent deletion
