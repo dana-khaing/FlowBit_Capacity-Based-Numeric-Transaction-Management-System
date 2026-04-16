@@ -43,6 +43,7 @@ from .models import (
     refund_transactions,
 )
 from .audit import record_audit_log, serialize_audit_value, snapshot_instance
+from .permissions import IsAdminRole, IsAuthenticatedReadOnlyOrAdminWrite
 from .serializers import (
     PeriodSerializer,
     LedgerSerializer,
@@ -229,7 +230,7 @@ def serialize_allocation_preview(preview):
 class PeriodViewSet(viewsets.ModelViewSet):
     queryset = Period.objects.all()
     serializer_class = PeriodSerializer
-    permission_classes = []
+    permission_classes = [IsAuthenticatedReadOnlyOrAdminWrite]
 
     def perform_create(self, serializer):
         period = serializer.save()
@@ -376,7 +377,7 @@ class PeriodViewSet(viewsets.ModelViewSet):
 class LedgerViewSet(viewsets.ModelViewSet):
     queryset = Ledger.objects.filter(is_capacity_reserve=False)
     serializer_class = LedgerSerializer
-    permission_classes =[]
+    permission_classes = [IsAuthenticatedReadOnlyOrAdminWrite]
 
     def perform_create(self, serializer):
         ledger = serializer.save()
@@ -829,7 +830,7 @@ class LedgerViewSet(viewsets.ModelViewSet):
 class IdentifierViewSet(viewsets.ModelViewSet):
     queryset = Identifier.objects.all()
     serializer_class = IdentifierSerializer
-    # permission_classes =[IsAuthenticatedOrReadOnly]
+    permission_classes = [IsAuthenticatedReadOnlyOrAdminWrite]
 
     def perform_create(self, serializer):
         identifier = serializer.save()
@@ -867,7 +868,12 @@ class IdentifierViewSet(viewsets.ModelViewSet):
 class TransactionViewSet(viewsets.ModelViewSet):
     queryset = Transaction.objects.all()
     serializer_class = TransactionSerializer
-    permission_classes = []
+    permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        if self.action in {'update', 'partial_update', 'destroy'}:
+            return [IsAdminRole()]
+        return [permission() for permission in self.permission_classes]
 
     def perform_update(self, serializer):
         before = snapshot_instance(self.get_object())
@@ -1038,7 +1044,12 @@ class TransactionViewSet(viewsets.ModelViewSet):
 class OverflowViewSet(viewsets.ModelViewSet):
     queryset = Overflow.objects.all()
     serializer_class = OverflowSerializer
-    permission_classes = []
+    permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        if self.action in {'create', 'update', 'partial_update', 'destroy'}:
+            return [IsAdminRole()]
+        return [permission() for permission in self.permission_classes]
 
     def perform_create(self, serializer):
         overflow = serializer.save()
@@ -1269,13 +1280,13 @@ class OverflowNotificationViewSet(viewsets.ReadOnlyModelViewSet):
         'overflow__transaction__identifier',
     )
     serializer_class = OverflowNotificationSerializer
-    permission_classes = []
+    permission_classes = [IsAuthenticated]
 
 
 class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = AuditLog.objects.select_related('user')
     serializer_class = AuditLogSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAdminRole]
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -1304,7 +1315,7 @@ class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
 class CollaboratorViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = User.objects.all().order_by('username')
     serializer_class = CollaboratorSerializer
-    permission_classes = []
+    permission_classes = [IsAuthenticated]
 
     def _get_export_overflows(self, collaborator, request):
         period_id = request.query_params.get('period_id')
@@ -1622,7 +1633,7 @@ class ChangePasswordView(APIView):
 class TicketListView(generics.ListAPIView):
     queryset = Ticket.objects.all().order_by('-created_at')
     serializer_class = TicketSerializer
-    permission_classes = []
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -1636,7 +1647,7 @@ class TicketListView(generics.ListAPIView):
 class TicketDetailView(generics.RetrieveAPIView):
     queryset = Ticket.objects.all()
     serializer_class = TicketSerializer
-    permission_classes = []
+    permission_classes = [IsAuthenticated]
     lookup_field = 'ticket_number'
 
 
@@ -1655,7 +1666,7 @@ class CreateTicketWithTransactions(APIView):
         ]
     }
     """
-    permission_classes = []
+    permission_classes = [IsAuthenticated]
 
     @db_transaction.atomic
     def post(self, request):
