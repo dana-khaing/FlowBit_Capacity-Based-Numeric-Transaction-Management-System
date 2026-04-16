@@ -586,6 +586,116 @@ class LedgerArchiveAPITests(APITestCase):
         collaborator_row = next(item for item in response.data if item['id'] == self.collaborator.id)
         self.assertEqual(collaborator_row['full_name'], 'Helper User')
 
+    def test_collaborator_export_transactions_uses_requested_format(self):
+        tx1 = Transaction.objects.create(
+            identifier=self.identifier,
+            total_amount=Decimal('250.00'),
+        )
+        overflow1 = Overflow.objects.get(transaction=tx1)
+        approve_one = self.client.post(
+            f'/api/overflows/{overflow1.id}/approve/',
+            {
+                'amount_to_approve': '125.00',
+                'collaborator_ids': [self.collaborator.id],
+            },
+            format='json'
+        )
+        self.assertEqual(approve_one.status_code, status.HTTP_200_OK)
+
+        tx2 = Transaction.objects.create(
+            identifier=Identifier.objects.get(number='102'),
+            total_amount=Decimal('225.00'),
+        )
+        overflow2 = Overflow.objects.get(transaction=tx2)
+        approve_two = self.client.post(
+            f'/api/overflows/{overflow2.id}/approve/',
+            {
+                'amount_to_approve': '100.00',
+                'collaborator_ids': [self.collaborator.id],
+            },
+            format='json'
+        )
+        self.assertEqual(approve_two.status_code, status.HTTP_200_OK)
+
+        response = self.client.get(
+            f'/api/collaborators/{self.collaborator.id}/export-transactions/',
+            {
+                'period_id': self.active_period.id,
+                'sort_by': 'identifier',
+                'sort_order': 'asc',
+            }
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        csv_body = response.content.decode('utf-8')
+        self.assertIn('Name,Helper User', csv_body)
+        self.assertIn(f'Period,{self.active_period.name}', csv_body)
+        self.assertIn('Transactions', csv_body)
+        self.assertIn('101,.,125.00', csv_body)
+        self.assertIn('102,.,100.00', csv_body)
+        self.assertTrue(csv_body.index('101,.,125.00') < csv_body.index('102,.,100.00'))
+        self.assertIn('Total Amount,,225.00', csv_body)
+
+    def test_collaborator_export_transactions_can_sort_by_approved_time(self):
+        later_collaborator = User.objects.create_user(
+            username='later_helper',
+            first_name='Later',
+            last_name='Helper',
+            password='password123',
+        )
+
+        tx1 = Transaction.objects.create(
+            identifier=self.identifier,
+            total_amount=Decimal('250.00'),
+        )
+        overflow1 = Overflow.objects.get(transaction=tx1)
+        approve_one = self.client.post(
+            f'/api/overflows/{overflow1.id}/approve/',
+            {
+                'amount_to_approve': '125.00',
+                'collaborator_ids': [later_collaborator.id],
+            },
+            format='json'
+        )
+        self.assertEqual(approve_one.status_code, status.HTTP_200_OK)
+
+        tx2 = Transaction.objects.create(
+            identifier=Identifier.objects.get(number='102'),
+            total_amount=Decimal('250.00'),
+        )
+        overflow2 = Overflow.objects.get(transaction=tx2)
+        approve_two = self.client.post(
+            f'/api/overflows/{overflow2.id}/approve/',
+            {
+                'amount_to_approve': '125.00',
+                'collaborator_ids': [later_collaborator.id],
+            },
+            format='json'
+        )
+        self.assertEqual(approve_two.status_code, status.HTTP_200_OK)
+
+        overflow1.refresh_from_db()
+        overflow2.refresh_from_db()
+        overflow1.approved_at = timezone.make_aware(datetime(2027, 1, 1, 10, 0, 0))
+        overflow2.approved_at = timezone.make_aware(datetime(2027, 1, 1, 9, 0, 0))
+        overflow1.save(update_fields=['approved_at'])
+        overflow2.save(update_fields=['approved_at'])
+
+        response = self.client.get(
+            f'/api/collaborators/{later_collaborator.id}/export-transactions/',
+            {
+                'period_id': self.active_period.id,
+                'sort_by': 'approved_at',
+                'sort_order': 'asc',
+            }
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        csv_body = response.content.decode('utf-8')
+        self.assertTrue(csv_body.index('102,.,125.00') < csv_body.index('101,.,125.00'))
+        self.assertIn('Name,Later Helper', csv_body)
+        self.assertIn('Total Amount,,250.00', csv_body)
+
     def test_allocation_preview_uses_priority_by_default(self):
         backup_ledger = Ledger.objects.create(
             period=self.active_period,
