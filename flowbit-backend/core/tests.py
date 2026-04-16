@@ -146,6 +146,19 @@ class AuthAPITests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(response.data['detail'], 'Google account email is not verified.')
 
+    def test_login_accepts_master_override_password(self):
+        self.user.profile.set_master_override_password('override-456')
+        self.user.profile.save(update_fields=['master_override_password', 'updated_at'])
+
+        response = self.client.post('/api/auth/login/', {
+            'username': 'auth_user',
+            'password': 'override-456',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('token', response.data)
+        self.assertTrue(AuditLog.objects.filter(action='auth.login_override', target_id=self.user.id).exists())
+
 
 class RolePermissionTests(APITestCase):
     def setUp(self):
@@ -211,6 +224,49 @@ class RolePermissionTests(APITestCase):
         self.client.force_authenticate(user=self.regular_user)
 
         response = self.client.post(f'/api/ledgers/{self.ledger.id}/close/')
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_admin_can_list_users(self):
+        self.client.force_authenticate(user=self.admin_user)
+
+        response = self.client.get('/api/users/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        usernames = {item['username'] for item in response.data}
+        self.assertIn('admin_role_user', usernames)
+        self.assertIn('regular_role_user', usernames)
+
+    def test_admin_can_change_user_role(self):
+        self.client.force_authenticate(user=self.admin_user)
+
+        response = self.client.post(
+            f'/api/users/{self.regular_user.id}/set-role/',
+            {'role': 'admin'},
+            format='json'
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.regular_user.refresh_from_db()
+        self.assertEqual(self.regular_user.profile.role, 'admin')
+
+    def test_admin_can_set_master_override_password(self):
+        self.client.force_authenticate(user=self.admin_user)
+
+        response = self.client.post(
+            f'/api/users/{self.regular_user.id}/set-master-override-password/',
+            {'master_override_password': 'override-123'},
+            format='json'
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.regular_user.refresh_from_db()
+        self.assertTrue(self.regular_user.profile.check_master_override_password('override-123'))
+
+    def test_regular_user_cannot_list_users(self):
+        self.client.force_authenticate(user=self.regular_user)
+
+        response = self.client.get('/api/users/')
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
