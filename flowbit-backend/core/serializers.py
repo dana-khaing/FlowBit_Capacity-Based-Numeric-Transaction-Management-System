@@ -348,6 +348,14 @@ class ChangePasswordSerializer(serializers.Serializer):
     new_password = serializers.CharField(write_only=True)
 
 
+class UserRoleUpdateSerializer(serializers.Serializer):
+    role = serializers.ChoiceField(choices=Profile.ROLE_CHOICES)
+
+
+class MasterOverridePasswordSerializer(serializers.Serializer):
+    master_override_password = serializers.CharField(write_only=True, required=False, allow_blank=True)
+
+
 class AuditLogSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source='user.username', read_only=True)
 
