@@ -3,6 +3,7 @@ from datetime import datetime
 from unittest.mock import patch
 
 from django.core.management import call_command
+from django.core import mail
 from django.contrib.auth.models import User
 from django.utils import timezone
 from rest_framework import status
@@ -17,6 +18,7 @@ from core.models import (
     Overflow,
     OverflowNotification,
     AuditLog,
+    PasswordResetToken,
     Profile,
     Ticket,
     Transaction,
@@ -172,6 +174,91 @@ class AuthAPITests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(response.data['detail'], 'Invalid username or password.')
+
+    def test_forgot_password_sends_reset_email_for_existing_user(self):
+        response = self.client.post('/api/auth/forgot-password/', {
+            'email': 'auth@example.com',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ['auth@example.com'])
+        self.assertIn('Selector:', mail.outbox[0].body)
+        self.assertIn('Token:', mail.outbox[0].body)
+        self.assertTrue(
+            AuditLog.objects.filter(action='auth.password_reset_requested', target_id=self.user.id).exists()
+        )
+
+    def test_forgot_password_returns_generic_message_for_unknown_email(self):
+        response = self.client.post('/api/auth/forgot-password/', {
+            'email': 'missing@example.com',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_reset_password_completes_with_valid_token(self):
+        self.client.post('/api/auth/forgot-password/', {
+            'email': 'auth@example.com',
+        }, format='json')
+
+        body_lines = mail.outbox[0].body.splitlines()
+        selector = next(line.split(': ', 1)[1] for line in body_lines if line.startswith('Selector: '))
+        token_value = next(line.split(': ', 1)[1] for line in body_lines if line.startswith('Token: '))
+
+        response = self.client.post('/api/auth/reset-password/', {
+            'selector': selector,
+            'token': token_value,
+            'new_password': 'new-reset-pass-456',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password('new-reset-pass-456'))
+        self.assertIn('token', response.data)
+        reset_token = PasswordResetToken.objects.get(user=self.user)
+        self.assertIsNotNone(reset_token.used_at)
+        self.assertTrue(
+            AuditLog.objects.filter(action='auth.password_reset_completed', target_id=self.user.id).exists()
+        )
+
+    def test_reset_password_rejects_invalid_token(self):
+        self.client.post('/api/auth/forgot-password/', {
+            'email': 'auth@example.com',
+        }, format='json')
+
+        selector = str(PasswordResetToken.objects.get(user=self.user).selector)
+        response = self.client.post('/api/auth/reset-password/', {
+            'selector': selector,
+            'token': 'wrong-token',
+            'new_password': 'new-reset-pass-456',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['detail'], 'Reset token is invalid or expired.')
+
+    def test_reset_password_token_is_one_time_use(self):
+        self.client.post('/api/auth/forgot-password/', {
+            'email': 'auth@example.com',
+        }, format='json')
+
+        body_lines = mail.outbox[0].body.splitlines()
+        selector = next(line.split(': ', 1)[1] for line in body_lines if line.startswith('Selector: '))
+        token_value = next(line.split(': ', 1)[1] for line in body_lines if line.startswith('Token: '))
+
+        first_response = self.client.post('/api/auth/reset-password/', {
+            'selector': selector,
+            'token': token_value,
+            'new_password': 'new-reset-pass-456',
+        }, format='json')
+        second_response = self.client.post('/api/auth/reset-password/', {
+            'selector': selector,
+            'token': token_value,
+            'new_password': 'another-pass-789',
+        }, format='json')
+
+        self.assertEqual(first_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(second_response.status_code, status.HTTP_400_BAD_REQUEST)
 
 
 class RolePermissionTests(APITestCase):
@@ -525,6 +612,10 @@ class LedgerArchiveAPITests(APITestCase):
         )
 
         call_command('close_expired_periods')
+
+        audit_entry = AuditLog.objects.get(action='period.auto_closed', target_id=expired_period.id)
+        self.assertEqual(audit_entry.target_model, 'Period')
+        self.assertIn("Auto-closed period", audit_entry.details)
 
         expired_period.refresh_from_db()
         expired_ledger.refresh_from_db()
@@ -1053,9 +1144,58 @@ class LedgerArchiveAPITests(APITestCase):
 
         call_command('close_expired_periods')
 
-        audit_entry = AuditLog.objects.get(action='period.auto_closed', target_id=expired_period.id)
-        self.assertEqual(audit_entry.target_model, 'Period')
-        self.assertIn("Auto-closed period", audit_entry.details)
+    def test_dashboard_report_returns_period_kpis(self):
+        tx = Transaction.objects.create(
+            ticket=Ticket.objects.create(customer_name='Dashboard Ticket'),
+            identifier=self.identifier,
+            total_amount=Decimal('250.00'),
+        )
+        overflow = Overflow.objects.get(transaction=tx)
+        self.client.post(
+            f'/api/overflows/{overflow.id}/approve/',
+            {
+                'amount_to_approve': '180.00',
+                'collaborator_ids': [self.collaborator.id],
+            },
+            format='json'
+        )
+
+        response = self.client.get('/api/reports/dashboard/', {'period_id': self.active_period.id})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['period']['id'], self.active_period.id)
+        self.assertEqual(response.data['ledger_count'], 1)
+        self.assertEqual(response.data['pending_overflow_count'], 0)
+        self.assertEqual(response.data['approved_overflow_count'], 1)
+        self.assertEqual(response.data['approved_overflow_amount'], '125.00')
+        self.assertEqual(response.data['reserve_capacity_granted'], '55')
+
+    def test_identifier_capacity_report_returns_identifier_rows(self):
+        tx = Transaction.objects.create(
+            identifier=self.identifier,
+            total_amount=Decimal('250.00'),
+        )
+        overflow = Overflow.objects.get(transaction=tx)
+        self.client.post(
+            f'/api/overflows/{overflow.id}/approve/',
+            {
+                'amount_to_approve': '180.00',
+                'collaborator_ids': [self.collaborator.id],
+            },
+            format='json'
+        )
+
+        response = self.client.get('/api/reports/identifiers/capacity/', {
+            'period_id': self.active_period.id,
+            'number': '101',
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['count'], 1)
+        row = response.data['results'][0]
+        self.assertEqual(row['number'], '101')
+        self.assertEqual(row['reserve_granted'], '55')
+        self.assertEqual(row['approved_overflow_amount'], '125.00')
 
     def test_collaborator_export_transactions_uses_requested_format(self):
         tx1 = Transaction.objects.create(
