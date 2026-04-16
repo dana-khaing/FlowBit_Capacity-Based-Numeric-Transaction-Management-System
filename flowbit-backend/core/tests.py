@@ -2,6 +2,7 @@ from decimal import Decimal
 from datetime import datetime
 
 from django.core.management import call_command
+from django.contrib.auth.models import User
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
@@ -21,6 +22,18 @@ from core.models import (
 class LedgerArchiveAPITests(APITestCase):
     def setUp(self):
         self.identifier = Identifier.objects.create(number='101')
+        self.collaborator = User.objects.create_user(
+            username='helper_user',
+            first_name='Helper',
+            last_name='User',
+            password='password123',
+        )
+        self.approver = User.objects.create_user(
+            username='approver_user',
+            first_name='Approver',
+            last_name='User',
+            password='password123',
+        )
 
         january_start = timezone.make_aware(datetime(2026, 1, 1, 0, 0, 0))
         january_end = timezone.make_aware(datetime(2026, 1, 31, 23, 59, 59))
@@ -360,7 +373,10 @@ class LedgerArchiveAPITests(APITestCase):
 
         response = self.client.post(
             f'/api/overflows/{overflow.id}/approve/',
-            {'amount_to_approve': '180.00', 'helper_name': 'Alice'},
+            {
+                'amount_to_approve': '180.00',
+                'collaborator_ids': [self.collaborator.id],
+            },
             format='json'
         )
 
@@ -368,7 +384,8 @@ class LedgerArchiveAPITests(APITestCase):
         overflow.refresh_from_db()
         self.assertEqual(overflow.status, 'CSO')
         self.assertEqual(overflow.amount_to_approve, Decimal('180.00'))
-        self.assertEqual(overflow.helper_name, 'Alice')
+        self.assertEqual(overflow.helper_name, 'Helper User')
+        self.assertEqual(list(overflow.collaborators.values_list('id', flat=True)), [self.collaborator.id])
 
         adjustment = IdentifierCapacityAdjustment.objects.get(overflow=overflow)
         self.assertEqual(adjustment.identifier, self.identifier)
@@ -390,7 +407,7 @@ class LedgerArchiveAPITests(APITestCase):
             {
                 'action': 'approve',
                 'amount_to_approve': '180.00',
-                'helper_name': 'Alice',
+                'collaborator_ids': [self.collaborator.id],
             },
             format='json'
         )
@@ -427,7 +444,7 @@ class LedgerArchiveAPITests(APITestCase):
             {
                 'action': 'approve',
                 'amount_to_approve': '50.00',
-                'helper_name': 'Helper 1',
+                'collaborator_ids': [self.collaborator.id],
             },
             format='json'
         )
@@ -495,7 +512,10 @@ class LedgerArchiveAPITests(APITestCase):
         overflow = Overflow.objects.get(transaction=tx)
         approval_response = self.client.post(
             f'/api/overflows/{overflow.id}/approve/',
-            {'amount_to_approve': '180.00'},
+            {
+                'amount_to_approve': '180.00',
+                'collaborator_ids': [self.collaborator.id],
+            },
             format='json'
         )
         self.assertEqual(approval_response.status_code, status.HTTP_200_OK)
@@ -520,6 +540,51 @@ class LedgerArchiveAPITests(APITestCase):
         )
         blocked_overflow = Overflow.objects.get(transaction=blocked_tx)
         self.assertEqual(blocked_overflow.excess_amount, Decimal('50.00'))
+
+    def test_approve_overflow_requires_selected_collaborator(self):
+        tx = Transaction.objects.create(
+            identifier=self.identifier,
+            total_amount=Decimal('250.00'),
+        )
+        overflow = Overflow.objects.get(transaction=tx)
+
+        response = self.client.post(
+            f'/api/overflows/{overflow.id}/approve/',
+            {'amount_to_approve': '180.00'},
+            format='json'
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['detail'], "['At least one collaborator must be selected.']")
+
+    def test_approve_overflow_rejects_current_user_as_collaborator(self):
+        self.client.force_authenticate(user=self.approver)
+        tx = Transaction.objects.create(
+            identifier=self.identifier,
+            total_amount=Decimal('250.00'),
+        )
+        overflow = Overflow.objects.get(transaction=tx)
+
+        response = self.client.post(
+            f'/api/overflows/{overflow.id}/approve/',
+            {
+                'amount_to_approve': '180.00',
+                'collaborator_ids': [self.approver.id],
+            },
+            format='json'
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['detail'], "['Current user cannot be selected as a collaborator.']")
+
+    def test_collaborator_list_endpoint_returns_existing_users(self):
+        response = self.client.get('/api/collaborators/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        collaborator_ids = {item['id'] for item in response.data}
+        self.assertIn(self.collaborator.id, collaborator_ids)
+        collaborator_row = next(item for item in response.data if item['id'] == self.collaborator.id)
+        self.assertEqual(collaborator_row['full_name'], 'Helper User')
 
     def test_allocation_preview_uses_priority_by_default(self):
         backup_ledger = Ledger.objects.create(
