@@ -207,8 +207,14 @@ class ProfileAdmin(admin.ModelAdmin):
 
 @admin.register(AuditLog)
 class AuditLogAdmin(admin.ModelAdmin):
-    list_display = ('action', 'user', 'timestamp', 'target_model', 'target_id')
-    list_filter = ('action', 'timestamp')
-    search_fields = ('action', 'details')
-    readonly_fields = ('timestamp', 'ip_address', 'changes')
+    list_display = ('action', 'user', 'timestamp', 'target_model', 'target_id', 'ip_address')
+    list_filter = ('action', 'target_model', 'timestamp')
+    search_fields = ('action', 'details', 'target_model', 'user__username')
+    readonly_fields = ('user', 'action', 'timestamp', 'ip_address', 'target_model', 'target_id', 'details', 'changes')
     date_hierarchy = 'timestamp'
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False

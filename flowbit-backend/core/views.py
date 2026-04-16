@@ -29,6 +29,7 @@ from .models import (
     Transaction,
     Overflow,
     OverflowNotification,
+    AuditLog,
     Ticket,
     LedgerAllocation,
     IdentifierCapacityAdjustment,
@@ -45,6 +46,7 @@ from .serializers import (
     CollaboratorSerializer,
     OverflowNotificationSerializer,
     TicketSerializer,
+    AuditLogSerializer,
 )
 
 
@@ -103,6 +105,44 @@ def helper_name_from_request(request):
     if getattr(request, 'user', None) and request.user.is_authenticated:
         return request.user.username
     return DEFAULT_HELPER_NAME
+
+
+def _serialize_audit_value(value):
+    if isinstance(value, Decimal):
+        return str(value)
+    if isinstance(value, datetime):
+        if timezone.is_aware(value):
+            value = timezone.localtime(value)
+        return value.isoformat()
+    if hasattr(value, 'pk'):
+        return value.pk
+    return value
+
+
+def _snapshot_instance(instance):
+    return {
+        field.name: _serialize_audit_value(getattr(instance, field.name))
+        for field in instance._meta.concrete_fields
+    }
+
+
+def _request_ip(request):
+    forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+    if forwarded_for:
+        return forwarded_for.split(',')[0].strip()
+    return request.META.get('REMOTE_ADDR')
+
+
+def record_audit_log(request, action, target=None, details='', changes=None):
+    AuditLog.objects.create(
+        user=request.user if getattr(request, 'user', None) and request.user.is_authenticated else None,
+        action=action,
+        ip_address=_request_ip(request),
+        target_model=target.__class__.__name__ if target is not None else '',
+        target_id=getattr(target, 'pk', None) if target is not None else None,
+        details=details,
+        changes=changes or {},
+    )
 
 
 def resolve_collaborators_for_approval(request, collaborator_ids):
@@ -187,6 +227,38 @@ class PeriodViewSet(viewsets.ModelViewSet):
     serializer_class = PeriodSerializer
     permission_classes = []
 
+    def perform_create(self, serializer):
+        period = serializer.save()
+        record_audit_log(
+            self.request,
+            'period.created',
+            target=period,
+            details=f"Created period '{period.name}'",
+            changes={'after': _snapshot_instance(period)},
+        )
+
+    def perform_update(self, serializer):
+        before = _snapshot_instance(self.get_object())
+        period = serializer.save()
+        record_audit_log(
+            self.request,
+            'period.updated',
+            target=period,
+            details=f"Updated period '{period.name}'",
+            changes={'before': before, 'after': _snapshot_instance(period)},
+        )
+
+    def perform_destroy(self, instance):
+        before = _snapshot_instance(instance)
+        period_name = instance.name
+        super().perform_destroy(instance)
+        record_audit_log(
+            self.request,
+            'period.deleted',
+            details=f"Deleted period '{period_name}'",
+            changes={'before': before},
+        )
+
     def get_queryset(self):
         queryset = super().get_queryset()
         section = (self.request.query_params.get('section') or '').strip().lower()
@@ -232,6 +304,16 @@ class PeriodViewSet(viewsets.ModelViewSet):
         period.close(
             closed_at=closed_at,
             helper_name=helper_name_from_request(request),
+        )
+        record_audit_log(
+            request,
+            'period.closed',
+            target=period,
+            details=f"Closed period '{period.name}'",
+            changes={
+                'closed_at': _serialize_audit_value(closed_at),
+                'closed_ledgers': period.ledgers.filter(is_capacity_reserve=False).count(),
+            },
         )
 
         serializer = self.get_serializer(period)
@@ -292,6 +374,38 @@ class LedgerViewSet(viewsets.ModelViewSet):
     serializer_class = LedgerSerializer
     permission_classes =[]
 
+    def perform_create(self, serializer):
+        ledger = serializer.save()
+        record_audit_log(
+            self.request,
+            'ledger.created',
+            target=ledger,
+            details=f"Created ledger '{ledger.name}'",
+            changes={'after': _snapshot_instance(ledger)},
+        )
+
+    def perform_update(self, serializer):
+        before = _snapshot_instance(self.get_object())
+        ledger = serializer.save()
+        record_audit_log(
+            self.request,
+            'ledger.updated',
+            target=ledger,
+            details=f"Updated ledger '{ledger.name}'",
+            changes={'before': before, 'after': _snapshot_instance(ledger)},
+        )
+
+    def perform_destroy(self, instance):
+        before = _snapshot_instance(instance)
+        ledger_name = instance.name
+        super().perform_destroy(instance)
+        record_audit_log(
+            self.request,
+            'ledger.deleted',
+            details=f"Deleted ledger '{ledger_name}'",
+            changes={'before': before},
+        )
+
     def get_queryset(self):
         queryset = super().get_queryset()
         return apply_ledger_period_filters(queryset, self.request.query_params)
@@ -312,6 +426,13 @@ class LedgerViewSet(viewsets.ModelViewSet):
             )
 
         ledger.close()
+        record_audit_log(
+            request,
+            'ledger.closed',
+            target=ledger,
+            details=f"Closed ledger '{ledger.name}'",
+            changes={'after': _snapshot_instance(ledger)},
+        )
         
         serializer = self.get_serializer(ledger)
         return Response({
@@ -347,6 +468,14 @@ class LedgerViewSet(viewsets.ModelViewSet):
                     'end_date': ledger.end_date,
                     'closed_at': ledger.closed_at
                 })
+
+        if closed_ledgers:
+            record_audit_log(
+                request,
+                'ledger.auto_closed',
+                details=f"Auto-closed {len(closed_ledgers)} expired ledger(s)",
+                changes={'closed_ledgers': closed_ledgers},
+            )
         
         return Response({
             "message": f"Closed {len(closed_ledgers)} expired ledger(s)",
@@ -434,6 +563,12 @@ class LedgerViewSet(viewsets.ModelViewSet):
         
         # Sort by priority for response
         updated_ledgers.sort(key=lambda x: x['priority'])
+        record_audit_log(
+            request,
+            'ledger.reordered',
+            details='Bulk updated ledger priorities',
+            changes={'ledgers': updated_ledgers},
+        )
         
         return Response({
             "message": "Priorities updated successfully",
@@ -771,6 +906,16 @@ class TransactionViewSet(viewsets.ModelViewSet):
         response_payload = response_serializer.data
         if preview is not None:
             response_payload['allocation_preview'] = serialize_allocation_preview(preview)
+        record_audit_log(
+            request,
+            'transaction.created',
+            target=transaction_obj,
+            details=f"Created transaction '{transaction_obj.order_number}'",
+            changes={
+                'after': _snapshot_instance(transaction_obj),
+                'allocation_preview': response_payload.get('allocation_preview', {}),
+            },
+        )
         headers = self.get_success_headers(response_payload)
         return Response(response_payload, status=status.HTTP_201_CREATED, headers=headers)
 
@@ -927,6 +1072,18 @@ class OverflowViewSet(viewsets.ModelViewSet):
                     Ledger.get_capacity_reserve(target_period, create=True)
 
         overflow.collaborators.set(collaborators)
+        record_audit_log(
+            request,
+            'overflow.approved',
+            target=overflow,
+            details=f"Approved overflow for transaction '{overflow.transaction.order_number}'",
+            changes={
+                'status': overflow.status,
+                'amount_to_approve': str(overflow.amount_to_approve),
+                'helper_name': helper_name,
+                'collaborator_ids': [collaborator.id for collaborator in collaborators],
+            },
+        )
         
         serializer = self.get_serializer(overflow)
         return Response({
@@ -956,6 +1113,13 @@ class OverflowViewSet(viewsets.ModelViewSet):
                     resolution_type=Overflow.RESOLUTION_REFUND_OVERFLOW,
                 )
             serializer = self.get_serializer(overflow)
+            record_audit_log(
+                request,
+                'overflow.refunded',
+                target=overflow,
+                details=f"Refunded overflow for transaction '{overflow.transaction.order_number}'",
+                changes={'resolution_type': Overflow.RESOLUTION_REFUND_OVERFLOW},
+            )
             return Response({
                 "message": "Overflow refunded successfully",
                 "overflow": serializer.data,
@@ -968,6 +1132,13 @@ class OverflowViewSet(viewsets.ModelViewSet):
                     helper_name=helper_name,
                     resolution_type=Overflow.RESOLUTION_REFUND_TRANSACTION,
                 )
+            record_audit_log(
+                request,
+                'transaction.refunded',
+                target=overflow.transaction,
+                details=f"Refunded transaction '{overflow.transaction.order_number}'",
+                changes={'resolution_type': Overflow.RESOLUTION_REFUND_TRANSACTION},
+            )
             return Response({
                 "message": f"Transaction '{overflow.transaction.order_number}' refunded successfully",
             }, status=status.HTTP_200_OK)
@@ -985,6 +1156,13 @@ class OverflowViewSet(viewsets.ModelViewSet):
                     helper_name=helper_name,
                     resolution_type=Overflow.RESOLUTION_REFUND_TICKET,
                 )
+            record_audit_log(
+                request,
+                'ticket.refunded',
+                target=overflow.transaction.ticket,
+                details=f"Refunded ticket '{overflow.transaction.ticket.ticket_number}'",
+                changes={'resolution_type': Overflow.RESOLUTION_REFUND_TICKET},
+            )
             return Response({
                 "message": f"Ticket '{overflow.transaction.ticket.ticket_number}' refunded successfully",
             }, status=status.HTTP_200_OK)
@@ -1002,6 +1180,35 @@ class OverflowNotificationViewSet(viewsets.ReadOnlyModelViewSet):
     )
     serializer_class = OverflowNotificationSerializer
     permission_classes = []
+
+
+class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = AuditLog.objects.select_related('user')
+    serializer_class = AuditLogSerializer
+    permission_classes = []
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        action = (self.request.query_params.get('action') or '').strip()
+        target_model = (self.request.query_params.get('target_model') or '').strip()
+        target_id = self.request.query_params.get('target_id')
+        user_id = self.request.query_params.get('user_id')
+        date_from = parse_period_value(self.request.query_params.get('date_from'))
+        date_to = parse_period_value(self.request.query_params.get('date_to'))
+
+        if action:
+            queryset = queryset.filter(action=action)
+        if target_model:
+            queryset = queryset.filter(target_model__iexact=target_model)
+        if target_id:
+            queryset = queryset.filter(target_id=target_id)
+        if user_id:
+            queryset = queryset.filter(user_id=user_id)
+        if date_from:
+            queryset = queryset.filter(timestamp__gte=date_from)
+        if date_to:
+            queryset = queryset.filter(timestamp__lte=date_to)
+        return queryset
 
 
 class CollaboratorViewSet(viewsets.ReadOnlyModelViewSet):
@@ -1331,6 +1538,16 @@ class CreateTicketWithTransactions(APIView):
 
         # 4. If there were errors → rollback is automatic thanks to @transaction.atomic
         if errors:
+            record_audit_log(
+                request,
+                'ticket.partial_create',
+                target=ticket,
+                details=f"Ticket '{ticket.ticket_number}' created with item errors",
+                changes={
+                    'created': created_items,
+                    'errors': errors,
+                },
+            )
             return Response(
                 {
                     "detail": "Some items failed",
@@ -1343,6 +1560,17 @@ class CreateTicketWithTransactions(APIView):
             )
 
         # 5. Success
+        record_audit_log(
+            request,
+            'ticket.created',
+            target=ticket,
+            details=f"Created ticket '{ticket.ticket_number}' with {len(created_items)} transaction(s)",
+            changes={
+                'created': created_items,
+                'total_amount': str(ticket.total_amount),
+                'transaction_count': ticket.transaction_count,
+            },
+        )
         return Response({
             "message": "Ticket and all transactions created successfully",
             "ticket": TicketSerializer(ticket).data,
