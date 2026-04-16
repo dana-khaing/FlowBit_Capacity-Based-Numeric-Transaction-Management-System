@@ -832,7 +832,6 @@ class TransactionViewSet(viewsets.ModelViewSet):
         )
         return Response(serialize_allocation_preview(preview), status=status.HTTP_200_OK)
 
-
 class OverflowViewSet(viewsets.ModelViewSet):
     queryset = Overflow.objects.all()
     serializer_class = OverflowSerializer
@@ -1009,6 +1008,85 @@ class CollaboratorViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = User.objects.all().order_by('username')
     serializer_class = CollaboratorSerializer
     permission_classes = []
+
+    @action(detail=True, methods=['get'], url_path='export-transactions')
+    def export_transactions(self, request, pk=None):
+        collaborator = self.get_object()
+        period_id = request.query_params.get('period_id')
+        sort_by = (request.query_params.get('sort_by') or 'identifier').strip().lower()
+        sort_order = (request.query_params.get('sort_order') or 'asc').strip().lower()
+
+        if sort_by not in {'identifier', 'approved_at'}:
+            return Response(
+                {"detail": "sort_by must be either 'identifier' or 'approved_at'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if sort_order not in {'asc', 'desc'}:
+            return Response(
+                {"detail": "sort_order must be either 'asc' or 'desc'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        selected_period = None
+        if period_id:
+            try:
+                selected_period = Period.objects.get(id=period_id)
+            except Period.DoesNotExist:
+                return Response(
+                    {"detail": "Period not found."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+        else:
+            selected_period = Period.get_open_period()
+
+        overflows = Overflow.objects.filter(
+            collaborators=collaborator,
+            status=Overflow.STATUS_CSO,
+        ).select_related(
+            'transaction__identifier',
+        ).distinct()
+
+        if selected_period:
+            overflows = overflows.filter(transaction__allocations__ledger__period=selected_period).distinct()
+            period_label = selected_period.name
+        else:
+            period_label = 'All Periods'
+
+        order_field = 'transaction__identifier__number' if sort_by == 'identifier' else 'approved_at'
+        if sort_order == 'desc':
+            order_field = f'-{order_field}'
+
+        if sort_by == 'identifier':
+            overflows = overflows.order_by(order_field, 'approved_at', 'id')
+        else:
+            overflows = overflows.order_by(order_field, 'transaction__identifier__number', 'id')
+
+        collaborator_name = collaborator.get_full_name().strip() or collaborator.username
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = (
+            f'attachment; filename="collaborator_{collaborator.id}_transactions.csv"'
+        )
+
+        writer = csv.writer(response)
+        writer.writerow(['Name', collaborator_name])
+        writer.writerow(['Period', period_label])
+        writer.writerow([])
+        writer.writerow(['Transactions'])
+
+        total_amount = Decimal('0.00')
+        for overflow in overflows:
+            approved_amount = overflow.amount_to_approve or overflow.excess_amount or Decimal('0.00')
+            total_amount += approved_amount
+            writer.writerow([
+                overflow.transaction.identifier.number,
+                '.',
+                f'{approved_amount:.2f}',
+            ])
+
+        writer.writerow([])
+        writer.writerow(['Total Amount', '', f'{total_amount:.2f}'])
+        return response
 
 
 class TicketListView(generics.ListAPIView):
