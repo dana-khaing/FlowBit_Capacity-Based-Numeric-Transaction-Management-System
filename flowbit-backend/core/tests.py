@@ -418,6 +418,66 @@ class RolePermissionTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
+    def test_admin_can_create_collaborator(self):
+        self.client.force_authenticate(user=self.admin_user)
+
+        response = self.client.post('/api/collaborators/', {
+            'username': 'new_collaborator',
+            'first_name': 'New',
+            'last_name': 'Collaborator',
+            'email': 'collaborator@example.com',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        created_user = User.objects.get(username='new_collaborator')
+        self.assertEqual(created_user.email, 'collaborator@example.com')
+        self.assertEqual(created_user.profile.role, 'user')
+        self.assertFalse(created_user.has_usable_password())
+        self.assertTrue(
+            AuditLog.objects.filter(action='collaborator.created', target_id=created_user.id).exists()
+        )
+
+    def test_admin_can_update_collaborator(self):
+        self.client.force_authenticate(user=self.admin_user)
+
+        response = self.client.patch(
+            f'/api/collaborators/{self.regular_user.id}/',
+            {
+                'first_name': 'Updated',
+                'last_name': 'Collaborator',
+                'email': 'updated-collaborator@example.com',
+            },
+            format='json'
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.regular_user.refresh_from_db()
+        self.assertEqual(self.regular_user.first_name, 'Updated')
+        self.assertEqual(self.regular_user.email, 'updated-collaborator@example.com')
+        self.assertTrue(
+            AuditLog.objects.filter(action='collaborator.updated', target_id=self.regular_user.id).exists()
+        )
+
+    def test_admin_can_delete_collaborator(self):
+        self.client.force_authenticate(user=self.admin_user)
+
+        response = self.client.delete(f'/api/collaborators/{self.regular_user.id}/')
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(User.objects.filter(id=self.regular_user.id).exists())
+        self.assertTrue(AuditLog.objects.filter(action='collaborator.deleted').exists())
+
+    def test_regular_user_cannot_create_collaborator(self):
+        self.client.force_authenticate(user=self.regular_user)
+
+        response = self.client.post('/api/collaborators/', {
+            'username': 'blocked_collaborator',
+            'first_name': 'Blocked',
+            'last_name': 'Collaborator',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
 
 class LedgerArchiveAPITests(APITestCase):
     def setUp(self):
