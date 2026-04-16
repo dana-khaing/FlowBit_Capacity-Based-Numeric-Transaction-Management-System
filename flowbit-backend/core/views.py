@@ -20,8 +20,29 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
-from .models import Period, Ledger, Identifier, Transaction, Overflow, Ticket, LedgerAllocation, IdentifierCapacityAdjustment
-from .serializers import PeriodSerializer, LedgerSerializer, IdentifierSerializer, TransactionSerializer, OverflowSerializer, TicketSerializer
+from .models import (
+    DEFAULT_HELPER_NAME,
+    Period,
+    Ledger,
+    Identifier,
+    Transaction,
+    Overflow,
+    OverflowNotification,
+    Ticket,
+    LedgerAllocation,
+    IdentifierCapacityAdjustment,
+    refund_overflow,
+    refund_transactions,
+)
+from .serializers import (
+    PeriodSerializer,
+    LedgerSerializer,
+    IdentifierSerializer,
+    TransactionSerializer,
+    OverflowSerializer,
+    OverflowNotificationSerializer,
+    TicketSerializer,
+)
 
 
 def parse_period_value(value):
@@ -72,6 +93,15 @@ def apply_ledger_period_filters(queryset, query_params, ledger_prefix=''):
     return queryset
 
 
+def helper_name_from_request(request):
+    helper_name = (request.data.get('helper_name') or '').strip() if hasattr(request, 'data') else ''
+    if helper_name:
+        return helper_name
+    if getattr(request, 'user', None) and request.user.is_authenticated:
+        return request.user.username
+    return DEFAULT_HELPER_NAME
+
+
 class PeriodViewSet(viewsets.ModelViewSet):
     queryset = Period.objects.all()
     serializer_class = PeriodSerializer
@@ -119,13 +149,16 @@ class PeriodViewSet(viewsets.ModelViewSet):
             )
 
         closed_at = timezone.now()
-        period.close(closed_at=closed_at)
+        period.close(
+            closed_at=closed_at,
+            helper_name=helper_name_from_request(request),
+        )
 
         serializer = self.get_serializer(period)
         return Response({
             "message": f"Period '{period.name}' closed successfully",
             "period": serializer.data,
-            "closed_ledgers": period.ledgers.count(),
+            "closed_ledgers": period.ledgers.filter(is_capacity_reserve=False).count(),
         }, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get'], url_path='summary')
@@ -620,27 +653,23 @@ class OverflowViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='approved')
     def approved_overflows(self, request):
         """GET /api/overflows/approved/ - Get all CSO (green) overflows"""
-        approved = Overflow.objects.filter(status='CSO').select_related(
+        approved = Overflow.objects.filter(status=Overflow.STATUS_CSO).select_related(
             'transaction__identifier',
             'transaction__ticket'
         ).order_by('-approved_at')
         serializer = self.get_serializer(approved, many=True)
         return Response(serializer.data)
 
-    @action(detail=True, methods=['post'], url_path='approve')
-    def approve_overflow(self, request, pk=None):
-        """POST /api/overflows/{id}/approve/ - Approve overflow with collaborators"""
-        overflow = self.get_object()
-        
-        if overflow.status == 'CSO':
+    def _approve_overflow(self, overflow, request):
+        if overflow.status != Overflow.STATUS_TCSO:
             return Response(
-                {"detail": "Already approved"}, 
+                {"detail": "Only pending overflows can be approved"},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         amount_str = request.data.get('amount_to_approve')
         collaborator_ids = request.data.get('collaborator_ids', [])
-        
+
         if amount_str:
             try:
                 amount = Decimal(str(amount_str))
@@ -658,6 +687,7 @@ class OverflowViewSet(viewsets.ModelViewSet):
         else:
             overflow.amount_to_approve = overflow.excess_amount
 
+        helper_name = helper_name_from_request(request)
         extra_amount = overflow.amount_to_approve - overflow.excess_amount
         target_period = overflow.period
         if extra_amount > 0 and (not target_period or not target_period.is_open):
@@ -667,19 +697,24 @@ class OverflowViewSet(viewsets.ModelViewSet):
             )
 
         with db_transaction.atomic():
-            overflow.status = 'CSO'
+            overflow.status = Overflow.STATUS_CSO
             overflow.approved_at = timezone.now()
+            overflow.helper_name = helper_name
+            overflow.resolution_type = Overflow.RESOLUTION_APPROVE
             overflow.save()
 
             if extra_amount > 0:
-                Ledger.get_capacity_reserve(target_period, create=True)
-                IdentifierCapacityAdjustment.objects.create(
+                adjustment = IdentifierCapacityAdjustment.objects.create(
                     identifier=overflow.transaction.identifier,
                     period=target_period,
                     overflow=overflow,
                     amount=extra_amount,
+                    adjustment_type=IdentifierCapacityAdjustment.TYPE_APPROVAL_EXTRA,
+                    helper_name=helper_name,
                 )
-        
+                if adjustment:
+                    Ledger.get_capacity_reserve(target_period, create=True)
+
         if collaborator_ids:
             from django.contrib.auth.models import User
             collaborators = User.objects.filter(id__in=collaborator_ids)
@@ -690,6 +725,75 @@ class OverflowViewSet(viewsets.ModelViewSet):
             "message": "Approved successfully",
             "overflow": serializer.data
         }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='approve')
+    def approve_overflow(self, request, pk=None):
+        """POST /api/overflows/{id}/approve/ - Approve overflow with collaborators"""
+        return self._approve_overflow(self.get_object(), request)
+
+    @action(detail=True, methods=['post'], url_path='resolve')
+    def resolve_overflow(self, request, pk=None):
+        overflow = self.get_object()
+        action_name = (request.data.get('action') or '').strip().lower()
+        helper_name = helper_name_from_request(request)
+
+        if action_name in {'', 'approve'}:
+            return self._approve_overflow(overflow, request)
+
+        if action_name == 'refund_overflow_only':
+            with db_transaction.atomic():
+                refund_overflow(
+                    overflow,
+                    helper_name=helper_name,
+                    resolution_type=Overflow.RESOLUTION_REFUND_OVERFLOW,
+                )
+            serializer = self.get_serializer(overflow)
+            return Response({
+                "message": "Overflow refunded successfully",
+                "overflow": serializer.data,
+            }, status=status.HTTP_200_OK)
+
+        if action_name == 'refund_transaction':
+            with db_transaction.atomic():
+                refund_transactions(
+                    [overflow.transaction],
+                    helper_name=helper_name,
+                    resolution_type=Overflow.RESOLUTION_REFUND_TRANSACTION,
+                )
+            return Response({
+                "message": f"Transaction '{overflow.transaction.order_number}' refunded successfully",
+            }, status=status.HTTP_200_OK)
+
+        if action_name == 'refund_ticket':
+            if not overflow.transaction.ticket_id:
+                return Response(
+                    {"detail": "Overflow transaction is not attached to a ticket."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            with db_transaction.atomic():
+                refund_transactions(
+                    list(overflow.transaction.ticket.transactions.all()),
+                    helper_name=helper_name,
+                    resolution_type=Overflow.RESOLUTION_REFUND_TICKET,
+                )
+            return Response({
+                "message": f"Ticket '{overflow.transaction.ticket.ticket_number}' refunded successfully",
+            }, status=status.HTTP_200_OK)
+
+        return Response(
+            {"detail": "Unsupported resolution action"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+
+class OverflowNotificationViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = OverflowNotification.objects.select_related(
+        'period',
+        'overflow__transaction__identifier',
+    )
+    serializer_class = OverflowNotificationSerializer
+    permission_classes = []
 
 
 class TicketListView(generics.ListAPIView):

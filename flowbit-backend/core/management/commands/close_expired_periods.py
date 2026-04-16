@@ -1,7 +1,7 @@
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from core.models import Period
+from core.models import DEFAULT_HELPER_NAME, Period
 
 
 class Command(BaseCommand):
@@ -36,9 +36,9 @@ class Command(BaseCommand):
             return
 
         for period in expired_periods:
-            period.close(closed_at=now)
+            period.close(closed_at=now, helper_name=DEFAULT_HELPER_NAME)
             self.stdout.write(
                 self.style.SUCCESS(
-                    f"Closed period '{period.name}' and archived {period.ledgers.count()} ledger(s)"
+                    f"Closed period '{period.name}' and archived {period.ledgers.filter(is_capacity_reserve=False).count()} ledger(s)"
                 )
             )

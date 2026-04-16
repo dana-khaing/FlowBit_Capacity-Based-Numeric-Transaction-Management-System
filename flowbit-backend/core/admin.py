@@ -1,7 +1,19 @@
 from django.contrib import admin
 from django.urls import reverse
 from django.utils.html import format_html
-from .models import Period, Ledger, Identifier, Transaction, LedgerAllocation, Overflow, Profile, AuditLog, Ticket
+from .models import (
+    Period,
+    Ledger,
+    Identifier,
+    IdentifierCapacityAdjustment,
+    OverflowNotification,
+    Transaction,
+    LedgerAllocation,
+    Overflow,
+    Profile,
+    AuditLog,
+    Ticket,
+)
 
 
 @admin.register(Period)
@@ -60,6 +72,7 @@ class TicketAdmin(admin.ModelAdmin):
         'created_at',
         'created_by',
         'customer_name',
+        'is_refunded',
         'total_amount_display',
         'transaction_count',
     )
@@ -83,8 +96,25 @@ class LedgerAllocationInline(admin.TabularInline):
 class OverflowInline(admin.TabularInline):
     model = Overflow
     extra = 0
-    readonly_fields = ('excess_amount', 'status', 'approved_at', 'amount_to_approve')
-    fields = ('status', 'excess_amount', 'amount_to_approve', 'approved_at', 'collaborators')
+    readonly_fields = (
+        'excess_amount',
+        'status',
+        'approved_at',
+        'amount_to_approve',
+        'helper_name',
+        'resolution_type',
+        'refunded_at',
+    )
+    fields = (
+        'status',
+        'excess_amount',
+        'amount_to_approve',
+        'approved_at',
+        'helper_name',
+        'resolution_type',
+        'refunded_at',
+        'collaborators',
+    )
 
 
 @admin.register(Transaction)
@@ -94,6 +124,7 @@ class TransactionAdmin(admin.ModelAdmin):
         'order_number',
         'identifier',
         'total_amount',
+        'is_refunded',
         'timestamp',
         'created_by',
         'get_ledgers_summary',
@@ -139,10 +170,32 @@ class LedgerAllocationAdmin(admin.ModelAdmin):
 
 @admin.register(Overflow)
 class OverflowAdmin(admin.ModelAdmin):
-    list_display = ('transaction', 'excess_amount', 'status', 'approved_at', 'amount_to_approve')
+    list_display = (
+        'transaction',
+        'excess_amount',
+        'status',
+        'approved_at',
+        'amount_to_approve',
+        'helper_name',
+        'refunded_at',
+    )
     list_filter = ('status',)
     search_fields = ('transaction__order_number',)
     readonly_fields = ('transaction', 'excess_amount')
+
+
+@admin.register(IdentifierCapacityAdjustment)
+class IdentifierCapacityAdjustmentAdmin(admin.ModelAdmin):
+    list_display = ('identifier', 'period', 'amount', 'adjustment_type', 'helper_name', 'created_at')
+    list_filter = ('adjustment_type', 'period')
+    search_fields = ('identifier__number', 'helper_name')
+
+
+@admin.register(OverflowNotification)
+class OverflowNotificationAdmin(admin.ModelAdmin):
+    list_display = ('overflow', 'period', 'notification_type', 'created_at')
+    list_filter = ('notification_type', 'period')
+    search_fields = ('overflow__transaction__order_number', 'message')
 
 
 @admin.register(Profile)
