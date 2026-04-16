@@ -163,18 +163,27 @@ It is stored through `IdentifierCapacityAdjustment` and consumed through an inte
 - resolve overflow through one endpoint
 - store helper name
 - store collaborators
+- require collaborator selection from existing users during `TCSO -> CSO` approval
 - refund overflow only
 - refund whole transaction
 - refund whole ticket
 - retry pending overflow when capacity is returned
 - auto-convert pending overflow to approved overflow at period close
 
-### 4.7 Notification Features
+### 4.7 Collaborator Features
+
+- list collaborators for approval selection
+- export collaborator-approved transactions to CSV
+- export collaborator-approved transactions to PDF
+- filter collaborator exports by period
+- sort collaborator exports by identifier or approval time
+
+### 4.8 Notification Features
 
 - create pre-close notifications for pending `TCSO`
 - expose notifications through API and admin
 
-### 4.8 Admin Features
+### 4.9 Admin Features
 
 Admin pages are available for:
 
@@ -232,9 +241,11 @@ Recommended use:
 ### 5.5 Approve Overflow
 
 1. Review `TCSO`.
-2. Approve exact amount or higher amount.
-3. Store helper name.
-4. If approved amount is greater than overflow amount, the extra becomes reserve capacity for the identifier.
+2. Select one or more existing collaborators.
+3. Approve exact amount or higher amount.
+4. Current user cannot be one of the selected collaborators.
+5. The system stores current time as approval time.
+6. If approved amount is greater than overflow amount, the extra becomes reserve capacity for the identifier.
 
 ### 5.6 Refund Overflow Or Transactions
 
@@ -258,6 +269,14 @@ Effects:
 4. Close period.
 5. System converts remaining `TCSO` to `CSO` automatically.
 6. Ledgers are archived.
+
+### 5.8 Export Collaborator Reports
+
+1. Open the collaborator to be reviewed.
+2. Choose an optional period.
+3. Choose sorting by identifier or approval time.
+4. Download CSV or PDF.
+5. Review the transaction rows and total approved amount.
 
 ## 6. How To Use FlowBit
 
@@ -661,11 +680,28 @@ python manage.py notify_pending_overflows
 
 - `GET /api/ledgers/{id}/export-pdf/`
 
+### 12.3 Collaborator CSV Export
+
+- `GET /api/collaborators/{id}/export-transactions/`
+- query params:
+  - `period_id`
+  - `sort_by=identifier|approved_at`
+  - `sort_order=asc|desc`
+
+### 12.4 Collaborator PDF Export
+
+- `GET /api/collaborators/{id}/export-transactions-pdf/`
+- query params:
+  - `period_id`
+  - `sort_by=identifier|approved_at`
+  - `sort_order=asc|desc`
+
 Exports include:
 
 - ledger details
 - identifier-by-identifier values
 - summary statistics
+- collaborator name, period, approved rows, and total amount for collaborator reports
 
 ## 13. API Endpoint Summary
 
@@ -714,7 +750,14 @@ Exports include:
 - `DELETE /api/transactions/{id}/`
 - `POST /api/transactions/allocation-preview/`
 
-### 13.5 Overflows
+### 13.5 Collaborators
+
+- `GET /api/collaborators/`
+- `GET /api/collaborators/{id}/`
+- `GET /api/collaborators/{id}/export-transactions/`
+- `GET /api/collaborators/{id}/export-transactions-pdf/`
+
+### 13.6 Overflows
 
 - `GET /api/overflows/`
 - `POST /api/overflows/`
@@ -727,12 +770,12 @@ Exports include:
 - `POST /api/overflows/{id}/approve/`
 - `POST /api/overflows/{id}/resolve/`
 
-### 13.6 Overflow Notifications
+### 13.7 Overflow Notifications
 
 - `GET /api/overflow-notifications/`
 - `GET /api/overflow-notifications/{id}/`
 
-### 13.7 Tickets
+### 13.8 Tickets
 
 - `POST /api/tickets/create-with-items/`
 - `GET /api/tickets/`
@@ -804,7 +847,8 @@ Identifiers:
 2. Use allocation preview when operators need manual placement.
 3. Review `TCSO`.
 4. Approve or refund exceptions.
-5. Review reserve-capacity adjustments.
+5. Use collaborator exports when approval activity needs review.
+6. Review reserve-capacity adjustments.
 
 ### 16.3 Thirty Minutes Before Close
 
@@ -818,6 +862,7 @@ Identifiers:
 2. Confirm pending `TCSO` became `CSO`.
 3. Confirm ledgers are archived.
 4. Export ledger reports if required.
+5. Export collaborator reports if approval audit is required.
 
 ## 17. Important Notes
 
