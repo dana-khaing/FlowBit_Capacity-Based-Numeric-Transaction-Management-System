@@ -1,5 +1,6 @@
 from decimal import Decimal
 from datetime import datetime
+from unittest.mock import patch
 
 from django.core.management import call_command
 from django.contrib.auth.models import User
@@ -87,6 +88,63 @@ class AuthAPITests(APITestCase):
         self.user.refresh_from_db()
         self.assertTrue(self.user.check_password('new-password-456'))
         self.assertTrue(AuditLog.objects.filter(action='auth.password_changed', target_id=self.user.id).exists())
+
+    @patch('core.views.verify_google_id_token')
+    def test_google_login_creates_user_and_returns_token(self, mock_verify_google_id_token):
+        mock_verify_google_id_token.return_value = {
+            'email': 'google-user@example.com',
+            'email_verified': True,
+            'given_name': 'Google',
+            'family_name': 'User',
+        }
+
+        response = self.client.post('/api/auth/google/', {
+            'id_token': 'fake-google-token',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        created_user = User.objects.get(email='google-user@example.com')
+        self.assertEqual(created_user.first_name, 'Google')
+        self.assertEqual(created_user.last_name, 'User')
+        self.assertIn('token', response.data)
+        self.assertTrue(AuditLog.objects.filter(action='auth.google_login', target_id=created_user.id).exists())
+
+    @patch('core.views.verify_google_id_token')
+    def test_google_login_updates_existing_user_names(self, mock_verify_google_id_token):
+        existing_user = User.objects.create_user(
+            username='existing_google',
+            email='existing@example.com',
+            password='password123',
+        )
+        mock_verify_google_id_token.return_value = {
+            'email': 'existing@example.com',
+            'email_verified': True,
+            'given_name': 'Existing',
+            'family_name': 'User',
+        }
+
+        response = self.client.post('/api/auth/google/', {
+            'id_token': 'fake-google-token',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        existing_user.refresh_from_db()
+        self.assertEqual(existing_user.first_name, 'Existing')
+        self.assertEqual(existing_user.last_name, 'User')
+
+    @patch('core.views.verify_google_id_token')
+    def test_google_login_rejects_unverified_email(self, mock_verify_google_id_token):
+        mock_verify_google_id_token.return_value = {
+            'email': 'google-user@example.com',
+            'email_verified': False,
+        }
+
+        response = self.client.post('/api/auth/google/', {
+            'id_token': 'fake-google-token',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['detail'], 'Google account email is not verified.')
 
 
 class LedgerArchiveAPITests(APITestCase):
