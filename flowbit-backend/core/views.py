@@ -67,6 +67,7 @@ from .serializers import (
     ChangePasswordSerializer,
     ForgotPasswordSerializer,
     ResetPasswordConfirmSerializer,
+    CollaboratorManageSerializer,
     UserRoleUpdateSerializer,
     MasterOverridePasswordSerializer,
 )
@@ -147,6 +148,16 @@ def build_password_reset_email_body(reset_token, raw_token):
             f"Reset URL: {frontend_url}?selector={reset_token.selector}&token={raw_token}",
         ])
     return "\n".join(body_lines)
+
+
+def collaborator_snapshot(user):
+    return {
+        'id': user.id,
+        'username': user.username,
+        'first_name': user.first_name,
+        'last_name': user.last_name,
+        'email': user.email,
+    }
 
 
 def apply_ledger_period_filters(queryset, query_params, ledger_prefix=''):
@@ -1390,10 +1401,60 @@ class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
         return queryset
 
 
-class CollaboratorViewSet(viewsets.ReadOnlyModelViewSet):
+class CollaboratorViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all().order_by('username')
     serializer_class = CollaboratorSerializer
     permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        if self.action in {'create', 'update', 'partial_update', 'destroy'}:
+            return [IsAdminRole()]
+        return [permission() for permission in self.permission_classes]
+
+    def get_serializer_class(self):
+        if self.action in {'create', 'update', 'partial_update'}:
+            return CollaboratorManageSerializer
+        return CollaboratorSerializer
+
+    def perform_create(self, serializer):
+        collaborator = serializer.save()
+        profile, _ = Profile.objects.get_or_create(user=collaborator)
+        if profile.role != 'user':
+            profile.role = 'user'
+            profile.save(update_fields=['role', 'updated_at'])
+        record_audit_log(
+            self.request,
+            'collaborator.created',
+            target=collaborator,
+            details=f"Created collaborator '{collaborator.username}'",
+            changes={'after': collaborator_snapshot(collaborator)},
+        )
+
+    def perform_update(self, serializer):
+        before = collaborator_snapshot(self.get_object())
+        collaborator = serializer.save()
+        profile, _ = Profile.objects.get_or_create(user=collaborator)
+        if profile.role != 'user':
+            profile.role = 'user'
+            profile.save(update_fields=['role', 'updated_at'])
+        record_audit_log(
+            self.request,
+            'collaborator.updated',
+            target=collaborator,
+            details=f"Updated collaborator '{collaborator.username}'",
+            changes={'before': before, 'after': collaborator_snapshot(collaborator)},
+        )
+
+    def perform_destroy(self, instance):
+        before = collaborator_snapshot(instance)
+        username = instance.username
+        super().perform_destroy(instance)
+        record_audit_log(
+            self.request,
+            'collaborator.deleted',
+            details=f"Deleted collaborator '{username}'",
+            changes={'before': before},
+        )
 
     def _get_export_overflows(self, collaborator, request):
         period_id = request.query_params.get('period_id')
