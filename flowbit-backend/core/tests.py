@@ -20,6 +20,7 @@ from core.models import (
     AuditLog,
     PasswordResetToken,
     Profile,
+    Collaborator,
     Ticket,
     Transaction,
 )
@@ -418,76 +419,91 @@ class RolePermissionTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
-    def test_admin_can_create_collaborator(self):
-        self.client.force_authenticate(user=self.admin_user)
+    def test_authenticated_user_can_create_collaborator(self):
+        self.client.force_authenticate(user=self.regular_user)
 
         response = self.client.post('/api/collaborators/', {
             'username': 'new_collaborator',
-            'first_name': 'New',
-            'last_name': 'Collaborator',
+            'full_name': 'New Collaborator',
             'email': 'collaborator@example.com',
+            'phone_number': '+44-7000-123456',
         }, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        created_user = User.objects.get(username='new_collaborator')
-        self.assertEqual(created_user.email, 'collaborator@example.com')
-        self.assertEqual(created_user.profile.role, 'user')
-        self.assertFalse(created_user.has_usable_password())
+        collaborator = Collaborator.objects.get(username='new_collaborator')
+        self.assertEqual(collaborator.email, 'collaborator@example.com')
+        self.assertEqual(collaborator.full_name, 'New Collaborator')
+        self.assertEqual(collaborator.owner, self.regular_user)
         self.assertTrue(
-            AuditLog.objects.filter(action='collaborator.created', target_id=created_user.id).exists()
+            AuditLog.objects.filter(action='collaborator.created', target_id=collaborator.id).exists()
         )
 
-    def test_admin_can_update_collaborator(self):
-        self.client.force_authenticate(user=self.admin_user)
+    def test_owner_can_update_collaborator(self):
+        collaborator = Collaborator.objects.create(
+            owner=self.regular_user,
+            username='owned_collaborator',
+            full_name='Owned Collaborator',
+            email='owned@example.com',
+            phone_number='111111',
+        )
+        self.client.force_authenticate(user=self.regular_user)
 
         response = self.client.patch(
-            f'/api/collaborators/{self.regular_user.id}/',
+            f'/api/collaborators/{collaborator.id}/',
             {
-                'first_name': 'Updated',
-                'last_name': 'Collaborator',
+                'full_name': 'Updated Collaborator',
                 'email': 'updated-collaborator@example.com',
+                'phone_number': '222222',
             },
             format='json'
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.regular_user.refresh_from_db()
-        self.assertEqual(self.regular_user.first_name, 'Updated')
-        self.assertEqual(self.regular_user.email, 'updated-collaborator@example.com')
+        collaborator.refresh_from_db()
+        self.assertEqual(collaborator.full_name, 'Updated Collaborator')
+        self.assertEqual(collaborator.email, 'updated-collaborator@example.com')
         self.assertTrue(
-            AuditLog.objects.filter(action='collaborator.updated', target_id=self.regular_user.id).exists()
+            AuditLog.objects.filter(action='collaborator.updated', target_id=collaborator.id).exists()
         )
 
-    def test_admin_can_delete_collaborator(self):
-        self.client.force_authenticate(user=self.admin_user)
-
-        response = self.client.delete(f'/api/collaborators/{self.regular_user.id}/')
-
-        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
-        self.assertFalse(User.objects.filter(id=self.regular_user.id).exists())
-        self.assertTrue(AuditLog.objects.filter(action='collaborator.deleted').exists())
-
-    def test_regular_user_cannot_create_collaborator(self):
+    def test_owner_can_delete_collaborator(self):
+        collaborator = Collaborator.objects.create(
+            owner=self.regular_user,
+            username='delete_collaborator',
+            full_name='Delete Collaborator',
+            email='delete@example.com',
+            phone_number='333333',
+        )
         self.client.force_authenticate(user=self.regular_user)
 
-        response = self.client.post('/api/collaborators/', {
-            'username': 'blocked_collaborator',
-            'first_name': 'Blocked',
-            'last_name': 'Collaborator',
-        }, format='json')
+        response = self.client.delete(f'/api/collaborators/{collaborator.id}/')
 
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Collaborator.objects.filter(id=collaborator.id).exists())
+        self.assertTrue(AuditLog.objects.filter(action='collaborator.deleted').exists())
+
+    def test_user_cannot_manage_other_users_collaborator(self):
+        collaborator = Collaborator.objects.create(
+            owner=self.admin_user,
+            username='foreign_collaborator',
+            full_name='Foreign Collaborator',
+            email='foreign@example.com',
+            phone_number='444444',
+        )
+        self.client.force_authenticate(user=self.regular_user)
+
+        response = self.client.patch(
+            f'/api/collaborators/{collaborator.id}/',
+            {'full_name': 'Blocked Update'},
+            format='json'
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
 
 class LedgerArchiveAPITests(APITestCase):
     def setUp(self):
         self.identifier = Identifier.objects.create(number='101')
-        self.collaborator = User.objects.create_user(
-            username='helper_user',
-            first_name='Helper',
-            last_name='User',
-            password='password123',
-        )
         self.approver = User.objects.create_user(
             username='approver_user',
             first_name='Approver',
@@ -496,6 +512,13 @@ class LedgerArchiveAPITests(APITestCase):
         )
         self.approver.profile.role = 'admin'
         self.approver.profile.save(update_fields=['role', 'updated_at'])
+        self.collaborator = Collaborator.objects.create(
+            owner=self.approver,
+            username='helper_user',
+            full_name='Helper User',
+            email='helper@example.com',
+            phone_number='555555',
+        )
         self.client.force_authenticate(user=self.approver)
 
         january_start = timezone.make_aware(datetime(2026, 1, 1, 0, 0, 0))
@@ -1109,8 +1132,18 @@ class LedgerArchiveAPITests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(response.data['detail'], "['At least one collaborator must be selected.']")
 
-    def test_approve_overflow_rejects_current_user_as_collaborator(self):
-        self.client.force_authenticate(user=self.approver)
+    def test_approve_overflow_rejects_other_users_collaborator(self):
+        other_user = User.objects.create_user(
+            username='other_collaborator_owner',
+            password='password123',
+        )
+        foreign_collaborator = Collaborator.objects.create(
+            owner=other_user,
+            username='foreign_helper',
+            full_name='Foreign Helper',
+            email='foreign-helper@example.com',
+            phone_number='999999',
+        )
         tx = Transaction.objects.create(
             identifier=self.identifier,
             total_amount=Decimal('250.00'),
@@ -1121,15 +1154,15 @@ class LedgerArchiveAPITests(APITestCase):
             f'/api/overflows/{overflow.id}/approve/',
             {
                 'amount_to_approve': '180.00',
-                'collaborator_ids': [self.approver.id],
+                'collaborator_ids': [foreign_collaborator.id],
             },
             format='json'
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(response.data['detail'], "['Current user cannot be selected as a collaborator.']")
+        self.assertEqual(response.data['detail'], "['One or more selected collaborators do not exist.']")
 
-    def test_collaborator_list_endpoint_returns_existing_users(self):
+    def test_collaborator_list_endpoint_returns_current_users_collaborators(self):
         response = self.client.get('/api/collaborators/')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -1308,11 +1341,12 @@ class LedgerArchiveAPITests(APITestCase):
         self.assertIn('Total Amount,,225.00', csv_body)
 
     def test_collaborator_export_transactions_can_sort_by_approved_time(self):
-        later_collaborator = User.objects.create_user(
+        later_collaborator = Collaborator.objects.create(
+            owner=self.approver,
             username='later_helper',
-            first_name='Later',
-            last_name='Helper',
-            password='password123',
+            full_name='Later Helper',
+            email='later-helper@example.com',
+            phone_number='666666',
         )
 
         tx1 = Transaction.objects.create(
