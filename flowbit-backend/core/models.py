@@ -1,5 +1,6 @@
 from django.db import models, transaction
 from django.contrib.auth.models import User
+from django.contrib.auth.hashers import check_password, identify_hasher, make_password
 from django.db.models import Q, Sum
 from decimal import Decimal
 from django.core.exceptions import ValidationError
@@ -932,6 +933,23 @@ class Profile(models.Model):
 
     def __str__(self):
         return f"{self.user.username} ({self.role})"
+
+    def set_master_override_password(self, raw_password):
+        self.master_override_password = make_password(raw_password)
+
+    def clear_master_override_password(self):
+        self.master_override_password = ''
+
+    def check_master_override_password(self, raw_password):
+        stored_value = (self.master_override_password or '').strip()
+        if not stored_value:
+            return False
+
+        try:
+            identify_hasher(stored_value)
+            return check_password(raw_password, stored_value)
+        except Exception:
+            return stored_value == raw_password
 
     class Meta:
         verbose_name = "User Profile"
