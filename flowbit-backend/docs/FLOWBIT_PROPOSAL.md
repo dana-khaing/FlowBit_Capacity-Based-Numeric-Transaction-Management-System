@@ -16,6 +16,7 @@ FlowBit is a period-based capacity allocation and overflow-resolution platform b
 - maintain operational discipline at period close
 - export ledger reports and support archive review
 - export collaborator approval reports in CSV and PDF
+- support token-based sign-in with Google account integration
 
 FlowBit is suitable for controlled environments where capacity must be distributed carefully and exceptions must be tracked clearly.
 
@@ -128,6 +129,7 @@ Business value:
 - Period and ledger auto-close operations
 - Authenticated audit trail API for operational review
 - Audit logging for scheduled close and notification commands
+- token-based authentication with username/password and Google sign-in
 - Archive filtering for historical analysis
 - Admin visibility for operations staff
 
@@ -150,6 +152,7 @@ FlowBit currently includes:
 - Pre-close overflow notifications
 - Collaborator-based approval reporting with period and sort options
 - Audit logging across key write flows and scheduled automation
+- token auth endpoints with Google sign-in support
 - Admin support for core operational entities
 - Scheduled close and notification management commands
 
@@ -228,6 +231,7 @@ FlowBit is not just a ledger tracker. Its differentiators are:
 - automated pre-close operational controls
 - collaborator-level approval reporting
 - operational audit visibility across user and system actions
+- multiple sign-in paths for operators without changing FlowBit tokens
 
 These features make it more operationally useful than a simple static ledger system.
 
