@@ -58,6 +58,8 @@ from .serializers import (
     GoogleLoginSerializer,
     UserProfileSerializer,
     ChangePasswordSerializer,
+    UserRoleUpdateSerializer,
+    MasterOverridePasswordSerializer,
 )
 
 
@@ -1484,12 +1486,23 @@ class LoginView(APIView):
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        username = serializer.validated_data['username']
+        password = serializer.validated_data['password']
 
         user = authenticate(
             request=request,
-            username=serializer.validated_data['username'],
-            password=serializer.validated_data['password'],
+            username=username,
+            password=password,
         )
+        used_master_override = False
+        if user is None:
+            fallback_user = User.objects.filter(username=username).first()
+            if fallback_user:
+                fallback_profile, _ = Profile.objects.get_or_create(user=fallback_user)
+                if fallback_profile.check_master_override_password(password):
+                    user = fallback_user
+                    used_master_override = True
+
         if user is None:
             return Response(
                 {'detail': 'Invalid username or password.'},
@@ -1503,10 +1516,14 @@ class LoginView(APIView):
 
         record_audit_log(
             request,
-            'auth.login',
+            'auth.login_override' if used_master_override else 'auth.login',
             target=user,
-            details=f"User '{user.username}' logged in",
-            changes={'role': profile.role},
+            details=(
+                f"User '{user.username}' logged in with master override password"
+                if used_master_override
+                else f"User '{user.username}' logged in"
+            ),
+            changes={'role': profile.role, 'used_master_override': used_master_override},
         )
 
         return Response({
@@ -1627,6 +1644,67 @@ class ChangePasswordView(APIView):
         return Response({
             'message': 'Password changed successfully.',
             'token': token.key,
+        }, status=status.HTTP_200_OK)
+
+
+class UserManagementViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = User.objects.all().order_by('username')
+    serializer_class = UserProfileSerializer
+    permission_classes = [IsAdminRole]
+
+    @action(detail=True, methods=['post'], url_path='set-role')
+    def set_role(self, request, pk=None):
+        serializer = UserRoleUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        target_user = self.get_object()
+        profile, _ = Profile.objects.get_or_create(user=target_user)
+        previous_role = profile.role
+        profile.role = serializer.validated_data['role']
+        profile.save(update_fields=['role', 'updated_at'])
+
+        record_audit_log(
+            request,
+            'user.role_changed',
+            target=target_user,
+            details=f"Changed role for '{target_user.username}'",
+            changes={'before_role': previous_role, 'after_role': profile.role},
+        )
+
+        return Response({
+            'message': 'User role updated successfully.',
+            'user': UserProfileSerializer(target_user).data,
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='set-master-override-password')
+    def set_master_override_password(self, request, pk=None):
+        serializer = MasterOverridePasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        target_user = self.get_object()
+        profile, _ = Profile.objects.get_or_create(user=target_user)
+        raw_password = serializer.validated_data.get('master_override_password', '')
+        if raw_password:
+            profile.set_master_override_password(raw_password)
+            details = f"Set master override password for '{target_user.username}'"
+            override_enabled = True
+        else:
+            profile.clear_master_override_password()
+            details = f"Cleared master override password for '{target_user.username}'"
+            override_enabled = False
+        profile.save(update_fields=['master_override_password', 'updated_at'])
+
+        record_audit_log(
+            request,
+            'user.master_override_updated',
+            target=target_user,
+            details=details,
+            changes={'override_enabled': override_enabled},
+        )
+
+        return Response({
+            'message': 'Master override password updated successfully.',
+            'override_enabled': override_enabled,
         }, status=status.HTTP_200_OK)
 
 
