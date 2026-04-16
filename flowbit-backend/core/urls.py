@@ -11,11 +11,15 @@ from .views import (
     AuditLogViewSet,
     CollaboratorViewSet,
     UserManagementViewSet,
+    DashboardReportView,
+    IdentifierCapacityReportView,
     LoginView,
     GoogleLoginView,
     LogoutView,
     MeView,
     ChangePasswordView,
+    ForgotPasswordView,
+    ResetPasswordConfirmView,
     TicketListView,
     TicketDetailView
 )
@@ -40,6 +44,11 @@ urlpatterns = [
     path('auth/logout/', LogoutView.as_view(), name='auth-logout'),
     path('auth/me/', MeView.as_view(), name='auth-me'),
     path('auth/change-password/', ChangePasswordView.as_view(), name='auth-change-password'),
+    path('auth/forgot-password/', ForgotPasswordView.as_view(), name='auth-forgot-password'),
+    path('auth/reset-password/', ResetPasswordConfirmView.as_view(), name='auth-reset-password'),
+
+    path('reports/dashboard/', DashboardReportView.as_view(), name='report-dashboard'),
+    path('reports/identifiers/capacity/', IdentifierCapacityReportView.as_view(), name='report-identifier-capacity'),
 
     # Ticket creation (multiple transactions in one request)
     path('tickets/create-with-items/', CreateTicketWithTransactions.as_view(), name='create-ticket-with-items'),
