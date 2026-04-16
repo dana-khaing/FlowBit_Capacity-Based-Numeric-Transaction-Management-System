@@ -10,6 +10,7 @@ from .views import (
     OverflowNotificationViewSet,
     AuditLogViewSet,
     CollaboratorViewSet,
+    UserManagementViewSet,
     LoginView,
     GoogleLoginView,
     LogoutView,
@@ -28,6 +29,7 @@ router.register(r'overflows', OverflowViewSet)
 router.register(r'overflow-notifications', OverflowNotificationViewSet)
 router.register(r'audit-logs', AuditLogViewSet)
 router.register(r'collaborators', CollaboratorViewSet)
+router.register(r'users', UserManagementViewSet, basename='user-management')
 
 urlpatterns = [
     # All router endpoints (ledgers, identifiers, transactions, overflows)
