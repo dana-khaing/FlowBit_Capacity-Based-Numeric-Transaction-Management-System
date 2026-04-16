@@ -520,3 +520,92 @@ class LedgerArchiveAPITests(APITestCase):
         )
         blocked_overflow = Overflow.objects.get(transaction=blocked_tx)
         self.assertEqual(blocked_overflow.excess_amount, Decimal('50.00'))
+
+    def test_allocation_preview_uses_priority_by_default(self):
+        backup_ledger = Ledger.objects.create(
+            period=self.active_period,
+            name='Backup Ledger',
+            end_date=self.active_period.end_date,
+            limit_per_identifier=Decimal('100.00'),
+            priority=2,
+            is_active=True,
+        )
+
+        response = self.client.post('/api/transactions/allocation-preview/', {
+            'identifier': self.identifier.id,
+            'total_amount': '180.00',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['overflow_amount'], '0.00')
+        self.assertEqual(response.data['ledger_allocations'][0]['ledger_id'], self.active_ledger.id)
+        self.assertEqual(response.data['ledger_allocations'][0]['allocated_amount'], '125.00')
+        self.assertEqual(response.data['ledger_allocations'][1]['ledger_id'], backup_ledger.id)
+        self.assertEqual(response.data['ledger_allocations'][1]['allocated_amount'], '55.00')
+
+    def test_allocation_preview_supports_manual_amounts_and_feedback(self):
+        backup_ledger = Ledger.objects.create(
+            period=self.active_period,
+            name='Manual Backup Ledger',
+            end_date=self.active_period.end_date,
+            limit_per_identifier=Decimal('100.00'),
+            priority=2,
+            is_active=True,
+        )
+
+        response = self.client.post('/api/transactions/allocation-preview/', {
+            'identifier': self.identifier.id,
+            'total_amount': '230.00',
+            'manual_allocations': [
+                {'ledger': self.active_ledger.id, 'amount': '150.00'},
+                {'ledger': backup_ledger.id, 'amount': '50.00'},
+            ],
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['ledger_allocations'][0]['allocated_amount'], '125.00')
+        self.assertEqual(response.data['ledger_allocations'][0]['overflow_amount'], '25.00')
+        self.assertFalse(response.data['ledger_allocations'][0]['fits'])
+        self.assertEqual(response.data['ledger_allocations'][1]['allocated_amount'], '50.00')
+        self.assertEqual(response.data['overflow_amount'], '30.00')
+        self.assertTrue(response.data['has_overflow'])
+
+    def test_transaction_create_rejects_overflow_when_allow_overflow_is_false(self):
+        response = self.client.post('/api/transactions/', {
+            'identifier': self.identifier.id,
+            'total_amount': '250.00',
+            'allow_overflow': False,
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['detail'], 'Transaction does not fit available capacity.')
+        self.assertEqual(response.data['preview']['overflow_amount'], '125.00')
+
+    def test_transaction_create_supports_manual_allocation_selection(self):
+        backup_ledger = Ledger.objects.create(
+            period=self.active_period,
+            name='Selected Ledger',
+            end_date=self.active_period.end_date,
+            limit_per_identifier=Decimal('100.00'),
+            priority=2,
+            is_active=True,
+        )
+
+        response = self.client.post('/api/transactions/', {
+            'identifier': self.identifier.id,
+            'total_amount': '230.00',
+            'manual_allocations': [
+                {'ledger': self.active_ledger.id, 'amount': '100.00'},
+                {'ledger': backup_ledger.id, 'amount': '80.00'},
+            ],
+            'allow_overflow': True,
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        transaction_id = response.data['id']
+        tx = Transaction.objects.get(id=transaction_id)
+        self.assertTrue(tx.allocations.filter(ledger=self.active_ledger, amount=Decimal('100.00')).exists())
+        self.assertTrue(tx.allocations.filter(ledger=backup_ledger, amount=Decimal('80.00')).exists())
+        overflow = Overflow.objects.get(transaction=tx)
+        self.assertEqual(overflow.excess_amount, Decimal('50.00'))
+        self.assertEqual(response.data['allocation_preview']['overflow_amount'], '50.00')
