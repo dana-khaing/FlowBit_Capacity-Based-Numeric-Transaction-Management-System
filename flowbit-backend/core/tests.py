@@ -639,6 +639,35 @@ class LedgerArchiveAPITests(APITestCase):
         self.assertEqual(response.data[0]['target_id'], self.active_period.id)
         self.assertEqual(response.data[0]['username'], self.approver.username)
 
+    def test_audit_logs_endpoint_requires_authentication(self):
+        response = self.client.get('/api/audit-logs/')
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_close_expired_periods_command_creates_audit_log(self):
+        self.active_period.close(closed_at=timezone.now())
+
+        expired_period = Period.objects.create(
+            name='Audit Expired Period',
+            start_date=timezone.make_aware(datetime(2025, 11, 1, 0, 0, 0)),
+            end_date=timezone.make_aware(datetime(2025, 11, 30, 23, 59, 59)),
+            is_open=True,
+        )
+        Ledger.objects.create(
+            period=expired_period,
+            name='Audit Expired Ledger',
+            end_date=expired_period.end_date,
+            limit_per_identifier=Decimal('100.00'),
+            priority=3,
+            is_active=True,
+        )
+
+        call_command('close_expired_periods')
+
+        audit_entry = AuditLog.objects.get(action='period.auto_closed', target_id=expired_period.id)
+        self.assertEqual(audit_entry.target_model, 'Period')
+        self.assertIn("Auto-closed period", audit_entry.details)
+
     def test_collaborator_export_transactions_uses_requested_format(self):
         tx1 = Transaction.objects.create(
             identifier=self.identifier,
