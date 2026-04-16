@@ -12,6 +12,7 @@ from core.models import (
     IdentifierCapacityAdjustment,
     Ledger,
     Overflow,
+    OverflowNotification,
     Ticket,
     Transaction,
 )
@@ -275,6 +276,7 @@ class LedgerArchiveAPITests(APITestCase):
         self.assertEqual(overflow.amount_to_approve, Decimal('50.00'))
         self.assertEqual(overflow.excess_amount, Decimal('50.00'))
         self.assertEqual(overflow.approved_at, now)
+        self.assertEqual(overflow.helper_name, 'system')
 
     def test_period_create_accepts_date_only_and_defaults_close_time(self):
         self.active_period.close(closed_at=timezone.now())
@@ -358,7 +360,7 @@ class LedgerArchiveAPITests(APITestCase):
 
         response = self.client.post(
             f'/api/overflows/{overflow.id}/approve/',
-            {'amount_to_approve': '180.00'},
+            {'amount_to_approve': '180.00', 'helper_name': 'Alice'},
             format='json'
         )
 
@@ -366,6 +368,7 @@ class LedgerArchiveAPITests(APITestCase):
         overflow.refresh_from_db()
         self.assertEqual(overflow.status, 'CSO')
         self.assertEqual(overflow.amount_to_approve, Decimal('180.00'))
+        self.assertEqual(overflow.helper_name, 'Alice')
 
         adjustment = IdentifierCapacityAdjustment.objects.get(overflow=overflow)
         self.assertEqual(adjustment.identifier, self.identifier)
@@ -374,6 +377,115 @@ class LedgerArchiveAPITests(APITestCase):
 
         reserve_ledger = Ledger.objects.get(period=self.active_period, is_capacity_reserve=True)
         self.assertEqual(reserve_ledger.limit_per_identifier, Decimal('0.00'))
+
+    def test_refunding_approved_overflow_only_adds_refund_capacity(self):
+        tx = Transaction.objects.create(
+            identifier=self.identifier,
+            total_amount=Decimal('250.00'),
+        )
+        overflow = Overflow.objects.get(transaction=tx)
+
+        approve_response = self.client.post(
+            f'/api/overflows/{overflow.id}/resolve/',
+            {
+                'action': 'approve',
+                'amount_to_approve': '180.00',
+                'helper_name': 'Alice',
+            },
+            format='json'
+        )
+        self.assertEqual(approve_response.status_code, status.HTTP_200_OK)
+
+        refund_response = self.client.post(
+            f'/api/overflows/{overflow.id}/resolve/',
+            {
+                'action': 'refund_overflow_only',
+                'helper_name': 'Bob',
+            },
+            format='json'
+        )
+        self.assertEqual(refund_response.status_code, status.HTTP_200_OK)
+
+        overflow.refresh_from_db()
+        self.assertEqual(overflow.status, Overflow.STATUS_REFUNDED)
+        self.assertEqual(overflow.helper_name, 'Bob')
+
+        adjustments = IdentifierCapacityAdjustment.objects.filter(overflow=overflow).order_by('created_at')
+        self.assertEqual(adjustments.count(), 2)
+        self.assertEqual(adjustments[0].amount, Decimal('55.00'))
+        self.assertEqual(adjustments[1].amount, Decimal('125.00'))
+        self.assertEqual(adjustments[1].adjustment_type, IdentifierCapacityAdjustment.TYPE_REFUND_CSO)
+
+    def test_refunding_transaction_reprocesses_next_pending_overflow(self):
+        tx1 = Transaction.objects.create(
+            identifier=self.identifier,
+            total_amount=Decimal('250.00'),
+        )
+        overflow1 = Overflow.objects.get(transaction=tx1)
+        approve_response = self.client.post(
+            f'/api/overflows/{overflow1.id}/resolve/',
+            {
+                'action': 'approve',
+                'amount_to_approve': '50.00',
+                'helper_name': 'Helper 1',
+            },
+            format='json'
+        )
+        self.assertEqual(approve_response.status_code, status.HTTP_200_OK)
+
+        tx2 = Transaction.objects.create(
+            identifier=self.identifier,
+            total_amount=Decimal('200.00'),
+        )
+        overflow2 = Overflow.objects.get(transaction=tx2)
+        self.assertEqual(overflow2.excess_amount, Decimal('200.00'))
+
+        refund_response = self.client.post(
+            f'/api/overflows/{overflow1.id}/resolve/',
+            {
+                'action': 'refund_transaction',
+                'helper_name': 'Helper 2',
+            },
+            format='json'
+        )
+        self.assertEqual(refund_response.status_code, status.HTTP_200_OK)
+
+        tx1.refresh_from_db()
+        self.assertTrue(tx1.is_refunded)
+        overflow2.refresh_from_db()
+        self.assertEqual(overflow2.status, Overflow.STATUS_TCSO)
+        self.assertEqual(overflow2.excess_amount, Decimal('25.00'))
+        self.assertTrue(
+            tx2.allocations.filter(
+                ledger__period=self.active_period,
+                amount=Decimal('125.00'),
+            ).exists()
+        )
+        self.assertTrue(
+            tx2.allocations.filter(
+                ledger__period=self.active_period,
+                ledger__is_capacity_reserve=True,
+                amount=Decimal('50.00'),
+            ).exists()
+        )
+
+    def test_notify_pending_overflows_command_creates_pre_close_notifications(self):
+        self.active_period.end_date = timezone.now() + timezone.timedelta(minutes=20)
+        self.active_period.save(update_fields=['end_date'])
+        self.active_ledger.end_date = self.active_period.end_date
+        self.active_ledger.save(update_fields=['end_date'])
+
+        tx = Transaction.objects.create(
+            identifier=self.identifier,
+            total_amount=Decimal('250.00'),
+        )
+        overflow = Overflow.objects.get(transaction=tx)
+
+        call_command('notify_pending_overflows')
+
+        notification = OverflowNotification.objects.get(overflow=overflow)
+        self.assertEqual(notification.period, self.active_period)
+        self.assertEqual(notification.notification_type, OverflowNotification.TYPE_PRE_CLOSE)
 
     def test_extra_approved_capacity_is_consumed_only_by_same_identifier(self):
         tx = Transaction.objects.create(
