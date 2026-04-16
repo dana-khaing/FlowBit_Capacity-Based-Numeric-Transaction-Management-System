@@ -43,7 +43,12 @@ from .models import (
     refund_transactions,
 )
 from .audit import record_audit_log, serialize_audit_value, snapshot_instance
-from .permissions import IsAdminRole, IsAuthenticatedReadOnlyOrAdminWrite
+from .permissions import (
+    IsAdminRole,
+    IsAuthenticatedReadOnlyOrAdminWriteOrOverride,
+    get_request_admin_override_profile,
+    is_admin_user,
+)
 from .serializers import (
     PeriodSerializer,
     LedgerSerializer,
@@ -232,7 +237,7 @@ def serialize_allocation_preview(preview):
 class PeriodViewSet(viewsets.ModelViewSet):
     queryset = Period.objects.all()
     serializer_class = PeriodSerializer
-    permission_classes = [IsAuthenticatedReadOnlyOrAdminWrite]
+    permission_classes = [IsAuthenticatedReadOnlyOrAdminWriteOrOverride]
 
     def perform_create(self, serializer):
         period = serializer.save()
@@ -379,7 +384,7 @@ class PeriodViewSet(viewsets.ModelViewSet):
 class LedgerViewSet(viewsets.ModelViewSet):
     queryset = Ledger.objects.filter(is_capacity_reserve=False)
     serializer_class = LedgerSerializer
-    permission_classes = [IsAuthenticatedReadOnlyOrAdminWrite]
+    permission_classes = [IsAuthenticatedReadOnlyOrAdminWriteOrOverride]
 
     def perform_create(self, serializer):
         ledger = serializer.save()
@@ -832,7 +837,7 @@ class LedgerViewSet(viewsets.ModelViewSet):
 class IdentifierViewSet(viewsets.ModelViewSet):
     queryset = Identifier.objects.all()
     serializer_class = IdentifierSerializer
-    permission_classes = [IsAuthenticatedReadOnlyOrAdminWrite]
+    permission_classes = [IsAuthenticatedReadOnlyOrAdminWriteOrOverride]
 
     def perform_create(self, serializer):
         identifier = serializer.save()
@@ -1204,9 +1209,17 @@ class OverflowViewSet(viewsets.ModelViewSet):
         overflow = self.get_object()
         action_name = (request.data.get('action') or '').strip().lower()
         helper_name = helper_name_from_request(request)
+        override_profile = get_request_admin_override_profile(request)
 
         if action_name in {'', 'approve'}:
             return self._approve_overflow(overflow, request)
+
+        if action_name in {'refund_overflow_only', 'refund_transaction', 'refund_ticket'}:
+            if not is_admin_user(request.user) and override_profile is None:
+                return Response(
+                    {"detail": "Admin override code is required for refund actions."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
 
         if action_name == 'refund_overflow_only':
             with db_transaction.atomic():
@@ -1683,6 +1696,11 @@ class UserManagementViewSet(viewsets.ReadOnlyModelViewSet):
 
         target_user = self.get_object()
         profile, _ = Profile.objects.get_or_create(user=target_user)
+        if profile.role != 'admin':
+            return Response(
+                {'detail': 'Master override password can only be configured for admin users.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         raw_password = serializer.validated_data.get('master_override_password', '')
         if raw_password:
             profile.set_master_override_password(raw_password)
