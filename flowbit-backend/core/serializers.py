@@ -1,6 +1,7 @@
 from datetime import datetime, time
 
 from django.contrib.auth.models import User
+from django.contrib.auth.password_validation import validate_password
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 from rest_framework import serializers
@@ -14,6 +15,7 @@ from .models import (
     OverflowNotification,
     AuditLog,
     Profile,
+    PasswordResetToken,
     Ticket,
 )
 
@@ -346,6 +348,24 @@ class GoogleLoginSerializer(serializers.Serializer):
 class ChangePasswordSerializer(serializers.Serializer):
     current_password = serializers.CharField(write_only=True)
     new_password = serializers.CharField(write_only=True)
+
+    def validate_new_password(self, value):
+        validate_password(value)
+        return value
+
+
+class ForgotPasswordSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+
+class ResetPasswordConfirmSerializer(serializers.Serializer):
+    selector = serializers.UUIDField()
+    token = serializers.CharField(write_only=True)
+    new_password = serializers.CharField(write_only=True)
+
+    def validate_new_password(self, value):
+        validate_password(value)
+        return value
 
 
 class UserRoleUpdateSerializer(serializers.Serializer):

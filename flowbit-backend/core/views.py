@@ -6,13 +6,14 @@ from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
 from django.contrib.auth.models import User
+from django.core.mail import send_mail
 from django.contrib.auth import authenticate
 from django.conf import settings
 from django.db import transaction as db_transaction, transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 from django.http import HttpResponse
-from django.db.models import Sum
+from django.db.models import Count, Q, Sum
 from django.core.exceptions import ValidationError
 from rest_framework.authtoken.models import Token
 from decimal import Decimal, InvalidOperation
@@ -35,6 +36,7 @@ from .models import (
     OverflowNotification,
     AuditLog,
     Profile,
+    PasswordResetToken,
     Ticket,
     LedgerAllocation,
     IdentifierCapacityAdjustment,
@@ -63,6 +65,8 @@ from .serializers import (
     GoogleLoginSerializer,
     UserProfileSerializer,
     ChangePasswordSerializer,
+    ForgotPasswordSerializer,
+    ResetPasswordConfirmSerializer,
     UserRoleUpdateSerializer,
     MasterOverridePasswordSerializer,
 )
@@ -84,6 +88,65 @@ def parse_period_value(value):
         return timezone.make_aware(parsed_datetime, timezone.get_current_timezone())
 
     return None
+
+
+def selected_period_from_request(request):
+    period_id = request.query_params.get('period_id')
+    if period_id:
+        try:
+            return Period.objects.get(id=period_id)
+        except (Period.DoesNotExist, ValueError):
+            return None
+    return Period.get_open_period()
+
+
+def period_transaction_queryset(period):
+    if period is None:
+        return Transaction.objects.all().distinct()
+
+    return Transaction.objects.filter(
+        Q(allocations__ledger__period=period) |
+        Q(
+            allocations__isnull=True,
+            timestamp__gte=period.start_date,
+            timestamp__lte=period.end_date,
+        )
+    ).distinct()
+
+
+def period_overflow_rows(period, identifier=None):
+    overflow_queryset = Overflow.objects.all()
+    if identifier is not None:
+        overflow_queryset = overflow_queryset.filter(transaction__identifier=identifier)
+
+    if period is not None:
+        overflow_queryset = overflow_queryset.filter(
+            Q(transaction__allocations__ledger__period=period) |
+            Q(
+                transaction__allocations__isnull=True,
+                transaction__timestamp__gte=period.start_date,
+                transaction__timestamp__lte=period.end_date,
+            )
+        )
+
+    return list(overflow_queryset.distinct())
+
+
+def build_password_reset_email_body(reset_token, raw_token):
+    frontend_url = getattr(settings, 'FRONTEND_PASSWORD_RESET_URL', '').strip()
+    body_lines = [
+        "FlowBit password reset request",
+        "",
+        f"Selector: {reset_token.selector}",
+        f"Token: {raw_token}",
+        f"Expires At: {timezone.localtime(reset_token.expires_at).isoformat()}",
+    ]
+    if frontend_url:
+        body_lines.extend([
+            "",
+            f"Reset URL: {frontend_url}?selector={reset_token.selector}&token={raw_token}",
+        ])
+    return "\n".join(body_lines)
 
 
 def apply_ledger_period_filters(queryset, query_params, ledger_prefix=''):
@@ -1491,6 +1554,229 @@ class CollaboratorViewSet(viewsets.ReadOnlyModelViewSet):
         response.write(buffer.getvalue())
         buffer.close()
         return response
+
+
+class DashboardReportView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        period = selected_period_from_request(request)
+        transaction_queryset = period_transaction_queryset(period)
+        ticket_queryset = Ticket.objects.all()
+        ledger_queryset = Ledger.objects.filter(is_capacity_reserve=False)
+        adjustment_queryset = IdentifierCapacityAdjustment.objects.all()
+        allocation_queryset = LedgerAllocation.objects.all()
+        overflow_rows = period_overflow_rows(period)
+
+        if period is not None:
+            ticket_queryset = ticket_queryset.filter(
+                transactions__in=transaction_queryset,
+            ).distinct()
+            ledger_queryset = ledger_queryset.filter(period=period)
+            adjustment_queryset = adjustment_queryset.filter(period=period)
+            allocation_queryset = allocation_queryset.filter(ledger__period=period)
+
+        pending_overflow_rows = [row for row in overflow_rows if row.status == Overflow.STATUS_TCSO]
+        approved_overflow_rows = [row for row in overflow_rows if row.status == Overflow.STATUS_CSO]
+        refunded_overflow_rows = [row for row in overflow_rows if row.status == Overflow.STATUS_REFUNDED]
+
+        data = {
+            'period': {
+                'id': period.id,
+                'name': period.name,
+                'is_open': period.is_open,
+                'start_date': period.start_date,
+                'end_date': period.end_date,
+            } if period is not None else None,
+            'ledger_count': ledger_queryset.count(),
+            'active_ledger_count': ledger_queryset.filter(is_active=True).count(),
+            'ticket_count': ticket_queryset.count(),
+            'transaction_count': transaction_queryset.count(),
+            'identifier_count': transaction_queryset.values('identifier').distinct().count(),
+            'total_transaction_amount': str(
+                transaction_queryset.aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
+            ),
+            'total_allocated_amount': str(
+                allocation_queryset.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+            ),
+            'pending_overflow_count': len(pending_overflow_rows),
+            'pending_overflow_amount': str(sum((row.excess_amount for row in pending_overflow_rows), Decimal('0.00'))),
+            'approved_overflow_count': len(approved_overflow_rows),
+            'approved_overflow_amount': str(sum((row.excess_amount for row in approved_overflow_rows), Decimal('0.00'))),
+            'refunded_overflow_count': len(refunded_overflow_rows),
+            'refunded_overflow_amount': str(sum((row.excess_amount for row in refunded_overflow_rows), Decimal('0.00'))),
+            'reserve_capacity_granted': str(
+                adjustment_queryset.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+            ),
+        }
+        return Response(data, status=status.HTTP_200_OK)
+
+
+class IdentifierCapacityReportView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        period = selected_period_from_request(request)
+        number_filter = (request.query_params.get('number') or '').strip()
+        has_overflow = (request.query_params.get('has_overflow') or '').strip().lower()
+
+        identifiers = Identifier.objects.all().order_by('number')
+        if number_filter:
+            identifiers = identifiers.filter(number__startswith=number_filter)
+
+        results = []
+        for identifier in identifiers:
+            if period is None:
+                total_capacity = Decimal('0.00')
+                normal_usage = Decimal('0.00')
+                reserve_granted = Decimal('0.00')
+                reserve_used = Decimal('0.00')
+                pending_overflow = identifier.current_overflow_amount
+                approved_overflow = identifier.confirmed_overflow_amount
+                refunded_overflow = sum(
+                    (
+                        row.excess_amount
+                        for row in period_overflow_rows(period=None, identifier=identifier)
+                        if row.status == Overflow.STATUS_REFUNDED
+                    ),
+                    Decimal('0.00'),
+                )
+            else:
+                total_capacity = Ledger.objects.filter(
+                    is_active=True,
+                    period=period,
+                    is_capacity_reserve=False,
+                ).aggregate(total=Sum('limit_per_identifier'))['total'] or Decimal('0.00')
+                normal_usage = LedgerAllocation.objects.filter(
+                    transaction__identifier=identifier,
+                    ledger__period=period,
+                    ledger__is_capacity_reserve=False,
+                ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+                reserve_granted = IdentifierCapacityAdjustment.objects.filter(
+                    identifier=identifier,
+                    period=period,
+                ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+                reserve_used = LedgerAllocation.objects.filter(
+                    transaction__identifier=identifier,
+                    ledger__period=period,
+                    ledger__is_capacity_reserve=True,
+                ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+                overflow_rows = period_overflow_rows(period=period, identifier=identifier)
+                pending_overflow = sum(
+                    (row.excess_amount for row in overflow_rows if row.status == Overflow.STATUS_TCSO),
+                    Decimal('0.00'),
+                )
+                approved_overflow = sum(
+                    (row.excess_amount for row in overflow_rows if row.status == Overflow.STATUS_CSO),
+                    Decimal('0.00'),
+                )
+                refunded_overflow = sum(
+                    (row.excess_amount for row in overflow_rows if row.status == Overflow.STATUS_REFUNDED),
+                    Decimal('0.00'),
+                )
+
+            remaining_capacity = total_capacity + reserve_granted - normal_usage - reserve_used
+            row = {
+                'id': identifier.id,
+                'number': identifier.number,
+                'total_capacity': str(total_capacity),
+                'normal_usage': str(normal_usage),
+                'reserve_granted': str(reserve_granted),
+                'reserve_used': str(reserve_used),
+                'remaining_capacity': str(remaining_capacity),
+                'pending_overflow_amount': str(pending_overflow),
+                'approved_overflow_amount': str(approved_overflow),
+                'refunded_overflow_amount': str(refunded_overflow),
+            }
+            if has_overflow == 'true' and pending_overflow <= Decimal('0.00') and approved_overflow <= Decimal('0.00'):
+                continue
+            if has_overflow == 'false' and (pending_overflow > Decimal('0.00') or approved_overflow > Decimal('0.00')):
+                continue
+            results.append(row)
+
+        return Response({
+            'period': {
+                'id': period.id,
+                'name': period.name,
+            } if period is not None else None,
+            'count': len(results),
+            'results': results,
+        }, status=status.HTTP_200_OK)
+
+
+class ForgotPasswordView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = ForgotPasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        email = serializer.validated_data['email'].strip().lower()
+        user = User.objects.filter(email__iexact=email).first()
+
+        if user and user.has_usable_password():
+            expiry_hours = getattr(settings, 'PASSWORD_RESET_TOKEN_EXPIRY_HOURS', 2)
+            reset_token, raw_token = PasswordResetToken.issue_for_user(user, expiry_hours=expiry_hours)
+            send_mail(
+                subject='FlowBit password reset',
+                message=build_password_reset_email_body(reset_token, raw_token),
+                from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@flowbit.local'),
+                recipient_list=[user.email],
+                fail_silently=True,
+            )
+            record_audit_log(
+                request,
+                'auth.password_reset_requested',
+                target=user,
+                details=f"Password reset requested for '{user.username}'",
+                changes={'email': user.email, 'selector': str(reset_token.selector)},
+            )
+
+        return Response(
+            {'message': 'If the email exists, a password reset message has been sent.'},
+            status=status.HTTP_200_OK,
+        )
+
+
+class ResetPasswordConfirmView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = ResetPasswordConfirmSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        reset_token = PasswordResetToken.objects.filter(
+            selector=serializer.validated_data['selector']
+        ).select_related('user').first()
+        if reset_token is None or not reset_token.check_token(serializer.validated_data['token']):
+            return Response(
+                {'detail': 'Reset token is invalid or expired.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user = reset_token.user
+        user.set_password(serializer.validated_data['new_password'])
+        user.save(update_fields=['password'])
+        reset_token.mark_used()
+        Token.objects.filter(user=user).delete()
+        token = Token.objects.create(user=user)
+
+        record_audit_log(
+            request,
+            'auth.password_reset_completed',
+            target=user,
+            details=f"Password reset completed for '{user.username}'",
+            changes={'selector': str(reset_token.selector)},
+        )
+
+        return Response(
+            {
+                'message': 'Password reset successfully.',
+                'token': token.key,
+                'user': UserProfileSerializer(user).data,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class LoginView(APIView):
