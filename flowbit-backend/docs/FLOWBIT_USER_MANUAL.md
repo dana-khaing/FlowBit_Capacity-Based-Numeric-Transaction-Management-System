@@ -27,6 +27,7 @@ Main objects:
 - `Overflow`
 - `IdentifierCapacityAdjustment`
 - `OverflowNotification`
+- `AuditLog`
 
 ## 3. Core Concepts
 
@@ -199,6 +200,16 @@ Admin pages are available for:
 - profiles
 - audit logs
 
+### 4.10 Audit Features
+
+- create audit logs for key write actions
+- capture acting user when authenticated
+- capture request IP address for API actions
+- capture target model and target id
+- capture change payloads for before/after or action metadata
+- create audit logs for scheduled close and notification commands
+- expose audit logs through authenticated read-only API
+
 ## 5. Main Business Workflows
 
 ### 5.1 Open A New Period
@@ -277,6 +288,13 @@ Effects:
 3. Choose sorting by identifier or approval time.
 4. Download CSV or PDF.
 5. Review the transaction rows and total approved amount.
+
+### 5.9 Review Audit Trail
+
+1. Open the audit log list.
+2. Filter by action, target model, target id, user, or date range.
+3. Review who performed the action and what changed.
+4. Use the audit trail when investigating period close, refund, overflow, or ledger actions.
 
 ## 6. How To Use FlowBit
 
@@ -703,9 +721,21 @@ Exports include:
 - summary statistics
 - collaborator name, period, approved rows, and total amount for collaborator reports
 
-## 13. API Endpoint Summary
+## 13. Audit Log API
 
-### 13.1 Periods
+- `GET /api/audit-logs/`
+- query params:
+  - `action`
+  - `target_model`
+  - `target_id`
+  - `user_id`
+  - `date_from`
+  - `date_to`
+- authentication is required
+
+## 14. API Endpoint Summary
+
+### 14.1 Periods
 
 - `GET /api/periods/`
 - `POST /api/periods/`
@@ -717,7 +747,7 @@ Exports include:
 - `POST /api/periods/{id}/close/`
 - `GET /api/periods/{id}/summary/`
 
-### 13.2 Ledgers
+### 14.2 Ledgers
 
 - `GET /api/ledgers/`
 - `POST /api/ledgers/`
@@ -731,7 +761,7 @@ Exports include:
 - `GET /api/ledgers/{id}/export-csv/`
 - `GET /api/ledgers/{id}/export-pdf/`
 
-### 13.3 Identifiers
+### 14.3 Identifiers
 
 - `GET /api/identifiers/`
 - `POST /api/identifiers/`
@@ -740,7 +770,7 @@ Exports include:
 - `PATCH /api/identifiers/{id}/`
 - `DELETE /api/identifiers/{id}/`
 
-### 13.4 Transactions
+### 14.4 Transactions
 
 - `GET /api/transactions/`
 - `POST /api/transactions/`
@@ -750,14 +780,14 @@ Exports include:
 - `DELETE /api/transactions/{id}/`
 - `POST /api/transactions/allocation-preview/`
 
-### 13.5 Collaborators
+### 14.5 Collaborators
 
 - `GET /api/collaborators/`
 - `GET /api/collaborators/{id}/`
 - `GET /api/collaborators/{id}/export-transactions/`
 - `GET /api/collaborators/{id}/export-transactions-pdf/`
 
-### 13.6 Overflows
+### 14.6 Overflows
 
 - `GET /api/overflows/`
 - `POST /api/overflows/`
@@ -770,12 +800,16 @@ Exports include:
 - `POST /api/overflows/{id}/approve/`
 - `POST /api/overflows/{id}/resolve/`
 
-### 13.7 Overflow Notifications
+### 14.7 Overflow Notifications
 
 - `GET /api/overflow-notifications/`
 - `GET /api/overflow-notifications/{id}/`
 
-### 13.8 Tickets
+### 14.8 Audit Logs
+
+- `GET /api/audit-logs/`
+
+### 14.9 Tickets
 
 - `POST /api/tickets/create-with-items/`
 - `GET /api/tickets/`
@@ -833,7 +867,7 @@ Identifiers:
 - pending overflow
 - confirmed overflow
 
-## 16. Operational Runbook
+## 17. Operational Runbook
 
 ### 16.1 Daily Start
 
@@ -849,6 +883,7 @@ Identifiers:
 4. Approve or refund exceptions.
 5. Use collaborator exports when approval activity needs review.
 6. Review reserve-capacity adjustments.
+7. Review audit logs for critical operational actions when needed.
 
 ### 16.3 Thirty Minutes Before Close
 
@@ -863,8 +898,9 @@ Identifiers:
 3. Confirm ledgers are archived.
 4. Export ledger reports if required.
 5. Export collaborator reports if approval audit is required.
+6. Review audit logs for close and notification actions if reconciliation is needed.
 
-## 17. Important Notes
+## 18. Important Notes
 
 - role data exists in the backend, but API permissions are still broad
 - reserve ledgers are internal implementation details
