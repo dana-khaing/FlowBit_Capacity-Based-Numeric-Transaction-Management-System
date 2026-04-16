@@ -7,6 +7,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
+from django.conf import settings
 from django.db import transaction as db_transaction, transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
@@ -53,6 +54,7 @@ from .serializers import (
     TicketSerializer,
     AuditLogSerializer,
     LoginSerializer,
+    GoogleLoginSerializer,
     UserProfileSerializer,
     ChangePasswordSerializer,
 )
@@ -113,6 +115,38 @@ def helper_name_from_request(request):
     if getattr(request, 'user', None) and request.user.is_authenticated:
         return request.user.username
     return DEFAULT_HELPER_NAME
+
+
+def _build_unique_username(email, fallback='google_user'):
+    base = (email.split('@')[0] if email else fallback).strip() or fallback
+    base = ''.join(char if char.isalnum() or char in {'_', '.'} else '_' for char in base).strip('._') or fallback
+    candidate = base[:150]
+    counter = 1
+    while User.objects.filter(username=candidate).exists():
+        suffix = f'_{counter}'
+        candidate = f"{base[:150-len(suffix)]}{suffix}"
+        counter += 1
+    return candidate
+
+
+def verify_google_id_token(id_token_value):
+    if not settings.GOOGLE_OAUTH_CLIENT_ID:
+        raise ValidationError("Google sign-in is not configured.")
+
+    try:
+        from google.auth.transport import requests as google_requests
+        from google.oauth2 import id_token as google_id_token
+    except ImportError as exc:
+        raise ValidationError("google-auth package is required for Google sign-in.") from exc
+
+    try:
+        return google_id_token.verify_oauth2_token(
+            id_token_value,
+            google_requests.Request(),
+            settings.GOOGLE_OAUTH_CLIENT_ID,
+        )
+    except Exception as exc:
+        raise ValidationError("Invalid Google ID token.") from exc
 
 
 def resolve_collaborators_for_approval(request, collaborator_ids):
@@ -1462,6 +1496,66 @@ class LoginView(APIView):
             target=user,
             details=f"User '{user.username}' logged in",
             changes={'role': profile.role},
+        )
+
+        return Response({
+            'token': token.key,
+            'user': UserProfileSerializer(user).data,
+        }, status=status.HTTP_200_OK)
+
+
+class GoogleLoginView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = GoogleLoginSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        payload = verify_google_id_token(serializer.validated_data['id_token'])
+        email = (payload.get('email') or '').strip().lower()
+        if not email:
+            return Response({'detail': 'Google account email is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        if payload.get('email_verified') is False:
+            return Response({'detail': 'Google account email is not verified.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        first_name = (payload.get('given_name') or '').strip()
+        last_name = (payload.get('family_name') or '').strip()
+
+        user = User.objects.filter(email__iexact=email).first()
+        if user is None:
+            user = User.objects.create_user(
+                username=_build_unique_username(email),
+                email=email,
+                first_name=first_name,
+                last_name=last_name,
+            )
+            user.set_unusable_password()
+            user.save(update_fields=['password'])
+        else:
+            updates = []
+            if first_name and user.first_name != first_name:
+                user.first_name = first_name
+                updates.append('first_name')
+            if last_name and user.last_name != last_name:
+                user.last_name = last_name
+                updates.append('last_name')
+            if not user.email:
+                user.email = email
+                updates.append('email')
+            if updates:
+                user.save(update_fields=updates)
+
+        profile, _ = Profile.objects.get_or_create(user=user)
+        profile.last_activity = timezone.now()
+        profile.save(update_fields=['last_activity', 'updated_at'])
+        token, _ = Token.objects.get_or_create(user=user)
+
+        record_audit_log(
+            request,
+            'auth.google_login',
+            target=user,
+            details=f"User '{user.username}' signed in with Google",
+            changes={'email': email, 'role': profile.role},
         )
 
         return Response({
