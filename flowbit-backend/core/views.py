@@ -1009,34 +1009,22 @@ class CollaboratorViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = CollaboratorSerializer
     permission_classes = []
 
-    @action(detail=True, methods=['get'], url_path='export-transactions')
-    def export_transactions(self, request, pk=None):
-        collaborator = self.get_object()
+    def _get_export_overflows(self, collaborator, request):
         period_id = request.query_params.get('period_id')
         sort_by = (request.query_params.get('sort_by') or 'identifier').strip().lower()
         sort_order = (request.query_params.get('sort_order') or 'asc').strip().lower()
 
         if sort_by not in {'identifier', 'approved_at'}:
-            return Response(
-                {"detail": "sort_by must be either 'identifier' or 'approved_at'."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            raise ValidationError("sort_by must be either 'identifier' or 'approved_at'.")
 
         if sort_order not in {'asc', 'desc'}:
-            return Response(
-                {"detail": "sort_order must be either 'asc' or 'desc'."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            raise ValidationError("sort_order must be either 'asc' or 'desc'.")
 
-        selected_period = None
         if period_id:
             try:
                 selected_period = Period.objects.get(id=period_id)
-            except Period.DoesNotExist:
-                return Response(
-                    {"detail": "Period not found."},
-                    status=status.HTTP_404_NOT_FOUND,
-                )
+            except Period.DoesNotExist as exc:
+                raise Period.DoesNotExist("Period not found.") from exc
         else:
             selected_period = Period.get_open_period()
 
@@ -1062,6 +1050,18 @@ class CollaboratorViewSet(viewsets.ReadOnlyModelViewSet):
         else:
             overflows = overflows.order_by(order_field, 'transaction__identifier__number', 'id')
 
+        return overflows, period_label
+
+    @action(detail=True, methods=['get'], url_path='export-transactions')
+    def export_transactions(self, request, pk=None):
+        collaborator = self.get_object()
+        try:
+            overflows, period_label = self._get_export_overflows(collaborator, request)
+        except ValidationError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except Period.DoesNotExist as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_404_NOT_FOUND)
+
         collaborator_name = collaborator.get_full_name().strip() or collaborator.username
         response = HttpResponse(content_type='text/csv')
         response['Content-Disposition'] = (
@@ -1086,6 +1086,87 @@ class CollaboratorViewSet(viewsets.ReadOnlyModelViewSet):
 
         writer.writerow([])
         writer.writerow(['Total Amount', '', f'{total_amount:.2f}'])
+        return response
+
+    @action(detail=True, methods=['get'], url_path='export-transactions-pdf')
+    def export_transactions_pdf(self, request, pk=None):
+        collaborator = self.get_object()
+        try:
+            overflows, period_label = self._get_export_overflows(collaborator, request)
+        except ValidationError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except Period.DoesNotExist as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_404_NOT_FOUND)
+
+        collaborator_name = collaborator.get_full_name().strip() or collaborator.username
+        response = HttpResponse(content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'attachment; filename="collaborator_{collaborator.id}_transactions.pdf"'
+        )
+
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5 * inch, bottomMargin=0.5 * inch)
+        styles = getSampleStyleSheet()
+        elements = []
+
+        title_style = ParagraphStyle(
+            'CollaboratorReportTitle',
+            parent=styles['Heading1'],
+            fontSize=18,
+            textColor=colors.HexColor('#1a1a1a'),
+            spaceAfter=18,
+            alignment=TA_CENTER,
+        )
+        elements.append(Paragraph(f"Collaborator Report: {collaborator_name}", title_style))
+        elements.append(Spacer(1, 0.2 * inch))
+
+        info_table = Table([
+            ['Name', collaborator_name],
+            ['Period', period_label],
+        ], colWidths=[1.5 * inch, 4.5 * inch])
+        info_table.setStyle(TableStyle([
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ]))
+        elements.append(info_table)
+        elements.append(Spacer(1, 0.25 * inch))
+
+        transaction_rows = [['Identifier', '', 'Amount']]
+        total_amount = Decimal('0.00')
+        for overflow in overflows:
+            approved_amount = overflow.amount_to_approve or overflow.excess_amount or Decimal('0.00')
+            total_amount += approved_amount
+            transaction_rows.append([
+                overflow.transaction.identifier.number,
+                '.',
+                f'{approved_amount:.2f}',
+            ])
+
+        transaction_table = Table(transaction_rows, colWidths=[1.2 * inch, 0.4 * inch, 1.8 * inch])
+        transaction_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ]))
+        elements.append(transaction_table)
+        elements.append(Spacer(1, 0.25 * inch))
+
+        total_table = Table([
+            ['Total Amount', f'{total_amount:.2f}'],
+        ], colWidths=[2.0 * inch, 1.8 * inch])
+        total_table.setStyle(TableStyle([
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ]))
+        elements.append(total_table)
+
+        doc.build(elements)
+        response.write(buffer.getvalue())
+        buffer.close()
         return response
 
 
