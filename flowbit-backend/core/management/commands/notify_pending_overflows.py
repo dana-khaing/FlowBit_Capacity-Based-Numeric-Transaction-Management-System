@@ -3,6 +3,7 @@ from datetime import timedelta
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
+from core.audit import record_system_audit_log
 from core.models import Overflow, OverflowNotification, Period, _period_overflow_filter
 
 
@@ -45,3 +46,9 @@ class Command(BaseCommand):
         self.stdout.write(
             self.style.SUCCESS(f'Created {created_count} pending overflow notification(s)')
         )
+        if created_count:
+            record_system_audit_log(
+                'overflow_notifications.generated',
+                details='Generated pre-close overflow notifications',
+                changes={'created_count': created_count},
+            )
