@@ -16,6 +16,7 @@ FlowBit is a period-based capacity allocation and overflow-resolution platform b
 - maintain operational discipline at period close
 - export ledger reports and support archive review
 - export collaborator approval reports in CSV and PDF
+- manage private collaborator contact lists per user
 - support token-based sign-in with Google account integration
 - enforce admin-controlled override security for sensitive actions
 
@@ -126,6 +127,7 @@ Business value:
 - Ticket-level batch transaction creation
 - Ledger report export in CSV and PDF
 - Collaborator approval export in CSV and PDF
+- Owner-scoped collaborator contact records
 - Pre-close overflow notification support
 - Period and ledger auto-close operations
 - Authenticated audit trail API for operational review
@@ -153,7 +155,7 @@ FlowBit currently includes:
 - Overflow refund at overflow, transaction, and ticket level
 - Identifier-specific reserve capacity adjustments
 - Pre-close overflow notifications
-- Collaborator-based approval reporting with period and sort options
+- Collaborator contact management and collaborator-based approval reporting with period and sort options
 - Audit logging across key write flows and scheduled automation
 - token auth endpoints with Google sign-in support
 - Admin support for core operational entities
@@ -204,12 +206,19 @@ When capacity returns:
 ### 8.6 Export Collaborator Approval Reports
 
 - export approved `CSO` activity for one collaborator
+- use collaborator contact records owned by the current user
 - filter the report by period
 - sort rows by identifier or approval time
 - download the report in CSV or PDF
 - review collaborator totals for audit and operational control
 
-### 8.7 Control Sensitive Operations
+### 8.7 Manage Collaborator Contacts
+
+- each authenticated user can maintain a private collaborator contact list
+- collaborator records store username, full name, email, and phone number
+- collaborators are not login accounts and do not have passwords or roles
+- overflow approvals and collaborator reports use these private contact records
+### 8.8 Control Sensitive Operations
 
 - admins manage roles, audit access, and override codes
 - override codes are configured only on admin accounts
@@ -243,6 +252,7 @@ FlowBit is not just a ledger tracker. Its differentiators are:
 - refund-triggered capacity recovery
 - automated pre-close operational controls
 - collaborator-level approval reporting
+- private collaborator contact ownership
 - operational audit visibility across user and system actions
 - multiple sign-in paths for operators without changing FlowBit tokens
 - admin override control for high-risk actions
@@ -275,6 +285,7 @@ Current control rules:
 
 - admins can manage periods, ledgers, identifiers, audit access, user roles, and admin override codes
 - normal authenticated users can perform daily operational workflows
+- normal authenticated users can manage only their own collaborator contact records
 - non-admin users cannot refund tickets or change protected period or ledger records unless they provide a valid admin override code
 - override codes only work when attached to admin accounts
 
