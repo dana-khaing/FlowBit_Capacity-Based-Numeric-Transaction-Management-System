@@ -10,8 +10,10 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 
+import os
 from pathlib import Path
 from decouple import config , Csv
+from .db_config import build_database_config
 
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -24,9 +26,6 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = config('SECRET_KEY')
 DEBUG = config('DEBUG', cast=bool, default=True)
-
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
 
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1', cast=Csv())
 
@@ -80,18 +79,8 @@ WSGI_APPLICATION = "flowbit_backend.wsgi.application"
 
 
 # Database
-# https://docs.djangoproject.com/en/4.2/ref/settings/#databases
-
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'flowbit_db',
-        'USER': 'dana_khaing',          
-        'PASSWORD': 'Dana1352$',
-        'HOST': 'localhost',
-        'PORT': '5432',
-    }
-}
+# Supabase is PostgreSQL, so Django can use it through normal Postgres settings.
+DATABASES = build_database_config(os.environ)
 
 
 # Password validation
