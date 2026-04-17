@@ -30,6 +30,8 @@ from flowbit_backend.db_config import build_database_config
 
 
 class DatabaseConfigTests(SimpleTestCase):
+    databases = {'default'}
+
     def test_build_database_config_from_database_url(self):
         config = build_database_config({
             'DATABASE_URL': 'postgresql://postgres:secret@db.example.supabase.co:5432/postgres?sslmode=require&connect_timeout=10',
