@@ -11,6 +11,7 @@ It includes:
 - workflow guidance
 - API endpoint summary
 - admin and operations guidance
+- deployment notes
 
 ## 2. System Overview
 
@@ -237,6 +238,12 @@ Admin pages are available for:
 - admin-only user list API
 - admin-only role change API
 - admin-only override code setup for admin accounts
+
+### 4.13 Deployment Features
+
+- environment-based PostgreSQL configuration
+- support for hosted PostgreSQL providers such as Supabase
+- database connection verification command
 
 ### 4.12 Role And Permission Features
 
@@ -759,6 +766,12 @@ python manage.py close_expired_ledgers --dry-run
 python manage.py notify_pending_overflows
 ```
 
+### 11.4 Check Database Connection
+
+```bash
+python manage.py check_database_connection
+```
+
 ## 12. Exporting Reports
 
 ### 12.1 CSV Export
@@ -1002,5 +1015,14 @@ Identifiers:
 - collaborators are private contact records, not auth users
 - reserve ledgers are internal implementation details
 - Google sign-in requires `GOOGLE_OAUTH_CLIENT_ID` to be configured in the backend environment
+- Supabase can be used as the hosted PostgreSQL database because FlowBit uses normal Django Postgres settings
 - notifications are stored in the database, not sent by email yet
 - refund behavior restores capacity through tracked adjustments rather than silent deletion
+
+## 20. Supabase Notes
+
+- Supabase is PostgreSQL, not a separate database engine
+- use either `DATABASE_URL` or the `DB_*` environment variables
+- enable SSL with `DB_SSLMODE=require` when needed
+- run `python manage.py migrate` against the Supabase database
+- verify the setup with `python manage.py check_database_connection`

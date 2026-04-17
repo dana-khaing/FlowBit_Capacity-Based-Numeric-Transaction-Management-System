@@ -19,6 +19,7 @@ FlowBit is a period-based capacity allocation and overflow-resolution platform b
 - manage private collaborator contact lists per user
 - support token-based sign-in with Google account integration
 - enforce admin-controlled override security for sensitive actions
+- support hosted PostgreSQL deployments such as Supabase
 
 FlowBit is suitable for controlled environments where capacity must be distributed carefully and exceptions must be tracked clearly.
 
@@ -135,6 +136,7 @@ Business value:
 - token-based authentication with username/password and Google sign-in
 - role-based API permission enforcement
 - admin-controlled override codes for sensitive actions
+- environment-based PostgreSQL configuration for hosted providers
 - Archive filtering for historical analysis
 - Admin visibility for operations staff
 
@@ -162,6 +164,7 @@ FlowBit currently includes:
 - Admin-only user listing and role management
 - Admin-only override code setup for admin accounts
 - Admin override code requirement for non-admin refunds and protected period or ledger changes
+- Supabase-compatible PostgreSQL configuration
 - Scheduled close and notification management commands
 
 ## 8. Business Workflows Supported
@@ -291,7 +294,18 @@ Current control rules:
 
 This gives the platform a practical dual-control model for sensitive actions without blocking normal day-to-day usage.
 
-## 13. Recommended Next Improvements
+## 13. Deployment Flexibility
+
+FlowBit now supports environment-based PostgreSQL configuration instead of hardcoded local credentials.
+
+This makes it suitable for:
+
+- local PostgreSQL
+- managed PostgreSQL
+- Supabase-hosted PostgreSQL
+
+Because Supabase is PostgreSQL, the backend logic and schema do not need to change. Only the connection settings and migration target change.
+## 14. Recommended Next Improvements
 
 The highest-value future improvements would be:
 
@@ -300,7 +314,7 @@ The highest-value future improvements would be:
 - delivery channels for notifications such as email or push
 - reporting for refunds and helper activity
 
-## 14. Conclusion
+## 15. Conclusion
 
 FlowBit is already a strong operational platform for period-based capacity allocation and overflow control. Its most valuable qualities are:
 
