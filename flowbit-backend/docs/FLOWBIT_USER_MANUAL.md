@@ -21,6 +21,7 @@ Main objects:
 - `Period`
 - `Ledger`
 - `Identifier`
+- `Collaborator`
 - `Ticket`
 - `Transaction`
 - `LedgerAllocation`
@@ -173,7 +174,7 @@ It is stored through `IdentifierCapacityAdjustment` and consumed through an inte
 - resolve overflow through one endpoint
 - store helper name
 - store collaborators
-- require collaborator selection from existing users during `TCSO -> CSO` approval
+- require collaborator selection from the current user's collaborator list during `TCSO -> CSO` approval
 - refund overflow only
 - refund whole transaction
 - refund whole ticket
@@ -182,7 +183,13 @@ It is stored through `IdentifierCapacityAdjustment` and consumed through an inte
 
 ### 4.7 Collaborator Features
 
+- create collaborators
+- update collaborators
+- delete collaborators
 - list collaborators for approval selection
+- keep collaborator records private to the current authenticated user
+- store collaborator username, full name, email, and phone number
+- do not create login accounts, passwords, or profiles for collaborators
 - export collaborator-approved transactions to CSV
 - export collaborator-approved transactions to PDF
 - filter collaborator exports by period
@@ -235,6 +242,7 @@ Admin pages are available for:
 
 - admins can manage periods, ledgers, identifiers, audit access, user roles, and override codes
 - normal authenticated users can perform daily transaction and overflow operations
+- normal authenticated users can manage their own collaborator contacts
 - non-admin users need a valid admin override code for protected period changes
 - non-admin users need a valid admin override code for protected ledger changes
 - non-admin users need a valid admin override code for refund actions
@@ -290,11 +298,17 @@ Recommended use:
 ### 5.5 Approve Overflow
 
 1. Review `TCSO`.
-2. Select one or more existing collaborators.
+2. Select one or more collaborators from your own collaborator list.
 3. Approve exact amount or higher amount.
-4. Current user cannot be one of the selected collaborators.
-5. The system stores current time as approval time.
-6. If approved amount is greater than overflow amount, the extra becomes reserve capacity for the identifier.
+4. The system stores current time as approval time.
+5. If approved amount is greater than overflow amount, the extra becomes reserve capacity for the identifier.
+
+### 5.5.1 Manage Collaborators
+
+1. Create a collaborator with `username`, `full_name`, `email`, and `phone_number`.
+2. Use that collaborator later during overflow approval.
+3. Only the user who created the collaborator can see, update, delete, or export from that collaborator record.
+4. Collaborators are contact records only. They do not log in to FlowBit.
 
 ### 5.6 Refund Overflow Or Transactions
 
@@ -567,7 +581,7 @@ Rules:
 - higher approval amount creates extra reserve capacity
 - collaborator names are used as helper names in the stored overflow record
 - current time becomes `approved_at`
-- current user cannot be selected as a collaborator
+- collaborator IDs must belong to the current user's private collaborator list
 
 ### 6.9 Resolve Overflow Through Unified Action
 
@@ -852,7 +866,11 @@ Login note:
 ### 15.5 Collaborators
 
 - `GET /api/collaborators/`
+- `POST /api/collaborators/`
 - `GET /api/collaborators/{id}/`
+- `PUT /api/collaborators/{id}/`
+- `PATCH /api/collaborators/{id}/`
+- `DELETE /api/collaborators/{id}/`
 - `GET /api/collaborators/{id}/export-transactions/`
 - `GET /api/collaborators/{id}/export-transactions-pdf/`
 
@@ -981,6 +999,7 @@ Identifiers:
 - role-based API permissions are enforced
 - master override passwords work only for admin accounts
 - non-admin users must provide a valid admin override code for protected period, ledger, and refund actions
+- collaborators are private contact records, not auth users
 - reserve ledgers are internal implementation details
 - Google sign-in requires `GOOGLE_OAUTH_CLIENT_ID` to be configured in the backend environment
 - notifications are stored in the database, not sent by email yet
