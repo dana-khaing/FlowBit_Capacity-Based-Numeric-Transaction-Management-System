@@ -1,3 +1,4 @@
+from io import StringIO
 from decimal import Decimal
 from datetime import datetime
 from unittest.mock import patch
@@ -5,6 +6,7 @@ from unittest.mock import patch
 from django.core.management import call_command
 from django.core import mail
 from django.contrib.auth.models import User
+from django.test import SimpleTestCase
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
@@ -24,6 +26,51 @@ from core.models import (
     Ticket,
     Transaction,
 )
+from flowbit_backend.db_config import build_database_config
+
+
+class DatabaseConfigTests(SimpleTestCase):
+    def test_build_database_config_from_database_url(self):
+        config = build_database_config({
+            'DATABASE_URL': 'postgresql://postgres:secret@db.example.supabase.co:5432/postgres?sslmode=require&connect_timeout=10',
+            'DB_CONN_MAX_AGE': '120',
+        })
+
+        self.assertEqual(config['default']['ENGINE'], 'django.db.backends.postgresql')
+        self.assertEqual(config['default']['NAME'], 'postgres')
+        self.assertEqual(config['default']['USER'], 'postgres')
+        self.assertEqual(config['default']['HOST'], 'db.example.supabase.co')
+        self.assertEqual(config['default']['PORT'], '5432')
+        self.assertEqual(config['default']['OPTIONS']['sslmode'], 'require')
+        self.assertEqual(config['default']['OPTIONS']['connect_timeout'], 10)
+        self.assertEqual(config['default']['CONN_MAX_AGE'], 120)
+
+    def test_build_database_config_from_discrete_env_values(self):
+        config = build_database_config({
+            'DB_NAME': 'flowbit_db',
+            'DB_USER': 'flowbit_user',
+            'DB_PASSWORD': 'secret',
+            'DB_HOST': 'localhost',
+            'DB_PORT': '5433',
+            'DB_SSLMODE': 'require',
+            'DB_DISABLE_SERVER_SIDE_CURSORS': 'true',
+        })
+
+        self.assertEqual(config['default']['NAME'], 'flowbit_db')
+        self.assertEqual(config['default']['USER'], 'flowbit_user')
+        self.assertEqual(config['default']['HOST'], 'localhost')
+        self.assertEqual(config['default']['PORT'], '5433')
+        self.assertEqual(config['default']['OPTIONS']['sslmode'], 'require')
+        self.assertTrue(config['default']['DISABLE_SERVER_SIDE_CURSORS'])
+
+    def test_check_database_connection_command_succeeds(self):
+        out = StringIO()
+
+        call_command('check_database_connection', stdout=out)
+
+        output = out.getvalue()
+        self.assertIn('Database configuration:', output)
+        self.assertIn('Database connection succeeded.', output)
 
 
 class AuthAPITests(APITestCase):
