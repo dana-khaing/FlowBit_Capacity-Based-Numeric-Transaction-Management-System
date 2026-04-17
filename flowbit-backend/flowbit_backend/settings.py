@@ -10,7 +10,6 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 
-import os
 from pathlib import Path
 from decouple import config , Csv
 from .db_config import build_database_config
@@ -80,7 +79,21 @@ WSGI_APPLICATION = "flowbit_backend.wsgi.application"
 
 # Database
 # Supabase is PostgreSQL, so Django can use it through normal Postgres settings.
-DATABASES = build_database_config(os.environ)
+DATABASE_ENV_KEYS = [
+    'DATABASE_URL',
+    'DB_ENGINE',
+    'DB_NAME',
+    'DB_USER',
+    'DB_PASSWORD',
+    'DB_HOST',
+    'DB_PORT',
+    'DB_SSLMODE',
+    'DB_CONNECT_TIMEOUT',
+    'DB_CONN_MAX_AGE',
+    'DB_DISABLE_SERVER_SIDE_CURSORS',
+]
+DATABASE_ENV = {key: config(key, default='') for key in DATABASE_ENV_KEYS}
+DATABASES = build_database_config(DATABASE_ENV)
 
 
 # Password validation
