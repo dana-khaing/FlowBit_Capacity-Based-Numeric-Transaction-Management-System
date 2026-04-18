@@ -10,8 +10,8 @@ const inter = Inter({
 const fraunces = Fraunces({ variable: "--font-fraunces", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "FlowBit Dashboard",
-  description: "Operational dashboard for FlowBit capacity, overflow, and audit workflows.",
+  title: "FlowBit Control Deck",
+  description: "Responsive FlowBit operations workspace for tickets, ledgers, overflow approvals, refunds, and audit control.",
 };
 
 export default function RootLayout({
