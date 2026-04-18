@@ -256,7 +256,7 @@ class CollaboratorManageSerializer(serializers.ModelSerializer):
 
 
 class OverflowNotificationSerializer(serializers.ModelSerializer):
-    overflow_id = serializers.IntegerField(source='overflow_id', read_only=True)
+    overflow_id = serializers.IntegerField(read_only=True)
     order_number = serializers.CharField(source='overflow.transaction.order_number', read_only=True)
     identifier_number = serializers.CharField(source='overflow.transaction.identifier.number', read_only=True)
 

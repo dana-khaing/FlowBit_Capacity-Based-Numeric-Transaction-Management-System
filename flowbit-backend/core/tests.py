@@ -75,6 +75,30 @@ class DatabaseConfigTests(SimpleTestCase):
         self.assertIn('Database connection succeeded.', output)
 
 
+class ApiDocumentationTests(APITestCase):
+    def test_openapi_schema_endpoint_returns_json(self):
+        response = self.client.get('/api/schema/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response['Content-Type'], 'application/vnd.oai.openapi+json')
+        self.assertIn('openapi', response.json())
+        self.assertIn('/api/auth/login/', response.json()['paths'])
+
+    def test_swagger_ui_page_renders(self):
+        response = self.client.get('/api/docs/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('SwaggerUIBundle', response.content.decode('utf-8'))
+        self.assertIn('/api/schema/', response.content.decode('utf-8'))
+
+    def test_redoc_page_renders(self):
+        response = self.client.get('/api/redoc/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('redoc', response.content.decode('utf-8').lower())
+        self.assertIn('/api/schema/', response.content.decode('utf-8'))
+
+
 class AuthAPITests(APITestCase):
     def setUp(self):
         self.user = User.objects.create_user(
