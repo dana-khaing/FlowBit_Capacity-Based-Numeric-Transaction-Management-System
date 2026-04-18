@@ -17,8 +17,12 @@ Including another URLconf
 
 from django.contrib import admin
 from django.urls import path, include
+from .api_docs import redoc_view, schema_view, swagger_ui_view
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('api/schema/', schema_view, name='api-schema'),
+    path('api/docs/', swagger_ui_view, name='api-docs'),
+    path('api/redoc/', redoc_view, name='api-redoc'),
     path('api/', include('core.urls')),
 ]
