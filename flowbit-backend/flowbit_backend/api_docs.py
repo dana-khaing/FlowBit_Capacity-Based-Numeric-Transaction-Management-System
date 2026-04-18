@@ -1,8 +1,18 @@
+from django.conf import settings
 from django.http import HttpResponse
 from django.urls import reverse
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import BasePermission
 from rest_framework.renderers import JSONOpenAPIRenderer
 from rest_framework.schemas import get_schema_view
+
+from core.permissions import is_admin_user
+
+
+class DocsAccessPermission(BasePermission):
+    def has_permission(self, request, view):
+        if settings.DEBUG:
+            return True
+        return bool(request.user and request.user.is_authenticated and is_admin_user(request.user))
 
 
 schema_view = get_schema_view(
@@ -10,12 +20,14 @@ schema_view = get_schema_view(
     description="OpenAPI schema for FlowBit backend endpoints.",
     version="1.0.0",
     public=True,
-    permission_classes=[AllowAny],
+    permission_classes=[DocsAccessPermission],
     renderer_classes=[JSONOpenAPIRenderer],
 )
 
 
 def swagger_ui_view(request):
+    if not settings.DEBUG and not is_admin_user(request.user):
+        return HttpResponse(status=403)
     schema_url = request.build_absolute_uri(reverse("api-schema"))
     html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -43,6 +55,8 @@ def swagger_ui_view(request):
 
 
 def redoc_view(request):
+    if not settings.DEBUG and not is_admin_user(request.user):
+        return HttpResponse(status=403)
     schema_url = request.build_absolute_uri(reverse("api-schema"))
     html = f"""<!DOCTYPE html>
 <html lang="en">
