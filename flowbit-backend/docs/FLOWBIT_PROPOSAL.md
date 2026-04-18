@@ -20,6 +20,7 @@ FlowBit is a period-based capacity allocation and overflow-resolution platform b
 - support token-based sign-in with Google account integration
 - enforce admin-controlled override security for sensitive actions
 - support hosted PostgreSQL deployments such as Supabase
+- expose OpenAPI schema and interactive API documentation
 
 FlowBit is suitable for controlled environments where capacity must be distributed carefully and exceptions must be tracked clearly.
 
@@ -165,6 +166,7 @@ FlowBit currently includes:
 - Admin-only override code setup for admin accounts
 - Admin override code requirement for non-admin refunds and protected period or ledger changes
 - Supabase-compatible PostgreSQL configuration
+- OpenAPI schema, Swagger UI, and ReDoc endpoints
 - Scheduled close and notification management commands
 
 ## 8. Business Workflows Supported

@@ -245,6 +245,12 @@ Admin pages are available for:
 - support for hosted PostgreSQL providers such as Supabase
 - database connection verification command
 
+### 4.14 API Documentation Features
+
+- OpenAPI schema endpoint
+- Swagger UI endpoint
+- ReDoc endpoint
+
 ### 4.12 Role And Permission Features
 
 - admins can manage periods, ledgers, identifiers, audit access, user roles, and override codes
@@ -920,6 +926,12 @@ Login note:
 - `GET /api/users/`
 - `POST /api/users/{id}/set-role/`
 - `POST /api/users/{id}/set-master-override-password/`
+
+### 15.11 API Documentation
+
+- `GET /api/schema/`
+- `GET /api/docs/`
+- `GET /api/redoc/`
 
 ## 14. Filtering Options
 
