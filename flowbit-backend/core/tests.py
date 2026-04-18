@@ -6,6 +6,7 @@ from unittest.mock import patch
 from django.core.management import call_command
 from django.core import mail
 from django.contrib.auth.models import User
+from django.test import override_settings
 from django.test import SimpleTestCase
 from django.utils import timezone
 from rest_framework import status
@@ -76,6 +77,13 @@ class DatabaseConfigTests(SimpleTestCase):
 
 
 class ApiDocumentationTests(APITestCase):
+    def setUp(self):
+        self.admin_user = User.objects.create_user(username='docs_admin', password='password123')
+        self.admin_user.profile.role = 'admin'
+        self.admin_user.profile.save(update_fields=['role', 'updated_at'])
+        self.regular_user = User.objects.create_user(username='docs_user', password='password123')
+
+    @override_settings(DEBUG=True)
     def test_openapi_schema_endpoint_returns_json(self):
         response = self.client.get('/api/schema/')
 
@@ -84,6 +92,7 @@ class ApiDocumentationTests(APITestCase):
         self.assertIn('openapi', response.json())
         self.assertIn('/api/auth/login/', response.json()['paths'])
 
+    @override_settings(DEBUG=True)
     def test_swagger_ui_page_renders(self):
         response = self.client.get('/api/docs/')
 
@@ -91,12 +100,35 @@ class ApiDocumentationTests(APITestCase):
         self.assertIn('SwaggerUIBundle', response.content.decode('utf-8'))
         self.assertIn('/api/schema/', response.content.decode('utf-8'))
 
+    @override_settings(DEBUG=True)
     def test_redoc_page_renders(self):
         response = self.client.get('/api/redoc/')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('redoc', response.content.decode('utf-8').lower())
         self.assertIn('/api/schema/', response.content.decode('utf-8'))
+
+    @override_settings(DEBUG=False)
+    def test_schema_requires_admin_when_debug_is_false(self):
+        unauthenticated_response = self.client.get('/api/schema/')
+        self.assertEqual(unauthenticated_response.status_code, status.HTTP_403_FORBIDDEN)
+
+        self.client.force_login(self.regular_user)
+        regular_response = self.client.get('/api/schema/')
+        self.assertEqual(regular_response.status_code, status.HTTP_403_FORBIDDEN)
+
+        self.client.force_login(self.admin_user)
+        admin_response = self.client.get('/api/schema/')
+        self.assertEqual(admin_response.status_code, status.HTTP_200_OK)
+
+    @override_settings(DEBUG=False)
+    def test_docs_pages_require_admin_when_debug_is_false(self):
+        self.assertEqual(self.client.get('/api/docs/').status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(self.client.get('/api/redoc/').status_code, status.HTTP_403_FORBIDDEN)
+
+        self.client.force_login(self.admin_user)
+        self.assertEqual(self.client.get('/api/docs/').status_code, status.HTTP_200_OK)
+        self.assertEqual(self.client.get('/api/redoc/').status_code, status.HTTP_200_OK)
 
 
 class AuthAPITests(APITestCase):
