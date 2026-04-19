@@ -10,7 +10,8 @@ import { AuthInput } from "./auth-input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { createAuthCookie, KEEP_SIGNED_IN_KEY } from "@/lib/auth";
+import { KEEP_SIGNED_IN_KEY } from "@/lib/auth";
+import { loginWithPassword } from "@/lib/auth-client";
 
 const accessNotes = [
   "Use your assigned account details to access your workspace.",
@@ -22,6 +23,9 @@ export function LoginFormCard() {
   const router = useRouter();
   const [keepSignedIn, setKeepSignedIn] = useState(false);
   const [showSignUpSuccess, setShowSignUpSuccess] = useState(false);
+  const [credentials, setCredentials] = useState({ username: "", password: "" });
+  const [errorMessage, setErrorMessage] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -40,13 +44,23 @@ export function LoginFormCard() {
     }
   }
 
-  function handleLogin() {
-    if (typeof document !== "undefined") {
-      document.cookie = createAuthCookie(keepSignedIn);
-    }
+  async function handleLogin() {
+    setErrorMessage("");
+    setIsSubmitting(true);
 
-    router.push("/");
-    router.refresh();
+    try {
+      await loginWithPassword({
+        username: credentials.username,
+        password: credentials.password,
+        remember: keepSignedIn,
+      });
+      router.push("/");
+      router.refresh();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to sign in.");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
@@ -71,9 +85,31 @@ export function LoginFormCard() {
         </div>
       ) : null}
 
+      {errorMessage ? (
+        <div className="mt-6 rounded-[20px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+          {errorMessage}
+        </div>
+      ) : null}
+
       <div className="mt-8 grid gap-4 md:grid-cols-2">
-        <AuthInput label="Username" type="text" placeholder="Enter your username" />
-        <AuthInput label="Password" type="password" placeholder="Enter your password" />
+        <AuthInput
+          label="Username"
+          type="text"
+          placeholder="Enter your username"
+          name="username"
+          autoComplete="username"
+          value={credentials.username}
+          onChange={(event) => setCredentials((current) => ({ ...current, username: event.target.value }))}
+        />
+        <AuthInput
+          label="Password"
+          type="password"
+          placeholder="Enter your password"
+          name="password"
+          autoComplete="current-password"
+          value={credentials.password}
+          onChange={(event) => setCredentials((current) => ({ ...current, password: event.target.value }))}
+        />
       </div>
 
       <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -88,11 +124,11 @@ export function LoginFormCard() {
       </div>
 
       <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-        <Button className="flex-1" size="lg" onClick={handleLogin}>
+        <Button className="flex-1" size="lg" onClick={handleLogin} disabled={isSubmitting}>
           <FontAwesomeIcon icon={faArrowRightToBracket} className="h-4 w-4" />
-          Log in to FlowBit
+          {isSubmitting ? "Signing in..." : "Log in to FlowBit"}
         </Button>
-        <Button variant="outline" className="flex-1" size="lg">
+        <Button variant="outline" className="flex-1" size="lg" disabled>
           <FontAwesomeIcon icon={faGoogle} className="h-4 w-4" />
           Continue with Google
         </Button>
