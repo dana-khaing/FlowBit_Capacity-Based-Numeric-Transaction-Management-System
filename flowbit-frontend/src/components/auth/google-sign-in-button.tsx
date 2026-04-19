@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 declare global {
   interface Window {
@@ -41,6 +41,27 @@ export function GoogleSignInButton({
   onError,
 }: GoogleSignInButtonProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const [googleReady, setGoogleReady] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (window.google?.accounts?.id) {
+      setGoogleReady(true);
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      if (window.google?.accounts?.id) {
+        setGoogleReady(true);
+        window.clearInterval(intervalId);
+      }
+    }, 250);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   useEffect(() => {
     const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
@@ -50,7 +71,7 @@ export function GoogleSignInButton({
       return;
     }
 
-    if (!window.google?.accounts?.id || !containerRef.current || disabled) {
+    if (!googleReady || !window.google?.accounts?.id || !containerRef.current || disabled) {
       return;
     }
 
@@ -77,7 +98,11 @@ export function GoogleSignInButton({
       width: 320,
       logo_alignment: "left",
     });
-  }, [disabled, onCredential, onError]);
+  }, [disabled, googleReady, onCredential, onError]);
 
-  return <div ref={containerRef} className={disabled ? "pointer-events-none opacity-60" : ""} />;
+  return (
+    <div className="flex min-h-11 items-center justify-center">
+      <div ref={containerRef} className={disabled ? "pointer-events-none opacity-60" : ""} />
+    </div>
+  );
 }
