@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowLeft, faArrowRightToBracket } from "@fortawesome/free-solid-svg-icons";
 import { faGoogle } from "@fortawesome/free-brands-svg-icons";
@@ -9,6 +10,7 @@ import { AuthInput } from "./auth-input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { createAuthCookie, KEEP_SIGNED_IN_KEY } from "@/lib/auth";
 
 const accessNotes = [
   "Use your assigned account details to access your workspace.",
@@ -16,10 +18,10 @@ const accessNotes = [
   "Google sign-in may be available for your organization depending on your access setup.",
 ];
 
-const KEEP_SIGNED_IN_KEY = "flowbit.keepSignedIn";
-
 export function LoginFormCard() {
+  const router = useRouter();
   const [keepSignedIn, setKeepSignedIn] = useState(false);
+  const [showSignUpSuccess, setShowSignUpSuccess] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -27,6 +29,7 @@ export function LoginFormCard() {
     }
 
     setKeepSignedIn(window.localStorage.getItem(KEEP_SIGNED_IN_KEY) === "true");
+    setShowSignUpSuccess(new URLSearchParams(window.location.search).get("signup") === "success");
   }, []);
 
   function handleKeepSignedInChange(nextChecked: boolean) {
@@ -35,6 +38,15 @@ export function LoginFormCard() {
     if (typeof window !== "undefined") {
       window.localStorage.setItem(KEEP_SIGNED_IN_KEY, String(nextChecked));
     }
+  }
+
+  function handleLogin() {
+    if (typeof document !== "undefined") {
+      document.cookie = createAuthCookie(keepSignedIn);
+    }
+
+    router.push("/");
+    router.refresh();
   }
 
   return (
@@ -53,6 +65,12 @@ export function LoginFormCard() {
         </Link>
       </div>
 
+      {showSignUpSuccess ? (
+        <div className="mt-6 rounded-[20px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+          Account created. Log in with your new details to continue.
+        </div>
+      ) : null}
+
       <div className="mt-8 grid gap-4 md:grid-cols-2">
         <AuthInput label="Username" type="text" placeholder="Enter your username" />
         <AuthInput label="Password" type="password" placeholder="Enter your password" />
@@ -70,7 +88,7 @@ export function LoginFormCard() {
       </div>
 
       <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-        <Button className="flex-1" size="lg">
+        <Button className="flex-1" size="lg" onClick={handleLogin}>
           <FontAwesomeIcon icon={faArrowRightToBracket} className="h-4 w-4" />
           Log in to FlowBit
         </Button>
@@ -82,7 +100,7 @@ export function LoginFormCard() {
 
       <p className="mt-5 text-sm text-stone-500">
         New to FlowBit?{" "}
-        <Link href="/sign-up" className="font-medium text-[#b66427]">
+        <Link href="/sign-up" className="font-medium text-[#b66427] underline underline-offset-4">
           Create an account
         </Link>
       </p>
