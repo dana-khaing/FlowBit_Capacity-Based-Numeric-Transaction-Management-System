@@ -63,6 +63,7 @@ from .serializers import (
     TicketSerializer,
     AuditLogSerializer,
     LoginSerializer,
+    RegisterSerializer,
     GoogleLoginSerializer,
     UserProfileSerializer,
     ChangePasswordSerializer,
@@ -1832,6 +1833,35 @@ class ResetPasswordConfirmView(APIView):
                 'user': UserProfileSerializer(user).data,
             },
             status=status.HTTP_200_OK,
+        )
+
+
+class RegisterView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = RegisterSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+
+        record_audit_log(
+            request,
+            'auth.register',
+            target=user,
+            details=f"User '{user.username}' registered",
+            changes={
+                'email': user.email,
+                'role': user.profile.role,
+                'phone_number': user.profile.phone_number,
+            },
+        )
+
+        return Response(
+            {
+                'message': 'Account created successfully. Please log in to continue.',
+                'user': UserProfileSerializer(user).data,
+            },
+            status=status.HTTP_201_CREATED,
         )
 
 
