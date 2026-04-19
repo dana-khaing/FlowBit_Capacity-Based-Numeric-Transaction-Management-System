@@ -1,3 +1,6 @@
+import { AppHeader } from "@/components/app/app-header";
+import { SessionGuard } from "@/components/auth/session-guard";
+
 const summaryCards = [
   {
     label: "Total entries today",
@@ -91,31 +94,14 @@ function barToneClass(tone: string) {
 
 export default function Home() {
   return (
-    <main className="min-h-screen bg-[#efede8] text-stone-900">
-      <div className="border-b border-stone-900/8 bg-white/90">
-        <div className="mx-auto flex w-full max-w-[1800px] items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-4">
-            <button className="flex h-11 w-11 items-center justify-center rounded-2xl border border-stone-900/10 bg-white text-2xl text-stone-500">
-              ≡
-            </button>
-            <div>
-              <p className="text-[15px] font-medium text-stone-500">FlowBit Admin</p>
-            </div>
+    <SessionGuard>
+        <main className="min-h-screen bg-[#efede8] text-stone-900">
+          <div className="border-b border-stone-900/8 bg-white/90">
+            <AppHeader />
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="hidden rounded-full border border-stone-900/10 bg-stone-50 px-4 py-2 text-sm text-stone-500 sm:block">
-              Period: Mar 1–16
-            </div>
-            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#d97a35] text-sm font-semibold text-white">
-              DK
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="mx-auto w-full max-w-[1800px] px-4 py-4 sm:px-6 lg:px-8 lg:py-8">
-        <section className="rounded-[28px] border border-stone-900/8 bg-white px-5 py-6 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:px-8 sm:py-8">
+          <div className="mx-auto w-full max-w-[1800px] px-4 py-4 sm:px-6 lg:px-8 lg:py-8">
+            <section className="rounded-[28px] border border-stone-900/8 bg-white px-5 py-6 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:px-8 sm:py-8">
           <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
             <div>
               <p className="text-sm font-medium uppercase tracking-[0.2em] text-stone-400">Next Draw</p>
@@ -132,9 +118,9 @@ export default function Home() {
               <p className="mt-5 text-xl font-light text-stone-400">Previous: 456 · 1 Mar 2026</p>
             </div>
           </div>
-        </section>
+            </section>
 
-        <section className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <section className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {summaryCards.map((card) => (
             <article
               key={card.label}
@@ -145,9 +131,9 @@ export default function Home() {
               <p className="mt-2 text-[15px] text-stone-400">{card.meta}</p>
             </article>
           ))}
-        </section>
+            </section>
 
-        <section className="mt-5 grid gap-5 2xl:grid-cols-3">
+            <section className="mt-5 grid gap-5 2xl:grid-cols-3">
           <article className="rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6">
             <div className="flex items-center gap-3">
               <span className="h-3 w-3 rounded-full bg-lime-600" />
@@ -218,9 +204,9 @@ export default function Home() {
               ))}
             </div>
           </article>
-        </section>
+            </section>
 
-        <section className="mt-8 grid gap-8 border-t border-stone-900/8 pt-8 md:grid-cols-2 xl:grid-cols-4">
+            <section className="mt-8 grid gap-8 border-t border-stone-900/8 pt-8 md:grid-cols-2 xl:grid-cols-4">
           {footerGroups.map((group) => (
             <div key={group.title}>
               <h3 className="text-[17px] font-medium uppercase tracking-[0.08em] text-stone-500">{group.title}</h3>
@@ -231,8 +217,9 @@ export default function Home() {
               </ul>
             </div>
           ))}
-        </section>
-      </div>
-    </main>
+            </section>
+          </div>
+        </main>
+    </SessionGuard>
   );
 }
