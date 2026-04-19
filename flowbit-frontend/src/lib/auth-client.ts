@@ -94,6 +94,16 @@ export async function loginWithPassword(payload: { username: string; password: s
   return response;
 }
 
+export async function loginWithGoogle(payload: { idToken: string; remember: boolean }) {
+  const { remember, idToken } = payload;
+  const response = await apiRequest<LoginResponse>("/auth/google/", {
+    method: "POST",
+    body: JSON.stringify({ id_token: idToken }),
+  });
+  setStoredSession(response.token, response.user, remember);
+  return response;
+}
+
 export async function registerAccount(payload: RegisterPayload) {
   return apiRequest<{ message: string; user: AuthUser }>("/auth/register/", {
     method: "POST",

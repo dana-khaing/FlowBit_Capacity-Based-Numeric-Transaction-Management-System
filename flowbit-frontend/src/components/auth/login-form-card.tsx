@@ -1,17 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowLeft, faArrowRightToBracket } from "@fortawesome/free-solid-svg-icons";
-import { faGoogle } from "@fortawesome/free-brands-svg-icons";
 import Link from "next/link";
 import { AuthInput } from "./auth-input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { KEEP_SIGNED_IN_KEY } from "@/lib/auth";
-import { loginWithPassword } from "@/lib/auth-client";
+import { loginWithGoogle, loginWithPassword } from "@/lib/auth-client";
+import { GoogleSignInButton } from "./google-sign-in-button";
 
 const accessNotes = [
   "Use your assigned account details to access your workspace.",
@@ -62,6 +62,31 @@ export function LoginFormCard() {
       setIsSubmitting(false);
     }
   }
+
+  const handleGoogleCredential = useCallback(
+    async (credential: string) => {
+      setErrorMessage("");
+      setIsSubmitting(true);
+
+      try {
+        await loginWithGoogle({
+          idToken: credential,
+          remember: keepSignedIn,
+        });
+        router.push("/");
+        router.refresh();
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : "Unable to sign in with Google.");
+      } finally {
+        setIsSubmitting(false);
+      }
+    },
+    [keepSignedIn, router],
+  );
+
+  const handleGoogleError = useCallback((message: string) => {
+    setErrorMessage(message);
+  }, []);
 
   return (
     <Card className="mt-5 bg-white/82 p-5 shadow-[0_18px_50px_rgba(73,52,26,0.08)] backdrop-blur sm:p-8 lg:mt-0 lg:w-[54%]">
@@ -128,10 +153,13 @@ export function LoginFormCard() {
           <FontAwesomeIcon icon={faArrowRightToBracket} className="h-4 w-4" />
           {isSubmitting ? "Signing in..." : "Log in to FlowBit"}
         </Button>
-        <Button variant="outline" className="flex-1" size="lg" disabled>
-          <FontAwesomeIcon icon={faGoogle} className="h-4 w-4" />
-          Continue with Google
-        </Button>
+        <div className="flex flex-1 items-center justify-center rounded-[20px] border border-stone-900/10 bg-white px-4 py-3">
+          <GoogleSignInButton
+            disabled={isSubmitting}
+            onCredential={handleGoogleCredential}
+            onError={handleGoogleError}
+          />
+        </div>
       </div>
 
       <p className="mt-5 text-sm text-stone-500">
