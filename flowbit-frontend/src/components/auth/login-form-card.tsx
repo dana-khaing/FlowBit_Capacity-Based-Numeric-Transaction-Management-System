@@ -43,8 +43,8 @@ export function LoginFormCard() {
           Keep me signed in on this device
         </label>
 
-        <Link href="#" className="text-sm font-medium text-[#b66427]">
-          Forget password
+        <Link href="/forgot-password" className="text-sm font-medium text-[#b66427]">
+          Forgot password?
         </Link>
       </div>
 
@@ -58,6 +58,13 @@ export function LoginFormCard() {
           Continue with Google
         </Button>
       </div>
+
+      <p className="mt-5 text-sm text-stone-500">
+        New to FlowBit?{" "}
+        <Link href="/sign-up" className="font-medium text-[#b66427]">
+          Create an account
+        </Link>
+      </p>
 
       <Card className="mt-8 rounded-[24px] bg-[#f5f1ea]">
         <CardContent className="p-5">
