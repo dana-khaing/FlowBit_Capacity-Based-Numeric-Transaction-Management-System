@@ -18,7 +18,7 @@ const authHighlights = [
 ];
 
 const infoCards = [
-  { label: "Workspace", value: "FlowBit Admin" },
+  { label: "Workspace", value: "FlowBit" },
   { label: "Access", value: "Secure sign-in" },
   { label: "Support", value: "Need help? Contact your administrator" },
 ];
