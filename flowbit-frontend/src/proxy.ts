@@ -6,7 +6,7 @@ const authRoutes = new Set(["/login", "/sign-in", "/forgot-password", "/sign-up"
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const hasSession = request.cookies.get(AUTH_COOKIE_NAME)?.value === "active";
+  const hasSession = Boolean(request.cookies.get(AUTH_COOKIE_NAME)?.value);
   const isAuthRoute = authRoutes.has(pathname);
 
   if (!hasSession && !isAuthRoute) {
