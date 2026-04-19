@@ -1,11 +1,13 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowLeft, faEnvelope } from "@fortawesome/free-solid-svg-icons";
 import { AuthInput } from "./auth-input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { requestPasswordReset } from "@/lib/auth-client";
 
 const recoveryNotes = [
   "Enter the email address linked to your account.",
@@ -14,6 +16,26 @@ const recoveryNotes = [
 ];
 
 export function ForgotPasswordFormCard() {
+  const [email, setEmail] = useState("");
+  const [message, setMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  async function handlePasswordReset() {
+    setErrorMessage("");
+    setMessage("");
+    setIsSubmitting(true);
+
+    try {
+      const response = await requestPasswordReset(email);
+      setMessage(response.message);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to request password reset.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
   return (
     <Card className="mt-5 bg-white/82 p-5 shadow-[0_18px_50px_rgba(73,52,26,0.08)] backdrop-blur sm:p-8 lg:mt-0 lg:w-[54%]">
       <div className="flex items-center justify-between gap-3">
@@ -36,13 +58,33 @@ export function ForgotPasswordFormCard() {
       </p>
 
       <div className="mt-8">
-        <AuthInput label="Email address" type="text" placeholder="Enter your email address" />
+        <AuthInput
+          label="Email address"
+          type="text"
+          placeholder="Enter your email address"
+          name="email"
+          autoComplete="email"
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+        />
       </div>
 
+      {message ? (
+        <div className="mt-6 rounded-[20px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+          {message}
+        </div>
+      ) : null}
+
+      {errorMessage ? (
+        <div className="mt-6 rounded-[20px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+          {errorMessage}
+        </div>
+      ) : null}
+
       <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-        <Button className="flex-1" size="lg">
+        <Button className="flex-1" size="lg" onClick={handlePasswordReset} disabled={isSubmitting}>
           <FontAwesomeIcon icon={faEnvelope} className="h-4 w-4" />
-          Send recovery email
+          {isSubmitting ? "Sending..." : "Send recovery email"}
         </Button>
         <Link
           href="/login"
