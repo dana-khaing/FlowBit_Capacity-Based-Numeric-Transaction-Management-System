@@ -348,15 +348,64 @@ class ProfileSerializer(serializers.ModelSerializer):
 
 class UserProfileSerializer(serializers.ModelSerializer):
     role = serializers.CharField(source='profile.role', read_only=True)
+    phone_number = serializers.CharField(source='profile.phone_number', read_only=True)
+    full_name = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ['id', 'username', 'first_name', 'last_name', 'email', 'role']
+        fields = ['id', 'username', 'first_name', 'last_name', 'full_name', 'email', 'role', 'phone_number']
+
+    def get_full_name(self, obj):
+        return obj.get_full_name().strip()
 
 
 class LoginSerializer(serializers.Serializer):
     username = serializers.CharField()
     password = serializers.CharField(write_only=True)
+
+
+class RegisterSerializer(serializers.Serializer):
+    full_name = serializers.CharField(max_length=150)
+    username = serializers.CharField(max_length=150)
+    email = serializers.EmailField()
+    phone_number = serializers.CharField(max_length=50)
+    password = serializers.CharField(write_only=True)
+    confirm_password = serializers.CharField(write_only=True)
+
+    def validate_username(self, value):
+        normalized = value.strip()
+        if User.objects.filter(username__iexact=normalized).exists():
+            raise serializers.ValidationError('A user with this username already exists.')
+        return normalized
+
+    def validate_email(self, value):
+        normalized = value.strip().lower()
+        if User.objects.filter(email__iexact=normalized).exists():
+            raise serializers.ValidationError('A user with this email already exists.')
+        return normalized
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        if attrs['password'] != attrs['confirm_password']:
+            raise serializers.ValidationError({'confirm_password': 'Passwords do not match.'})
+        validate_password(attrs['password'])
+        return attrs
+
+    def create(self, validated_data):
+        full_name = validated_data['full_name'].strip()
+        first_name, _, last_name = full_name.partition(' ')
+        user = User.objects.create_user(
+            username=validated_data['username'],
+            email=validated_data['email'],
+            password=validated_data['password'],
+            first_name=first_name.strip(),
+            last_name=last_name.strip(),
+        )
+        profile, _ = Profile.objects.get_or_create(user=user)
+        profile.phone_number = validated_data['phone_number'].strip()
+        profile.save(update_fields=['phone_number', 'updated_at'])
+        user.refresh_from_db()
+        return user
 
 
 class GoogleLoginSerializer(serializers.Serializer):
