@@ -1,7 +1,20 @@
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faDatabase, faKey, faShieldHalved } from "@fortawesome/free-solid-svg-icons";
+import { Card, CardContent } from "@/components/ui/card";
+
 const authHighlights = [
-  "Username/password login for daily operations",
-  "Google sign-in ready for frontend integration",
-  "Admin override and audit-protected backend flows",
+  {
+    icon: faKey,
+    text: "Username/password login for daily operations",
+  },
+  {
+    icon: faShieldHalved,
+    text: "Google sign-in ready for frontend integration",
+  },
+  {
+    icon: faDatabase,
+    text: "Admin override and audit-protected backend flows",
+  },
 ];
 
 const envChecks = [
@@ -12,7 +25,7 @@ const envChecks = [
 
 export function AuthMarketingPanel() {
   return (
-    <section className="rounded-[32px] border border-stone-900/8 bg-[#1f1712] p-6 text-stone-50 shadow-[0_20px_60px_rgba(54,30,8,0.18)] sm:p-8 lg:w-[46%]">
+    <Card className="bg-[#1f1712] p-6 text-stone-50 shadow-[0_20px_60px_rgba(54,30,8,0.18)] sm:p-8 lg:w-[46%]">
       <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/6 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-amber-200">
         FlowBit Workspace
       </div>
@@ -26,24 +39,30 @@ export function AuthMarketingPanel() {
 
       <div className="mt-8 grid gap-3 sm:grid-cols-3">
         {envChecks.map((item) => (
-          <div key={item.label} className="rounded-[22px] border border-white/10 bg-white/6 px-4 py-4">
-            <p className="text-[11px] uppercase tracking-[0.18em] text-stone-400">{item.label}</p>
-            <p className="mt-2 text-lg font-medium text-white">{item.value}</p>
-          </div>
+          <Card key={item.label} className="rounded-[22px] border-white/10 bg-white/6">
+            <CardContent className="px-4 py-4">
+              <p className="text-[11px] uppercase tracking-[0.18em] text-stone-400">{item.label}</p>
+              <p className="mt-2 text-lg font-medium text-white">{item.value}</p>
+            </CardContent>
+          </Card>
         ))}
       </div>
 
-      <div className="mt-8 rounded-[26px] border border-white/10 bg-white/6 p-5">
+      <Card className="mt-8 rounded-[26px] border-white/10 bg-white/6">
+        <CardContent className="p-5">
         <p className="text-[11px] uppercase tracking-[0.2em] text-stone-400">Included in backend</p>
         <ul className="mt-4 space-y-3 text-sm leading-6 text-stone-300">
           {authHighlights.map((item) => (
-            <li key={item} className="flex gap-3">
-              <span className="mt-2 h-2.5 w-2.5 rounded-full bg-amber-300" />
-              <span>{item}</span>
+            <li key={item.text} className="flex gap-3">
+              <span className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-full bg-white/8 text-amber-300">
+                <FontAwesomeIcon icon={item.icon} className="h-3.5 w-3.5" />
+              </span>
+              <span>{item.text}</span>
             </li>
           ))}
         </ul>
-      </div>
-    </section>
+        </CardContent>
+      </Card>
+    </Card>
   );
 }
