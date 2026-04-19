@@ -1,26 +1,26 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faDatabase, faKey, faShieldHalved } from "@fortawesome/free-solid-svg-icons";
+import { faChartLine, faClock, faUsers } from "@fortawesome/free-solid-svg-icons";
 import { Card, CardContent } from "@/components/ui/card";
 
 const authHighlights = [
   {
-    icon: faKey,
-    text: "Username/password login for daily operations",
+    icon: faChartLine,
+    text: "Monitor daily activity, capacity usage, and pending work from one place.",
   },
   {
-    icon: faShieldHalved,
-    text: "Google sign-in ready for frontend integration",
+    icon: faUsers,
+    text: "Review entries, collaborator activity, and reports in a consistent workspace.",
   },
   {
-    icon: faDatabase,
-    text: "Admin override and audit-protected backend flows",
+    icon: faClock,
+    text: "Stay aligned with the current period and respond quickly to operational changes.",
   },
 ];
 
-const envChecks = [
-  { label: "API", value: "Backend ready" },
-  { label: "Auth", value: "Token endpoints live" },
-  { label: "DB", value: "Supabase connected" },
+const infoCards = [
+  { label: "Workspace", value: "FlowBit Admin" },
+  { label: "Access", value: "Secure sign-in" },
+  { label: "Support", value: "Need help? Contact your administrator" },
 ];
 
 export function AuthMarketingPanel() {
@@ -30,15 +30,15 @@ export function AuthMarketingPanel() {
         FlowBit Workspace
       </div>
       <h1 className="mt-5 font-serif text-4xl leading-tight text-white sm:text-5xl">
-        Sign in to manage periods, ledgers, overflow approvals, and reports.
+        Sign in to continue to your FlowBit workspace.
       </h1>
       <p className="mt-4 max-w-xl text-sm leading-7 text-stone-300 sm:text-[15px]">
-        This screen should feel calm and direct. Operators can sign in with their FlowBit account now, and the same
-        entry point can later attach the Google flow without changing the layout.
+        Access your daily dashboard, review activity, and continue the work assigned to your account with a simple,
+        focused sign-in experience.
       </p>
 
       <div className="mt-8 grid gap-3 sm:grid-cols-3">
-        {envChecks.map((item) => (
+        {infoCards.map((item) => (
           <Card key={item.label} className="rounded-[22px] border-white/10 bg-white/6">
             <CardContent className="px-4 py-4">
               <p className="text-[11px] uppercase tracking-[0.18em] text-stone-400">{item.label}</p>
@@ -50,7 +50,7 @@ export function AuthMarketingPanel() {
 
       <Card className="mt-8 rounded-[26px] border-white/10 bg-white/6">
         <CardContent className="p-5">
-        <p className="text-[11px] uppercase tracking-[0.2em] text-stone-400">Included in backend</p>
+        <p className="text-[11px] uppercase tracking-[0.2em] text-stone-400">What You Can Do</p>
         <ul className="mt-4 space-y-3 text-sm leading-6 text-stone-300">
           {authHighlights.map((item) => (
             <li key={item.text} className="flex gap-3">

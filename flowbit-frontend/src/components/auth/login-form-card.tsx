@@ -10,9 +10,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 
 const accessNotes = [
-  "Regular users can access tickets, transactions, overflow approval, reports, and collaborator flows.",
-  "Admin users can also manage periods, ledgers, audit logs, and protected override actions.",
-  "Google sign-in can plug into the same screen once the frontend SDK is wired.",
+  "Use your assigned account details to access your workspace.",
+  "If you cannot sign in, use the password recovery option or contact your administrator.",
+  "Google sign-in may be available for your organization depending on your access setup.",
 ];
 
 export function LoginFormCard() {
@@ -63,10 +63,10 @@ export function LoginFormCard() {
         <CardContent className="p-5">
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
-            <p className="text-[11px] uppercase tracking-[0.18em] text-stone-500">Access Notes</p>
-            <h3 className="mt-2 text-lg font-semibold text-stone-950">Role-aware access behavior</h3>
+            <p className="text-[11px] uppercase tracking-[0.18em] text-stone-500">Sign-In Help</p>
+            <h3 className="mt-2 text-lg font-semibold text-stone-950">Need help accessing your account?</h3>
           </div>
-          <div className="rounded-full bg-white px-4 py-2 text-sm font-medium text-stone-600">Admin + User</div>
+          <div className="rounded-full bg-white px-4 py-2 text-sm font-medium text-stone-600">Support</div>
         </div>
 
         <ul className="mt-4 space-y-3 text-sm leading-6 text-stone-600">
