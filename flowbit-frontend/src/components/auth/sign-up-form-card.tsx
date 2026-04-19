@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowLeft, faUserPlus } from "@fortawesome/free-solid-svg-icons";
@@ -14,6 +15,12 @@ const signUpNotes = [
 ];
 
 export function SignUpFormCard() {
+  const router = useRouter();
+
+  function handleCreateAccount() {
+    router.push("/login?signup=success");
+  }
+
   return (
     <Card className="mt-5 bg-white/82 p-5 shadow-[0_18px_50px_rgba(73,52,26,0.08)] backdrop-blur sm:p-8 lg:mt-0 lg:w-[54%]">
       <div className="flex items-center justify-between gap-3">
@@ -40,7 +47,7 @@ export function SignUpFormCard() {
       </div>
 
       <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-        <Button className="flex-1" size="lg">
+        <Button className="flex-1" size="lg" onClick={handleCreateAccount}>
           <FontAwesomeIcon icon={faUserPlus} className="h-4 w-4" />
           Create account
         </Button>
