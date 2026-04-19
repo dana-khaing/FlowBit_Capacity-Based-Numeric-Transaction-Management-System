@@ -145,6 +145,51 @@ class AuthAPITests(APITestCase):
         self.assertTrue(Profile.objects.filter(user=self.user).exists())
         self.assertEqual(self.user.profile.role, 'user')
 
+    def test_register_creates_user_profile_and_returns_user_payload(self):
+        response = self.client.post('/api/auth/register/', {
+            'full_name': 'New Flow User',
+            'username': 'new_flow_user',
+            'email': 'new-user@example.com',
+            'phone_number': '+44-7000-000001',
+            'password': 'strong-pass-456',
+            'confirm_password': 'strong-pass-456',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        created_user = User.objects.get(username='new_flow_user')
+        self.assertEqual(created_user.email, 'new-user@example.com')
+        self.assertEqual(created_user.first_name, 'New')
+        self.assertEqual(created_user.last_name, 'Flow User')
+        self.assertEqual(created_user.profile.phone_number, '+44-7000-000001')
+        self.assertEqual(response.data['user']['phone_number'], '+44-7000-000001')
+        self.assertTrue(AuditLog.objects.filter(action='auth.register', target_id=created_user.id).exists())
+
+    def test_register_rejects_duplicate_email(self):
+        response = self.client.post('/api/auth/register/', {
+            'full_name': 'Another User',
+            'username': 'another_user',
+            'email': 'auth@example.com',
+            'phone_number': '+44-7000-000002',
+            'password': 'strong-pass-456',
+            'confirm_password': 'strong-pass-456',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('email', response.data)
+
+    def test_register_rejects_password_mismatch(self):
+        response = self.client.post('/api/auth/register/', {
+            'full_name': 'Mismatch User',
+            'username': 'mismatch_user',
+            'email': 'mismatch@example.com',
+            'phone_number': '+44-7000-000003',
+            'password': 'strong-pass-456',
+            'confirm_password': 'other-pass-789',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('confirm_password', response.data)
+
     def test_login_returns_token_and_user_payload(self):
         response = self.client.post('/api/auth/login/', {
             'username': 'auth_user',
