@@ -1,6 +1,10 @@
+import { config } from "@fortawesome/fontawesome-svg-core";
+import "@fortawesome/fontawesome-svg-core/styles.css";
 import type { Metadata } from "next";
 import { Fraunces, Inter } from "next/font/google";
 import "./globals.css";
+
+config.autoAddCss = false;
 
 const inter = Inter({
   variable: "--font-inter",
