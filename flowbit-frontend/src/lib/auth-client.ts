@@ -1,0 +1,149 @@
+import {
+  AUTH_TOKEN_STORAGE_KEY,
+  AUTH_USER_STORAGE_KEY,
+  clearAuthCookie,
+  createAuthCookie,
+} from "@/lib/auth";
+import { apiRequest } from "@/lib/api";
+
+export type AuthUser = {
+  id: number;
+  username: string;
+  first_name: string;
+  last_name: string;
+  full_name: string;
+  email: string;
+  role: string;
+  phone_number: string;
+};
+
+type LoginResponse = {
+  token: string;
+  user: AuthUser;
+};
+
+type RegisterPayload = {
+  full_name: string;
+  username: string;
+  email: string;
+  phone_number: string;
+  password: string;
+  confirm_password: string;
+};
+
+type PasswordResetPayload = {
+  selector: string;
+  token: string;
+  new_password: string;
+};
+
+function setStoredSession(token: string, user: AuthUser, remember: boolean) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token);
+  window.localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(user));
+  document.cookie = createAuthCookie(token, remember);
+}
+
+export function clearStoredSession() {
+  if (typeof window !== "undefined") {
+    window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+    window.localStorage.removeItem(AUTH_USER_STORAGE_KEY);
+    document.cookie = clearAuthCookie();
+  }
+}
+
+export function getStoredToken() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  return window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
+}
+
+export function getStoredUser(): AuthUser | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const raw = window.localStorage.getItem(AUTH_USER_STORAGE_KEY);
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(raw) as AuthUser;
+  } catch {
+    return null;
+  }
+}
+
+function authHeaders(token?: string): Record<string, string> {
+  return token ? { Authorization: `Token ${token}` } : {};
+}
+
+export async function loginWithPassword(payload: { username: string; password: string; remember: boolean }) {
+  const { remember, ...body } = payload;
+  const response = await apiRequest<LoginResponse>("/auth/login/", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  setStoredSession(response.token, response.user, remember);
+  return response;
+}
+
+export async function registerAccount(payload: RegisterPayload) {
+  return apiRequest<{ message: string; user: AuthUser }>("/auth/register/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function requestPasswordReset(email: string) {
+  return apiRequest<{ message: string }>("/auth/forgot-password/", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function resetPassword(payload: PasswordResetPayload, remember = false) {
+  const response = await apiRequest<LoginResponse & { message: string }>("/auth/reset-password/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  setStoredSession(response.token, response.user, remember);
+  return response;
+}
+
+export async function fetchCurrentUser() {
+  const token = getStoredToken();
+  if (!token) {
+    throw new Error("No session found.");
+  }
+
+  const response = await apiRequest<{ user: AuthUser }>("/auth/me/", {
+    method: "GET",
+    headers: authHeaders(token),
+  });
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(response.user));
+  }
+  return response.user;
+}
+
+export async function logoutFromBackend() {
+  const token = getStoredToken();
+  if (token) {
+    try {
+      await apiRequest<{ message: string }>("/auth/logout/", {
+        method: "POST",
+        headers: authHeaders(token),
+      });
+    } catch {
+      // Ignore logout failures and clear the local session anyway.
+    }
+  }
+  clearStoredSession();
+}
