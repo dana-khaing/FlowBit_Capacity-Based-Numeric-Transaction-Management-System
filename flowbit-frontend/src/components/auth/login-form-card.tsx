@@ -33,7 +33,7 @@ export function LoginFormCard() {
       </div>
 
       <div className="mt-8 grid gap-4 md:grid-cols-2">
-        <AuthInput label="Username" type="text" placeholder="LewisGod" />
+        <AuthInput label="Username" type="text" placeholder="Enter your username" />
         <AuthInput label="Password" type="password" placeholder="Enter your password" />
       </div>
 
@@ -44,7 +44,7 @@ export function LoginFormCard() {
         </label>
 
         <Link href="#" className="text-sm font-medium text-[#b66427]">
-          Forgot password?
+          Forget password
         </Link>
       </div>
 
