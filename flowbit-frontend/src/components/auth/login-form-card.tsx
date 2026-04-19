@@ -80,12 +80,12 @@ export function LoginFormCard() {
         </Button>
       </div>
 
-      <div className="mt-5 rounded-[20px] border border-dashed border-stone-900/10 bg-stone-50 px-4 py-4">
-        <p className="text-sm text-stone-500">New to FlowBit?</p>
-        <Link href="/sign-up" className="mt-2 inline-flex text-sm font-medium text-[#b66427]">
+      <p className="mt-5 text-sm text-stone-500">
+        New to FlowBit?{" "}
+        <Link href="/sign-up" className="font-medium text-[#b66427]">
           Create an account
         </Link>
-      </div>
+      </p>
 
       <Card className="mt-8 rounded-[24px] bg-[#f5f1ea]">
         <CardContent className="p-5">
