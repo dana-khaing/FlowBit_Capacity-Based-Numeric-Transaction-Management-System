@@ -1,0 +1,68 @@
+import Link from "next/link";
+import { AuthInput } from "./auth-input";
+
+const accessNotes = [
+  "Regular users can access tickets, transactions, overflow approval, reports, and collaborator flows.",
+  "Admin users can also manage periods, ledgers, audit logs, and protected override actions.",
+  "Google sign-in can plug into the same screen once the frontend SDK is wired.",
+];
+
+export function LoginFormCard() {
+  return (
+    <section className="mt-5 rounded-[32px] border border-stone-900/8 bg-white/82 p-5 shadow-[0_18px_50px_rgba(73,52,26,0.08)] backdrop-blur sm:p-8 lg:mt-0 lg:w-[54%]">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-[12px] font-semibold uppercase tracking-[0.2em] text-stone-500">Log In</p>
+          <h2 className="mt-2 text-3xl font-semibold text-stone-950">Welcome back</h2>
+        </div>
+        <Link
+          href="/"
+          className="rounded-full border border-stone-900/10 bg-stone-50 px-4 py-2 text-sm font-medium text-stone-600"
+        >
+          Back to dashboard
+        </Link>
+      </div>
+
+      <div className="mt-8 grid gap-4 md:grid-cols-2">
+        <AuthInput label="Username" type="text" placeholder="LewisGod" />
+        <AuthInput label="Password" type="password" placeholder="Enter your password" />
+      </div>
+
+      <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <label className="flex items-center gap-3 text-sm text-stone-500">
+          <input type="checkbox" className="h-4 w-4 rounded border-stone-300" />
+          Keep me signed in on this device
+        </label>
+
+        <Link href="#" className="text-sm font-medium text-[#b66427]">
+          Forgot password?
+        </Link>
+      </div>
+
+      <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+        <button className="flex-1 rounded-[20px] bg-stone-950 px-5 py-4 text-sm font-semibold text-white transition hover:bg-stone-800">
+          Log in to FlowBit
+        </button>
+        <button className="flex-1 rounded-[20px] border border-stone-900/10 bg-white px-5 py-4 text-sm font-semibold text-stone-700 transition hover:bg-stone-50">
+          Continue with Google
+        </button>
+      </div>
+
+      <div className="mt-8 rounded-[24px] border border-stone-900/8 bg-[#f5f1ea] p-5">
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.18em] text-stone-500">Access Notes</p>
+            <h3 className="mt-2 text-lg font-semibold text-stone-950">Role-aware access behavior</h3>
+          </div>
+          <div className="rounded-full bg-white px-4 py-2 text-sm font-medium text-stone-600">Admin + User</div>
+        </div>
+
+        <ul className="mt-4 space-y-3 text-sm leading-6 text-stone-600">
+          {accessNotes.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      </div>
+    </section>
+  );
+}
