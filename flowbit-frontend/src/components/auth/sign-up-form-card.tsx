@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -7,6 +8,7 @@ import { faArrowLeft, faUserPlus } from "@fortawesome/free-solid-svg-icons";
 import { AuthInput } from "./auth-input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { registerAccount } from "@/lib/auth-client";
 
 const signUpNotes = [
   "Fill in your account details carefully before submitting.",
@@ -16,9 +18,29 @@ const signUpNotes = [
 
 export function SignUpFormCard() {
   const router = useRouter();
+  const [formValues, setFormValues] = useState({
+    full_name: "",
+    username: "",
+    email: "",
+    phone_number: "",
+    password: "",
+    confirm_password: "",
+  });
+  const [errorMessage, setErrorMessage] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  function handleCreateAccount() {
-    router.push("/login?signup=success");
+  async function handleCreateAccount() {
+    setErrorMessage("");
+    setIsSubmitting(true);
+
+    try {
+      await registerAccount(formValues);
+      router.push("/login?signup=success");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to create your account.");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
@@ -38,18 +60,60 @@ export function SignUpFormCard() {
       </div>
 
       <div className="mt-8 grid gap-4 md:grid-cols-2">
-        <AuthInput label="Full name" type="text" placeholder="Enter your full name" />
-        <AuthInput label="Username" type="text" placeholder="Choose a username" />
-        <AuthInput label="Email address" type="text" placeholder="Enter your email address" />
-        <AuthInput label="Phone number" type="text" placeholder="Enter your phone number" />
-        <AuthInput label="Password" type="password" placeholder="Create a password" />
-        <AuthInput label="Confirm password" type="password" placeholder="Confirm your password" />
+        <AuthInput
+          label="Full name"
+          type="text"
+          placeholder="Enter your full name"
+          value={formValues.full_name}
+          onChange={(event) => setFormValues((current) => ({ ...current, full_name: event.target.value }))}
+        />
+        <AuthInput
+          label="Username"
+          type="text"
+          placeholder="Choose a username"
+          value={formValues.username}
+          onChange={(event) => setFormValues((current) => ({ ...current, username: event.target.value }))}
+        />
+        <AuthInput
+          label="Email address"
+          type="text"
+          placeholder="Enter your email address"
+          value={formValues.email}
+          onChange={(event) => setFormValues((current) => ({ ...current, email: event.target.value }))}
+        />
+        <AuthInput
+          label="Phone number"
+          type="text"
+          placeholder="Enter your phone number"
+          value={formValues.phone_number}
+          onChange={(event) => setFormValues((current) => ({ ...current, phone_number: event.target.value }))}
+        />
+        <AuthInput
+          label="Password"
+          type="password"
+          placeholder="Create a password"
+          value={formValues.password}
+          onChange={(event) => setFormValues((current) => ({ ...current, password: event.target.value }))}
+        />
+        <AuthInput
+          label="Confirm password"
+          type="password"
+          placeholder="Confirm your password"
+          value={formValues.confirm_password}
+          onChange={(event) => setFormValues((current) => ({ ...current, confirm_password: event.target.value }))}
+        />
       </div>
 
+      {errorMessage ? (
+        <div className="mt-6 rounded-[20px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+          {errorMessage}
+        </div>
+      ) : null}
+
       <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-        <Button className="flex-1" size="lg" onClick={handleCreateAccount}>
+        <Button className="flex-1" size="lg" onClick={handleCreateAccount} disabled={isSubmitting}>
           <FontAwesomeIcon icon={faUserPlus} className="h-4 w-4" />
-          Create account
+          {isSubmitting ? "Creating account..." : "Create account"}
         </Button>
         <Link
           href="/login"
