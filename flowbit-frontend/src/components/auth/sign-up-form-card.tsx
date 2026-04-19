@@ -48,7 +48,7 @@ export function SignUpFormCard() {
           href="/login"
           className="inline-flex flex-1 items-center justify-center rounded-[20px] border border-stone-900/10 bg-white px-5 py-4 text-sm font-semibold text-stone-700 transition hover:bg-stone-50"
         >
-          Log in after sign up
+          I already have an account
         </Link>
       </div>
 

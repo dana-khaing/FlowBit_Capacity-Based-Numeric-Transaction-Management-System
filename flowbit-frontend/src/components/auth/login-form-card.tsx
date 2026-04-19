@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowLeft, faArrowRightToBracket } from "@fortawesome/free-solid-svg-icons";
 import { faGoogle } from "@fortawesome/free-brands-svg-icons";
@@ -15,7 +16,27 @@ const accessNotes = [
   "Google sign-in may be available for your organization depending on your access setup.",
 ];
 
+const KEEP_SIGNED_IN_KEY = "flowbit.keepSignedIn";
+
 export function LoginFormCard() {
+  const [keepSignedIn, setKeepSignedIn] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    setKeepSignedIn(window.localStorage.getItem(KEEP_SIGNED_IN_KEY) === "true");
+  }, []);
+
+  function handleKeepSignedInChange(nextChecked: boolean) {
+    setKeepSignedIn(nextChecked);
+
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(KEEP_SIGNED_IN_KEY, String(nextChecked));
+    }
+  }
+
   return (
     <Card className="mt-5 bg-white/82 p-5 shadow-[0_18px_50px_rgba(73,52,26,0.08)] backdrop-blur sm:p-8 lg:mt-0 lg:w-[54%]">
       <div className="flex items-center justify-between gap-3">
@@ -39,7 +60,7 @@ export function LoginFormCard() {
 
       <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <label className="flex items-center gap-3 text-sm text-stone-500">
-          <Checkbox />
+          <Checkbox checked={keepSignedIn} onCheckedChange={(checked) => handleKeepSignedInChange(checked === true)} />
           Keep me signed in on this device
         </label>
 
@@ -59,12 +80,12 @@ export function LoginFormCard() {
         </Button>
       </div>
 
-      <p className="mt-5 text-sm text-stone-500">
-        New to FlowBit?{" "}
-        <Link href="/sign-up" className="font-medium text-[#b66427]">
+      <div className="mt-5 rounded-[20px] border border-dashed border-stone-900/10 bg-stone-50 px-4 py-4">
+        <p className="text-sm text-stone-500">New to FlowBit?</p>
+        <Link href="/sign-up" className="mt-2 inline-flex text-sm font-medium text-[#b66427]">
           Create an account
         </Link>
-      </p>
+      </div>
 
       <Card className="mt-8 rounded-[24px] bg-[#f5f1ea]">
         <CardContent className="p-5">
