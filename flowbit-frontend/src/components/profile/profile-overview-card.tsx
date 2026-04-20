@@ -1,25 +1,16 @@
 import { type AuthUser } from "@/lib/auth-client";
+import { ProfileAvatar } from "@/components/profile/profile-avatar";
 
 type ProfileOverviewCardProps = {
   user: AuthUser;
 };
 
 export function ProfileOverviewCard({ user }: ProfileOverviewCardProps) {
-  const initials = (user.full_name || user.username || "FB")
-    .split(" ")
-    .filter(Boolean)
-    .map((part) => part[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-
   return (
     <section className="rounded-[28px] border border-stone-900/8 bg-white px-5 py-6 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:px-8 sm:py-8">
       <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-center gap-5">
-          <div className="flex h-20 w-20 items-center justify-center rounded-[28px] bg-[#d97a35] text-2xl font-semibold text-white">
-            {initials}
-          </div>
+          <ProfileAvatar user={user} />
           <div>
             <p className="text-sm font-medium uppercase tracking-[0.2em] text-stone-400">User Profile</p>
             <h1 className="mt-2 text-4xl font-semibold text-stone-950">{user.full_name || user.username}</h1>

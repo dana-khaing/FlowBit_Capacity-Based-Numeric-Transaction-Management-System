@@ -353,6 +353,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
     last_activity = serializers.DateTimeField(source='profile.last_activity', read_only=True)
     last_login = serializers.DateTimeField(read_only=True)
     date_joined = serializers.DateTimeField(read_only=True)
+    avatar_url = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -365,6 +366,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'email',
             'role',
             'phone_number',
+            'avatar_url',
             'last_activity',
             'last_login',
             'date_joined',
@@ -372,6 +374,15 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
     def get_full_name(self, obj):
         return obj.get_full_name().strip()
+
+    def get_avatar_url(self, obj):
+        avatar = getattr(obj.profile, 'avatar', None)
+        if not avatar:
+            return None
+        request = self.context.get('request')
+        if request is not None:
+            return request.build_absolute_uri(avatar.url)
+        return avatar.url
 
 
 class UserProfileUpdateSerializer(serializers.Serializer):
@@ -502,6 +513,10 @@ class MasterOverridePasswordSerializer(serializers.Serializer):
 
 class AccountDeletionSerializer(serializers.Serializer):
     admin_override_code = serializers.CharField(write_only=True, required=False, allow_blank=True)
+
+
+class ProfileAvatarSerializer(serializers.Serializer):
+    avatar = serializers.ImageField(required=True)
 
 
 class AuditLogSerializer(serializers.ModelSerializer):
