@@ -67,6 +67,7 @@ from .serializers import (
     RegisterSerializer,
     GoogleLoginSerializer,
     UserProfileSerializer,
+    UserProfileUpdateSerializer,
     ChangePasswordSerializer,
     ForgotPasswordSerializer,
     ResetPasswordConfirmSerializer,
@@ -2002,6 +2003,39 @@ class MeView(APIView):
         profile.last_activity = timezone.now()
         profile.save(update_fields=['last_activity', 'updated_at'])
         return Response({'user': UserProfileSerializer(request.user).data}, status=status.HTTP_200_OK)
+
+    def patch(self, request):
+        serializer = UserProfileUpdateSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+
+        before_user_snapshot = snapshot_instance(request.user)
+        profile, _ = Profile.objects.get_or_create(user=request.user)
+        before_profile_snapshot = snapshot_instance(profile)
+
+        user = serializer.update(request.user, serializer.validated_data)
+
+        record_audit_log(
+            request,
+            'auth.profile_update',
+            target=user,
+            details=f"User '{user.username}' updated profile details",
+            changes={
+                'before': {
+                    'username': before_user_snapshot.get('username'),
+                    'first_name': before_user_snapshot.get('first_name'),
+                    'last_name': before_user_snapshot.get('last_name'),
+                    'phone_number': before_profile_snapshot.get('phone_number'),
+                },
+                'after': {
+                    'username': user.username,
+                    'first_name': user.first_name,
+                    'last_name': user.last_name,
+                    'phone_number': user.profile.phone_number,
+                },
+            },
+        )
+
+        return Response({'user': UserProfileSerializer(user).data}, status=status.HTTP_200_OK)
 
 
 class ChangePasswordView(APIView):

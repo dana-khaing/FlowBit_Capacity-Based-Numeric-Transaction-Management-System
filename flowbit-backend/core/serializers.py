@@ -359,6 +359,39 @@ class UserProfileSerializer(serializers.ModelSerializer):
         return obj.get_full_name().strip()
 
 
+class UserProfileUpdateSerializer(serializers.Serializer):
+    full_name = serializers.CharField(max_length=150)
+    username = serializers.CharField(max_length=150)
+    phone_number = serializers.CharField(max_length=50, allow_blank=True, required=False)
+
+    def validate_username(self, value):
+        normalized = value.strip()
+        user = self.context['request'].user
+        if User.objects.filter(username__iexact=normalized).exclude(pk=user.pk).exists():
+            raise serializers.ValidationError('A user with this username already exists.')
+        return normalized
+
+    def validate_full_name(self, value):
+        normalized = value.strip()
+        if not normalized:
+            raise serializers.ValidationError('Full name is required.')
+        return normalized
+
+    def update(self, instance, validated_data):
+        full_name = validated_data['full_name']
+        first_name, _, last_name = full_name.partition(' ')
+        instance.username = validated_data['username']
+        instance.first_name = first_name.strip()
+        instance.last_name = last_name.strip()
+        instance.save(update_fields=['username', 'first_name', 'last_name'])
+
+        profile, _ = Profile.objects.get_or_create(user=instance)
+        profile.phone_number = (validated_data.get('phone_number') or '').strip()
+        profile.save(update_fields=['phone_number', 'updated_at'])
+        instance.refresh_from_db()
+        return instance
+
+
 class LoginSerializer(serializers.Serializer):
     username = serializers.CharField()
     password = serializers.CharField(write_only=True)
