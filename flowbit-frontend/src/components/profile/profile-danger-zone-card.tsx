@@ -6,6 +6,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faTriangleExclamation, faTrashCan } from "@fortawesome/free-solid-svg-icons";
 import { AuthInput } from "@/components/auth/auth-input";
 import { Button } from "@/components/ui/button";
+import { ProfileDeleteModal } from "@/components/profile/profile-delete-modal";
 import { clearStoredSession, deleteCurrentUserAccount, type AuthUser } from "@/lib/auth-client";
 
 type ProfileDangerZoneCardProps = {
@@ -17,6 +18,7 @@ export function ProfileDangerZoneCard({ user }: ProfileDangerZoneCardProps) {
   const [adminOverrideCode, setAdminOverrideCode] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
 
   async function handleDeleteAccount() {
     setErrorMessage("");
@@ -50,8 +52,29 @@ export function ProfileDangerZoneCard({ user }: ProfileDangerZoneCardProps) {
         </div>
       </div>
 
-      {!user.role || user.role !== "admin" ? (
-        <div className="mt-5">
+      <div className="mt-5">
+        <Button
+          size="lg"
+          variant="outline"
+          className="border-red-200 text-red-700 hover:bg-red-50"
+          onClick={() => setShowConfirmModal(true)}
+          disabled={isDeleting}
+        >
+          <FontAwesomeIcon icon={faTrashCan} className="h-4 w-4" />
+          {isDeleting ? "Deleting account..." : "Delete account"}
+        </Button>
+      </div>
+
+      <ProfileDeleteModal
+        title="Delete this FlowBit account?"
+        description="This action permanently removes the account and signs you out immediately."
+        isOpen={showConfirmModal}
+        onClose={() => setShowConfirmModal(false)}
+        onConfirm={handleDeleteAccount}
+        confirmLabel="Confirm account deletion"
+        isSubmitting={isDeleting}
+      >
+        {!user.role || user.role !== "admin" ? (
           <AuthInput
             label="Admin override code"
             type="password"
@@ -59,27 +82,14 @@ export function ProfileDangerZoneCard({ user }: ProfileDangerZoneCardProps) {
             value={adminOverrideCode}
             onChange={(event) => setAdminOverrideCode(event.target.value)}
           />
-        </div>
-      ) : null}
+        ) : null}
 
-      {errorMessage ? (
-        <div className="mt-5 rounded-[20px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
-          {errorMessage}
-        </div>
-      ) : null}
-
-      <div className="mt-5">
-        <Button
-          size="lg"
-          variant="outline"
-          className="border-red-200 text-red-700 hover:bg-red-50"
-          onClick={handleDeleteAccount}
-          disabled={isDeleting}
-        >
-          <FontAwesomeIcon icon={faTrashCan} className="h-4 w-4" />
-          {isDeleting ? "Deleting account..." : "Delete account"}
-        </Button>
-      </div>
+        {errorMessage ? (
+          <div className="mt-4 rounded-[20px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+            {errorMessage}
+          </div>
+        ) : null}
+      </ProfileDeleteModal>
     </section>
   );
 }
