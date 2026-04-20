@@ -43,6 +43,7 @@ type PasswordResetPayload = {
 type ProfileUpdatePayload = {
   full_name: string;
   username: string;
+  email: string;
   phone_number: string;
 };
 

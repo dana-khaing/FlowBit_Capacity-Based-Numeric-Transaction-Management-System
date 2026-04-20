@@ -2027,12 +2027,14 @@ class MeView(APIView):
             changes={
                 'before': {
                     'username': before_user_snapshot.get('username'),
+                    'email': before_user_snapshot.get('email'),
                     'first_name': before_user_snapshot.get('first_name'),
                     'last_name': before_user_snapshot.get('last_name'),
                     'phone_number': before_profile_snapshot.get('phone_number'),
                 },
                 'after': {
                     'username': user.username,
+                    'email': user.email,
                     'first_name': user.first_name,
                     'last_name': user.last_name,
                     'phone_number': user.profile.phone_number,

@@ -377,6 +377,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
 class UserProfileUpdateSerializer(serializers.Serializer):
     full_name = serializers.CharField(max_length=150)
     username = serializers.CharField(max_length=150)
+    email = serializers.EmailField()
     phone_number = serializers.CharField(max_length=50, allow_blank=True, required=False)
 
     def validate_username(self, value):
@@ -392,13 +393,21 @@ class UserProfileUpdateSerializer(serializers.Serializer):
             raise serializers.ValidationError('Full name is required.')
         return normalized
 
+    def validate_email(self, value):
+        normalized = value.strip().lower()
+        user = self.context['request'].user
+        if User.objects.filter(email__iexact=normalized).exclude(pk=user.pk).exists():
+            raise serializers.ValidationError('A user with this email already exists.')
+        return normalized
+
     def update(self, instance, validated_data):
         full_name = validated_data['full_name']
         first_name, _, last_name = full_name.partition(' ')
         instance.username = validated_data['username']
+        instance.email = validated_data['email']
         instance.first_name = first_name.strip()
         instance.last_name = last_name.strip()
-        instance.save(update_fields=['username', 'first_name', 'last_name'])
+        instance.save(update_fields=['username', 'email', 'first_name', 'last_name'])
 
         profile, _ = Profile.objects.get_or_create(user=instance)
         profile.phone_number = (validated_data.get('phone_number') or '').strip()
