@@ -679,6 +679,20 @@ class RolePermissionTests(APITestCase):
         self.regular_user.refresh_from_db()
         self.assertEqual(self.regular_user.profile.role, 'admin')
 
+    def test_admin_cannot_downgrade_own_account(self):
+        self.client.force_authenticate(user=self.admin_user)
+
+        response = self.client.post(
+            f'/api/users/{self.admin_user.id}/set-role/',
+            {'role': 'user'},
+            format='json'
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['detail'], 'Admin users cannot downgrade their own account.')
+        self.admin_user.refresh_from_db()
+        self.assertEqual(self.admin_user.profile.role, 'admin')
+
     def test_admin_can_set_master_override_password(self):
         self.client.force_authenticate(user=self.admin_user)
         self.regular_user.profile.role = 'admin'
