@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faArrowRightFromBracket, faUser } from "@fortawesome/free-solid-svg-icons";
+import { faArrowRightFromBracket } from "@fortawesome/free-solid-svg-icons";
 import { Button } from "@/components/ui/button";
+import { ProfileAvatar } from "@/components/profile/profile-avatar";
 import { fetchCurrentUser, getStoredUser, logoutFromBackend, type AuthUser } from "@/lib/auth-client";
 
 export function AppHeader() {
@@ -44,9 +45,7 @@ export function AppHeader() {
           href="/profile"
           className="inline-flex items-center justify-center gap-3 rounded-[20px] border border-stone-900/10 bg-white px-4 py-3 text-sm font-semibold text-stone-700 transition hover:bg-stone-50"
         >
-          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#d97a35] text-xs font-semibold text-white">
-            {user?.username?.slice(0, 2).toUpperCase() || "FB"}
-          </span>
+          {user ? <ProfileAvatar user={user} className="h-8 w-8 rounded-full" textClassName="text-xs font-semibold" /> : null}
           Profile
         </Link>
         <Button variant="outline" onClick={handleLogout}>

@@ -9,6 +9,7 @@ from django.contrib.auth.models import User
 from django.test import override_settings
 from django.test import SimpleTestCase
 from django.utils import timezone
+from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework import status
 from rest_framework.test import APITestCase
 from rest_framework.authtoken.models import Token
@@ -270,6 +271,29 @@ class AuthAPITests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('email', response.data)
+
+    def test_avatar_upload_updates_profile(self):
+        token = Token.objects.create(user=self.user)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {token.key}')
+
+        avatar_file = SimpleUploadedFile(
+            'avatar.png',
+            (
+                b'\x89PNG\r\n\x1a\n'
+                b'\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde'
+                b'\x00\x00\x00\x0cIDATx\x9cc```\x00\x00\x00\x04\x00\x01\xf6\x178U'
+                b'\x00\x00\x00\x00IEND\xaeB`\x82'
+            ),
+            content_type='image/png',
+        )
+
+        response = self.client.post('/api/auth/avatar/', {'avatar': avatar_file})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertTrue(bool(self.user.profile.avatar))
+        self.assertIsNotNone(response.data['user']['avatar_url'])
+        self.assertTrue(AuditLog.objects.filter(action='auth.avatar_updated', target_id=self.user.id).exists())
 
     def test_regular_user_cannot_delete_account_without_admin_override_code(self):
         token = Token.objects.create(user=self.user)

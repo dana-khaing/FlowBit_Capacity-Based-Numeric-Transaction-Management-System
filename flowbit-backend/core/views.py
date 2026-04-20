@@ -6,6 +6,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
+from rest_framework.parsers import MultiPartParser, FormParser
 from django.contrib.auth.models import User
 from django.core.mail import send_mail
 from django.contrib.auth import authenticate
@@ -70,6 +71,7 @@ from .serializers import (
     UserProfileUpdateSerializer,
     ChangePasswordSerializer,
     AccountDeletionSerializer,
+    ProfileAvatarSerializer,
     ForgotPasswordSerializer,
     ResetPasswordConfirmSerializer,
     CollaboratorManageSerializer,
@@ -2007,7 +2009,7 @@ class MeView(APIView):
         profile, _ = Profile.objects.get_or_create(user=request.user)
         profile.last_activity = timezone.now()
         profile.save(update_fields=['last_activity', 'updated_at'])
-        return Response({'user': UserProfileSerializer(request.user).data}, status=status.HTTP_200_OK)
+        return Response({'user': UserProfileSerializer(request.user, context={'request': request}).data}, status=status.HTTP_200_OK)
 
     def patch(self, request):
         serializer = UserProfileUpdateSerializer(data=request.data, context={'request': request})
@@ -2042,7 +2044,7 @@ class MeView(APIView):
             },
         )
 
-        return Response({'user': UserProfileSerializer(user).data}, status=status.HTTP_200_OK)
+        return Response({'user': UserProfileSerializer(user, context={'request': request}).data}, status=status.HTTP_200_OK)
 
     def delete(self, request):
         serializer = AccountDeletionSerializer(data=request.data)
@@ -2112,6 +2114,35 @@ class ChangePasswordView(APIView):
             'message': 'Password changed successfully.',
             'token': token.key,
         }, status=status.HTTP_200_OK)
+
+
+class ProfileAvatarView(APIView):
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request):
+        serializer = ProfileAvatarSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        profile, _ = Profile.objects.get_or_create(user=request.user)
+        previous_avatar = profile.avatar.name if profile.avatar else ''
+        if profile.avatar:
+            profile.avatar.delete(save=False)
+        profile.avatar = serializer.validated_data['avatar']
+        profile.save(update_fields=['avatar', 'updated_at'])
+
+        record_audit_log(
+            request,
+            'auth.avatar_updated',
+            target=request.user,
+            details=f"User '{request.user.username}' updated profile avatar",
+            changes={'before_avatar': previous_avatar, 'after_avatar': profile.avatar.name},
+        )
+
+        return Response(
+            {'user': UserProfileSerializer(request.user, context={'request': request}).data},
+            status=status.HTTP_200_OK,
+        )
 
 
 class UserManagementViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.DestroyModelMixin, viewsets.GenericViewSet):

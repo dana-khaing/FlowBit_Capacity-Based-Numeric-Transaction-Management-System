@@ -949,6 +949,7 @@ class Profile(models.Model):
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='user')
 
     phone_number = models.CharField(max_length=50, blank=True, default='')
+    avatar = models.ImageField(upload_to='profile_avatars/', blank=True, null=True)
     master_override_password = models.CharField(max_length=128, blank=True, null=True)
     last_activity = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

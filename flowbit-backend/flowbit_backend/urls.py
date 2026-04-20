@@ -16,6 +16,8 @@ Including another URLconf
 """
 
 from django.contrib import admin
+from django.conf import settings
+from django.conf.urls.static import static
 from django.urls import path, include
 from .api_docs import redoc_view, schema_view, swagger_ui_view
 
@@ -25,4 +27,4 @@ urlpatterns = [
     path('api/docs/', swagger_ui_view, name='api-docs'),
     path('api/redoc/', redoc_view, name='api-redoc'),
     path('api/', include('core.urls')),
-]
+] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

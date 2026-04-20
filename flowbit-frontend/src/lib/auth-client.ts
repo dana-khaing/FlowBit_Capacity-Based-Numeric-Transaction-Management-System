@@ -4,7 +4,7 @@ import {
   clearAuthCookie,
   createAuthCookie,
 } from "@/lib/auth";
-import { apiRequest } from "@/lib/api";
+import { apiRequest, getApiBaseUrl } from "@/lib/api";
 
 export type AuthUser = {
   id: number;
@@ -15,6 +15,7 @@ export type AuthUser = {
   email: string;
   role: string;
   phone_number: string;
+  avatar_url: string | null;
   last_activity: string | null;
   last_login: string | null;
   date_joined: string;
@@ -206,6 +207,35 @@ export async function deleteCurrentUserAccount(payload: AccountDeletionPayload) 
     headers: authHeaders(token),
     body: JSON.stringify(payload),
   });
+}
+
+export async function uploadProfileAvatar(file: File) {
+  const token = getStoredToken();
+  if (!token) {
+    throw new Error("No session found.");
+  }
+
+  const formData = new FormData();
+  formData.append("avatar", file);
+
+  const response = await fetch(`${getApiBaseUrl()}/auth/avatar/`, {
+    method: "POST",
+    headers: {
+      Authorization: `Token ${token}`,
+    },
+    body: formData,
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(typeof data?.detail === "string" ? data.detail : "Avatar upload failed.");
+  }
+
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(data.user));
+  }
+
+  return data.user as AuthUser;
 }
 
 export async function logoutFromBackend() {
