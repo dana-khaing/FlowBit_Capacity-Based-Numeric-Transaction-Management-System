@@ -32,7 +32,7 @@ export function ProfilePage() {
         <ProfileOverviewCard user={user} />
 
         <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(320px,0.9fr)]">
-          <ProfileDetailsCard user={user} />
+          <ProfileDetailsCard user={user} onUserChange={setUser} />
           <ProfileSecurityCard />
         </div>
       </div>

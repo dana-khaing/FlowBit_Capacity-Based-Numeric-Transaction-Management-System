@@ -37,6 +37,12 @@ type PasswordResetPayload = {
   new_password: string;
 };
 
+type ProfileUpdatePayload = {
+  full_name: string;
+  username: string;
+  phone_number: string;
+};
+
 function setStoredSession(token: string, user: AuthUser, remember: boolean) {
   if (typeof window === "undefined") {
     return;
@@ -140,6 +146,25 @@ export async function fetchCurrentUser() {
   if (typeof window !== "undefined") {
     window.localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(response.user));
   }
+  return response.user;
+}
+
+export async function updateCurrentUserProfile(payload: ProfileUpdatePayload) {
+  const token = getStoredToken();
+  if (!token) {
+    throw new Error("No session found.");
+  }
+
+  const response = await apiRequest<{ user: AuthUser }>("/auth/me/", {
+    method: "PATCH",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  });
+
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(response.user));
+  }
+
   return response.user;
 }
 
