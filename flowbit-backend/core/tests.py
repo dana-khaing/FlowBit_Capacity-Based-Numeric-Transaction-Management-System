@@ -548,7 +548,8 @@ class RolePermissionTests(APITestCase):
             password='password123',
         )
         self.admin_user.profile.role = 'admin'
-        self.admin_user.profile.save(update_fields=['role', 'updated_at'])
+        self.admin_user.profile.set_master_override_password('override-123')
+        self.admin_user.profile.save(update_fields=['role', 'master_override_password', 'updated_at'])
 
         self.regular_user = User.objects.create_user(
             username='regular_role_user',
@@ -671,7 +672,7 @@ class RolePermissionTests(APITestCase):
 
         response = self.client.post(
             f'/api/users/{self.regular_user.id}/set-role/',
-            {'role': 'admin'},
+            {'role': 'admin', 'admin_override_code': 'override-123'},
             format='json'
         )
 
@@ -684,7 +685,7 @@ class RolePermissionTests(APITestCase):
 
         response = self.client.post(
             f'/api/users/{self.admin_user.id}/set-role/',
-            {'role': 'user'},
+            {'role': 'user', 'admin_override_code': 'override-123'},
             format='json'
         )
 
@@ -700,18 +701,22 @@ class RolePermissionTests(APITestCase):
 
         response = self.client.post(
             f'/api/users/{self.regular_user.id}/set-master-override-password/',
-            {'master_override_password': 'override-123'},
+            {'master_override_password': 'override-999', 'admin_override_code': 'override-123'},
             format='json'
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.regular_user.refresh_from_db()
-        self.assertTrue(self.regular_user.profile.check_master_override_password('override-123'))
+        self.assertTrue(self.regular_user.profile.check_master_override_password('override-999'))
 
     def test_admin_can_delete_user_account(self):
         self.client.force_authenticate(user=self.admin_user)
 
-        response = self.client.delete(f'/api/users/{self.regular_user.id}/')
+        response = self.client.delete(
+            f'/api/users/{self.regular_user.id}/',
+            {'admin_override_code': 'override-123'},
+            format='json',
+        )
 
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(User.objects.filter(pk=self.regular_user.pk).exists())
@@ -722,7 +727,7 @@ class RolePermissionTests(APITestCase):
 
         response = self.client.post(
             f'/api/users/{self.regular_user.id}/set-master-override-password/',
-            {'master_override_password': 'override-123'},
+            {'master_override_password': 'override-123', 'admin_override_code': 'override-123'},
             format='json'
         )
 
@@ -738,6 +743,41 @@ class RolePermissionTests(APITestCase):
         response = self.client.get('/api/users/')
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_admin_cannot_change_user_role_without_override_code(self):
+        self.client.force_authenticate(user=self.admin_user)
+
+        response = self.client.post(
+            f'/api/users/{self.regular_user.id}/set-role/',
+            {'role': 'admin'},
+            format='json'
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['detail'], 'Admin override code is required for this action.')
+
+    def test_admin_cannot_set_master_override_without_override_code(self):
+        self.client.force_authenticate(user=self.admin_user)
+        self.regular_user.profile.role = 'admin'
+        self.regular_user.profile.save(update_fields=['role', 'updated_at'])
+
+        response = self.client.post(
+            f'/api/users/{self.regular_user.id}/set-master-override-password/',
+            {'master_override_password': 'override-999'},
+            format='json'
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['detail'], 'Admin override code is required for this action.')
+
+    def test_admin_cannot_delete_user_without_override_code(self):
+        self.client.force_authenticate(user=self.admin_user)
+
+        response = self.client.delete(f'/api/users/{self.regular_user.id}/')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['detail'], 'Admin override code is required for this action.')
+        self.assertTrue(User.objects.filter(pk=self.regular_user.pk).exists())
 
     def test_authenticated_user_can_create_collaborator(self):
         self.client.force_authenticate(user=self.regular_user)

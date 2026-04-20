@@ -518,10 +518,12 @@ class ResetPasswordConfirmSerializer(serializers.Serializer):
 
 class UserRoleUpdateSerializer(serializers.Serializer):
     role = serializers.ChoiceField(choices=Profile.ROLE_CHOICES)
+    admin_override_code = serializers.CharField(write_only=True, required=False, allow_blank=True)
 
 
 class MasterOverridePasswordSerializer(serializers.Serializer):
     master_override_password = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    admin_override_code = serializers.CharField(write_only=True, required=False, allow_blank=True)
 
 
 class AccountDeletionSerializer(serializers.Serializer):

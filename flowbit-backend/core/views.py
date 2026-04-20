@@ -2156,10 +2156,22 @@ class UserManagementViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mi
     serializer_class = UserProfileSerializer
     permission_classes = [IsAdminRole]
 
+    def _require_admin_override(self, request):
+        override_profile = get_request_admin_override_profile(request)
+        if override_profile is None:
+            return Response(
+                {'detail': 'Admin override code is required for this action.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return override_profile
+
     @action(detail=True, methods=['post'], url_path='set-role')
     def set_role(self, request, pk=None):
         serializer = UserRoleUpdateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        override_result = self._require_admin_override(request)
+        if isinstance(override_result, Response):
+            return override_result
 
         target_user = self.get_object()
         profile, _ = Profile.objects.get_or_create(user=target_user)
@@ -2192,6 +2204,9 @@ class UserManagementViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mi
     def set_master_override_password(self, request, pk=None):
         serializer = MasterOverridePasswordSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        override_result = self._require_admin_override(request)
+        if isinstance(override_result, Response):
+            return override_result
 
         target_user = self.get_object()
         profile, _ = Profile.objects.get_or_create(user=target_user)
@@ -2225,6 +2240,10 @@ class UserManagementViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mi
         }, status=status.HTTP_200_OK)
 
     def destroy(self, request, *args, **kwargs):
+        override_result = self._require_admin_override(request)
+        if isinstance(override_result, Response):
+            return override_result
+
         target_user = self.get_object()
         deleted_user_id = target_user.id
         deleted_username = target_user.username
