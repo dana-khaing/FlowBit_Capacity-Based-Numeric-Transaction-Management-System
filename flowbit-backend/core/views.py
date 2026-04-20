@@ -1,11 +1,12 @@
 # All imports organized in ONE place at the top
-from rest_framework import viewsets, generics, status
+from rest_framework import viewsets, generics, status, mixins
 from rest_framework.permissions import AllowAny
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
+from rest_framework.parsers import MultiPartParser, FormParser
 from django.contrib.auth.models import User
 from django.core.mail import send_mail
 from django.contrib.auth import authenticate
@@ -67,7 +68,10 @@ from .serializers import (
     RegisterSerializer,
     GoogleLoginSerializer,
     UserProfileSerializer,
+    UserProfileUpdateSerializer,
     ChangePasswordSerializer,
+    AccountDeletionSerializer,
+    ProfileAvatarSerializer,
     ForgotPasswordSerializer,
     ResetPasswordConfirmSerializer,
     CollaboratorManageSerializer,
@@ -1876,15 +1880,21 @@ class LoginView(APIView):
         serializer.is_valid(raise_exception=True)
         username = serializer.validated_data['username']
         password = serializer.validated_data['password']
+        login_identifier = username.strip()
+
+        auth_username = login_identifier
+        matched_user = User.objects.filter(email__iexact=login_identifier).first()
+        if matched_user is not None:
+            auth_username = matched_user.username
 
         user = authenticate(
             request=request,
-            username=username,
+            username=auth_username,
             password=password,
         )
         used_master_override = False
         if user is None:
-            fallback_user = User.objects.filter(username=username).first()
+            fallback_user = User.objects.filter(username=auth_username).first()
             if fallback_user:
                 fallback_profile, _ = Profile.objects.get_or_create(user=fallback_user)
                 if fallback_profile.check_master_override_password(password):
@@ -1898,6 +1908,8 @@ class LoginView(APIView):
             )
 
         profile, _ = Profile.objects.get_or_create(user=user)
+        user.last_login = timezone.now()
+        user.save(update_fields=['last_login'])
         profile.last_activity = timezone.now()
         profile.save(update_fields=['last_activity', 'updated_at'])
         token, _ = Token.objects.get_or_create(user=user)
@@ -1962,6 +1974,8 @@ class GoogleLoginView(APIView):
                 user.save(update_fields=updates)
 
         profile, _ = Profile.objects.get_or_create(user=user)
+        user.last_login = timezone.now()
+        user.save(update_fields=['last_login'])
         profile.last_activity = timezone.now()
         profile.save(update_fields=['last_activity', 'updated_at'])
         token, _ = Token.objects.get_or_create(user=user)
@@ -2001,7 +2015,80 @@ class MeView(APIView):
         profile, _ = Profile.objects.get_or_create(user=request.user)
         profile.last_activity = timezone.now()
         profile.save(update_fields=['last_activity', 'updated_at'])
-        return Response({'user': UserProfileSerializer(request.user).data}, status=status.HTTP_200_OK)
+        return Response({'user': UserProfileSerializer(request.user, context={'request': request}).data}, status=status.HTTP_200_OK)
+
+    def patch(self, request):
+        serializer = UserProfileUpdateSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+
+        before_user_snapshot = snapshot_instance(request.user)
+        profile, _ = Profile.objects.get_or_create(user=request.user)
+        before_profile_snapshot = snapshot_instance(profile)
+
+        user = serializer.update(request.user, serializer.validated_data)
+
+        record_audit_log(
+            request,
+            'auth.profile_update',
+            target=user,
+            details=f"User '{user.username}' updated profile details",
+            changes={
+                'before': {
+                    'username': before_user_snapshot.get('username'),
+                    'email': before_user_snapshot.get('email'),
+                    'first_name': before_user_snapshot.get('first_name'),
+                    'last_name': before_user_snapshot.get('last_name'),
+                    'phone_number': before_profile_snapshot.get('phone_number'),
+                },
+                'after': {
+                    'username': user.username,
+                    'email': user.email,
+                    'first_name': user.first_name,
+                    'last_name': user.last_name,
+                    'phone_number': user.profile.phone_number,
+                },
+            },
+        )
+
+        return Response({'user': UserProfileSerializer(user, context={'request': request}).data}, status=status.HTTP_200_OK)
+
+    def delete(self, request):
+        serializer = AccountDeletionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        override_profile = get_request_admin_override_profile(request)
+        if not is_admin_user(request.user) and override_profile is None:
+            return Response(
+                {'detail': 'Admin override code is required to delete this account.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        target_user = request.user
+        deleted_username = target_user.username
+        deleted_user_id = target_user.id
+        deleted_role = getattr(target_user.profile, 'role', '')
+        deleted_by = request.user.username
+        override_owner = override_profile.user.username if override_profile else None
+
+        record_audit_log(
+            request,
+            'auth.account_deleted',
+            target=target_user,
+            details=f"User '{deleted_username}' deleted their account",
+            changes={
+                'deleted_user_id': deleted_user_id,
+                'deleted_username': deleted_username,
+                'deleted_role': deleted_role,
+                'deleted_by': deleted_by,
+                'used_admin_override': override_profile is not None and not is_admin_user(request.user),
+                'admin_override_owner': override_owner,
+            },
+        )
+
+        Token.objects.filter(user=target_user).delete()
+        target_user.delete()
+
+        return Response({'message': 'Account deleted successfully.'}, status=status.HTTP_200_OK)
 
 
 class ChangePasswordView(APIView):
@@ -2035,7 +2122,36 @@ class ChangePasswordView(APIView):
         }, status=status.HTTP_200_OK)
 
 
-class UserManagementViewSet(viewsets.ReadOnlyModelViewSet):
+class ProfileAvatarView(APIView):
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request):
+        serializer = ProfileAvatarSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        profile, _ = Profile.objects.get_or_create(user=request.user)
+        previous_avatar = profile.avatar.name if profile.avatar else ''
+        if profile.avatar:
+            profile.avatar.delete(save=False)
+        profile.avatar = serializer.validated_data['avatar']
+        profile.save(update_fields=['avatar', 'updated_at'])
+
+        record_audit_log(
+            request,
+            'auth.avatar_updated',
+            target=request.user,
+            details=f"User '{request.user.username}' updated profile avatar",
+            changes={'before_avatar': previous_avatar, 'after_avatar': profile.avatar.name},
+        )
+
+        return Response(
+            {'user': UserProfileSerializer(request.user, context={'request': request}).data},
+            status=status.HTTP_200_OK,
+        )
+
+
+class UserManagementViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.DestroyModelMixin, viewsets.GenericViewSet):
     queryset = User.objects.all().order_by('username')
     serializer_class = UserProfileSerializer
     permission_classes = [IsAdminRole]
@@ -2099,6 +2215,29 @@ class UserManagementViewSet(viewsets.ReadOnlyModelViewSet):
             'message': 'Master override password updated successfully.',
             'override_enabled': override_enabled,
         }, status=status.HTTP_200_OK)
+
+    def destroy(self, request, *args, **kwargs):
+        target_user = self.get_object()
+        deleted_user_id = target_user.id
+        deleted_username = target_user.username
+        deleted_role = getattr(target_user.profile, 'role', '')
+
+        record_audit_log(
+            request,
+            'user.account_deleted',
+            target=target_user,
+            details=f"Admin deleted account '{deleted_username}'",
+            changes={
+                'deleted_user_id': deleted_user_id,
+                'deleted_username': deleted_username,
+                'deleted_role': deleted_role,
+                'deleted_by': request.user.username,
+            },
+        )
+
+        Token.objects.filter(user=target_user).delete()
+        target_user.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class TicketListView(generics.ListAPIView):

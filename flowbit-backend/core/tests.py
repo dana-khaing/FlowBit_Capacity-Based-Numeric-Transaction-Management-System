@@ -9,6 +9,7 @@ from django.contrib.auth.models import User
 from django.test import override_settings
 from django.test import SimpleTestCase
 from django.utils import timezone
+from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework import status
 from rest_framework.test import APITestCase
 from rest_framework.authtoken.models import Token
@@ -200,8 +201,19 @@ class AuthAPITests(APITestCase):
         self.assertIn('token', response.data)
         self.assertEqual(response.data['user']['username'], 'auth_user')
         self.assertEqual(response.data['user']['role'], 'user')
+        self.assertIsNotNone(response.data['user']['last_login'])
+        self.assertIsNotNone(response.data['user']['date_joined'])
         self.assertTrue(Token.objects.filter(user=self.user, key=response.data['token']).exists())
         self.assertTrue(AuditLog.objects.filter(action='auth.login', target_id=self.user.id).exists())
+
+    def test_login_accepts_email_address(self):
+        response = self.client.post('/api/auth/login/', {
+            'username': 'auth@example.com',
+            'password': 'password123',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['user']['username'], 'auth_user')
 
     def test_me_requires_authentication(self):
         response = self.client.get('/api/auth/me/')
@@ -216,6 +228,123 @@ class AuthAPITests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['user']['username'], 'auth_user')
+        self.assertIsNotNone(response.data['user']['last_activity'])
+
+    def test_me_patch_updates_full_name_username_and_phone_number(self):
+        token = Token.objects.create(user=self.user)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {token.key}')
+
+        response = self.client.patch('/api/auth/me/', {
+            'full_name': 'Updated Auth User',
+            'username': 'updated_auth_user',
+            'email': 'updated-auth@example.com',
+            'phone_number': '+44-7000-111111',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.username, 'updated_auth_user')
+        self.assertEqual(self.user.email, 'updated-auth@example.com')
+        self.assertEqual(self.user.first_name, 'Updated')
+        self.assertEqual(self.user.last_name, 'Auth User')
+        self.assertEqual(self.user.profile.phone_number, '+44-7000-111111')
+        self.assertEqual(response.data['user']['full_name'], 'Updated Auth User')
+        self.assertTrue(AuditLog.objects.filter(action='auth.profile_update', target_id=self.user.id).exists())
+
+    def test_me_patch_rejects_duplicate_username(self):
+        User.objects.create_user(username='taken_name', password='secret123', email='taken@example.com')
+        token = Token.objects.create(user=self.user)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {token.key}')
+
+        response = self.client.patch('/api/auth/me/', {
+            'full_name': 'Updated Auth User',
+            'username': 'taken_name',
+            'email': 'updated-auth@example.com',
+            'phone_number': '+44-7000-111111',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('username', response.data)
+
+    def test_me_patch_rejects_duplicate_email(self):
+        User.objects.create_user(username='taken_email_user', password='secret123', email='taken@example.com')
+        token = Token.objects.create(user=self.user)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {token.key}')
+
+        response = self.client.patch('/api/auth/me/', {
+            'full_name': 'Updated Auth User',
+            'username': 'updated_auth_user',
+            'email': 'taken@example.com',
+            'phone_number': '+44-7000-111111',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('email', response.data)
+
+    def test_avatar_upload_updates_profile(self):
+        token = Token.objects.create(user=self.user)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {token.key}')
+
+        avatar_file = SimpleUploadedFile(
+            'avatar.png',
+            (
+                b'\x89PNG\r\n\x1a\n'
+                b'\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde'
+                b'\x00\x00\x00\x0cIDATx\x9cc```\x00\x00\x00\x04\x00\x01\xf6\x178U'
+                b'\x00\x00\x00\x00IEND\xaeB`\x82'
+            ),
+            content_type='image/png',
+        )
+
+        response = self.client.post('/api/auth/avatar/', {'avatar': avatar_file})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertTrue(bool(self.user.profile.avatar))
+        self.assertIsNotNone(response.data['user']['avatar_url'])
+        self.assertTrue(AuditLog.objects.filter(action='auth.avatar_updated', target_id=self.user.id).exists())
+
+    def test_regular_user_cannot_delete_account_without_admin_override_code(self):
+        token = Token.objects.create(user=self.user)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {token.key}')
+
+        response = self.client.delete('/api/auth/me/', {}, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['detail'], 'Admin override code is required to delete this account.')
+        self.assertTrue(User.objects.filter(pk=self.user.pk).exists())
+
+    def test_regular_user_can_delete_account_with_admin_override_code(self):
+        admin_user = User.objects.create_user(
+            username='account_admin',
+            password='password123',
+            email='account-admin@example.com',
+        )
+        admin_user.profile.role = 'admin'
+        admin_user.profile.set_master_override_password('override-123')
+        admin_user.profile.save(update_fields=['role', 'master_override_password', 'updated_at'])
+
+        token = Token.objects.create(user=self.user)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {token.key}')
+
+        response = self.client.delete('/api/auth/me/', {
+            'admin_override_code': 'override-123',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(User.objects.filter(pk=self.user.pk).exists())
+        self.assertTrue(AuditLog.objects.filter(action='auth.account_deleted').exists())
+
+    def test_admin_user_can_delete_own_account_without_override_code(self):
+        self.user.profile.role = 'admin'
+        self.user.profile.save(update_fields=['role', 'updated_at'])
+        token = Token.objects.create(user=self.user)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {token.key}')
+
+        response = self.client.delete('/api/auth/me/', {}, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(User.objects.filter(pk=self.user.pk).exists())
 
     def test_logout_deletes_token(self):
         token = Token.objects.create(user=self.user)
@@ -546,6 +675,15 @@ class RolePermissionTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.regular_user.refresh_from_db()
         self.assertTrue(self.regular_user.profile.check_master_override_password('override-123'))
+
+    def test_admin_can_delete_user_account(self):
+        self.client.force_authenticate(user=self.admin_user)
+
+        response = self.client.delete(f'/api/users/{self.regular_user.id}/')
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(User.objects.filter(pk=self.regular_user.pk).exists())
+        self.assertTrue(AuditLog.objects.filter(action='user.account_deleted').exists())
 
     def test_admin_cannot_set_master_override_password_for_non_admin_user(self):
         self.client.force_authenticate(user=self.admin_user)
