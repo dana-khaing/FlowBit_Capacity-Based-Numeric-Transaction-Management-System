@@ -5,22 +5,22 @@ import { Card, CardContent } from "@/components/ui/card";
 const authHighlights = [
   {
     icon: faChartLine,
-    text: "Monitor daily activity, capacity usage, and pending work from one place.",
+    text: "Track active periods, ledger capacity, and overflow activity from one operational view.",
   },
   {
     icon: faUsers,
-    text: "Review entries, collaborator activity, and reports in a consistent workspace.",
+    text: "Manage tickets, transactions, collaborator approvals, and reporting in one workflow.",
   },
   {
     icon: faClock,
-    text: "Stay aligned with the current period and respond quickly to operational changes.",
+    text: "Keep daily processing aligned with the live period so work moves forward without losing control.",
   },
 ];
 
 const infoCards = [
   { label: "Workspace", value: "FlowBit" },
-  { label: "Access", value: "Secure sign-in" },
-  { label: "Support", value: "Need help? Contact your administrator" },
+  { label: "Purpose", value: "Capacity-based transaction control" },
+  { label: "Use", value: "Sign in to continue your daily operations" },
 ];
 
 export function AuthMarketingPanel() {
@@ -30,19 +30,19 @@ export function AuthMarketingPanel() {
         FlowBit Workspace
       </div>
       <h1 className="mt-5 font-serif text-4xl leading-tight text-white sm:text-5xl">
-        Sign in to continue to your FlowBit workspace.
+        Keep transactions, ledgers, and approvals moving in one controlled workspace.
       </h1>
       <p className="mt-4 max-w-xl text-sm leading-7 text-stone-300 sm:text-[15px]">
-        Access your daily dashboard, review activity, and continue the work assigned to your account with a simple,
-        focused sign-in experience.
+        FlowBit brings period control, ledger capacity, overflow decisions, collaborator review, and reporting into one
+        place so daily processing stays accurate, visible, and accountable.
       </p>
 
       <div className="mt-8 grid gap-3 sm:grid-cols-3">
         {infoCards.map((item) => (
-          <Card key={item.label} className="rounded-[22px] border-white/10 bg-white/6">
+            <Card key={item.label} className="rounded-[22px] border-white/10 bg-white/6">
             <CardContent className="px-4 py-4">
               <p className="text-[11px] uppercase tracking-[0.18em] text-stone-400">{item.label}</p>
-              <p className="mt-2 text-lg font-medium text-white">{item.value}</p>
+              <p className="mt-2 text-sm font-medium leading-6 text-white sm:text-base">{item.value}</p>
             </CardContent>
           </Card>
         ))}
@@ -50,7 +50,7 @@ export function AuthMarketingPanel() {
 
       <Card className="mt-8 rounded-[26px] border-white/10 bg-white/6">
         <CardContent className="p-5">
-        <p className="text-[11px] uppercase tracking-[0.2em] text-stone-400">What You Can Do</p>
+        <p className="text-[11px] uppercase tracking-[0.2em] text-stone-400">Inside FlowBit</p>
         <ul className="mt-4 space-y-3 text-sm leading-6 text-stone-300">
           {authHighlights.map((item) => (
             <li key={item.text} className="flex gap-3">
