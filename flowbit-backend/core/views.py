@@ -1900,6 +1900,8 @@ class LoginView(APIView):
             )
 
         profile, _ = Profile.objects.get_or_create(user=user)
+        user.last_login = timezone.now()
+        user.save(update_fields=['last_login'])
         profile.last_activity = timezone.now()
         profile.save(update_fields=['last_activity', 'updated_at'])
         token, _ = Token.objects.get_or_create(user=user)
@@ -1964,6 +1966,8 @@ class GoogleLoginView(APIView):
                 user.save(update_fields=updates)
 
         profile, _ = Profile.objects.get_or_create(user=user)
+        user.last_login = timezone.now()
+        user.save(update_fields=['last_login'])
         profile.last_activity = timezone.now()
         profile.save(update_fields=['last_activity', 'updated_at'])
         token, _ = Token.objects.get_or_create(user=user)

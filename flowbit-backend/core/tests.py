@@ -200,6 +200,8 @@ class AuthAPITests(APITestCase):
         self.assertIn('token', response.data)
         self.assertEqual(response.data['user']['username'], 'auth_user')
         self.assertEqual(response.data['user']['role'], 'user')
+        self.assertIsNotNone(response.data['user']['last_login'])
+        self.assertIsNotNone(response.data['user']['date_joined'])
         self.assertTrue(Token.objects.filter(user=self.user, key=response.data['token']).exists())
         self.assertTrue(AuditLog.objects.filter(action='auth.login', target_id=self.user.id).exists())
 
@@ -216,6 +218,7 @@ class AuthAPITests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['user']['username'], 'auth_user')
+        self.assertIsNotNone(response.data['user']['last_activity'])
 
     def test_me_patch_updates_full_name_username_and_phone_number(self):
         token = Token.objects.create(user=self.user)
