@@ -34,6 +34,10 @@ function authHeaders(): Record<string, string> {
   return { Authorization: `Token ${token}` };
 }
 
+type AdminOverridePayload = {
+  adminOverrideCode: string;
+};
+
 export async function fetchManagedUsers() {
   return apiRequest<ManagedUser[]>("/users/", {
     method: "GET",
@@ -41,26 +45,34 @@ export async function fetchManagedUsers() {
   });
 }
 
-export async function updateManagedUserRole(userId: number, role: string) {
+export async function updateManagedUserRole(userId: number, role: string, options: AdminOverridePayload) {
   return apiRequest<{ message: string; user: ManagedUser }>(`/users/${userId}/set-role/`, {
     method: "POST",
     headers: authHeaders(),
-    body: JSON.stringify({ role }),
+    body: JSON.stringify({ role, admin_override_code: options.adminOverrideCode }),
   });
 }
 
-export async function updateManagedUserOverride(userId: number, masterOverridePassword: string) {
+export async function updateManagedUserOverride(
+  userId: number,
+  masterOverridePassword: string,
+  options: AdminOverridePayload,
+) {
   return apiRequest<{ message: string; user: ManagedUser }>(`/users/${userId}/set-master-override-password/`, {
     method: "POST",
     headers: authHeaders(),
-    body: JSON.stringify({ master_override_password: masterOverridePassword }),
+    body: JSON.stringify({
+      master_override_password: masterOverridePassword,
+      admin_override_code: options.adminOverrideCode,
+    }),
   });
 }
 
-export async function deleteManagedUser(userId: number) {
+export async function deleteManagedUser(userId: number, options: AdminOverridePayload) {
   return apiRequest<{ message: string }>(`/users/${userId}/`, {
     method: "DELETE",
     headers: authHeaders(),
+    body: JSON.stringify({ admin_override_code: options.adminOverrideCode }),
   });
 }
 

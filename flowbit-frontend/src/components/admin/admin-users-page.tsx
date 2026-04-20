@@ -21,6 +21,7 @@ export function AdminUsersPage() {
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [busyMap, setBusyMap] = useState<BusyState>({});
   const [overrideDrafts, setOverrideDrafts] = useState<OverrideDraftState>({});
+  const [adminOverrideCode, setAdminOverrideCode] = useState("");
   const [search, setSearch] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
@@ -46,12 +47,27 @@ export function AdminUsersPage() {
     setBusyMap((current) => ({ ...current, [userId]: isBusy }));
   }
 
+  function requireAuthorizationCode() {
+    const normalizedCode = adminOverrideCode.trim();
+    if (!normalizedCode) {
+      setStatusMessage("");
+      setErrorMessage("Enter your admin override code before changing or deleting a user.");
+      return null;
+    }
+    return normalizedCode;
+  }
+
   async function handleRoleChange(userId: number, role: string) {
+    const authorizationCode = requireAuthorizationCode();
+    if (!authorizationCode) {
+      return;
+    }
+
     setBusy(userId, true);
     setErrorMessage("");
     setStatusMessage("");
     try {
-      const response = await updateManagedUserRole(userId, role);
+      const response = await updateManagedUserRole(userId, role, { adminOverrideCode: authorizationCode });
       setUsers((current) => current.map((user) => (user.id === userId ? response.user : user)));
       setStatusMessage(response.message);
     } catch (error) {
@@ -62,11 +78,18 @@ export function AdminUsersPage() {
   }
 
   async function handleOverrideUpdate(userId: number) {
+    const authorizationCode = requireAuthorizationCode();
+    if (!authorizationCode) {
+      return;
+    }
+
     setBusy(userId, true);
     setErrorMessage("");
     setStatusMessage("");
     try {
-      const response = await updateManagedUserOverride(userId, overrideDrafts[userId] || "");
+      const response = await updateManagedUserOverride(userId, overrideDrafts[userId] || "", {
+        adminOverrideCode: authorizationCode,
+      });
       setStatusMessage(response.message);
       setOverrideDrafts((current) => ({ ...current, [userId]: "" }));
     } catch (error) {
@@ -77,6 +100,11 @@ export function AdminUsersPage() {
   }
 
   async function handleDelete(userId: number) {
+    const authorizationCode = requireAuthorizationCode();
+    if (!authorizationCode) {
+      return;
+    }
+
     const targetUser = users.find((user) => user.id === userId);
     if (!targetUser || !window.confirm(`Delete ${targetUser.username}? This cannot be undone.`)) {
       return;
@@ -86,7 +114,7 @@ export function AdminUsersPage() {
     setErrorMessage("");
     setStatusMessage("");
     try {
-      const response = await deleteManagedUser(userId);
+      const response = await deleteManagedUser(userId, { adminOverrideCode: authorizationCode });
       setUsers((current) => current.filter((user) => user.id !== userId));
       setStatusMessage(response.message);
     } catch (error) {
@@ -112,15 +140,22 @@ export function AdminUsersPage() {
                 <div>
                   <h2 className="text-xl font-semibold text-stone-950">Accounts</h2>
                   <p className="mt-1 text-sm leading-6 text-stone-500">
-                    Search by name, username, email, or role. Override codes can only be saved for admin accounts.
+                    Search by name, username, email, or role. Your admin override code is required before any user change or deletion.
                   </p>
                 </div>
-                <div className="w-full max-w-sm">
+                <div className="grid w-full gap-3 lg:max-w-[640px] lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                   <Input
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
                     placeholder="Search users"
                     aria-label="Search users"
+                  />
+                  <Input
+                    type="password"
+                    value={adminOverrideCode}
+                    onChange={(event) => setAdminOverrideCode(event.target.value)}
+                    placeholder="Enter your admin override code"
+                    aria-label="Enter your admin override code"
                   />
                 </div>
               </div>
@@ -137,15 +172,15 @@ export function AdminUsersPage() {
                       key={user.id}
                       className="rounded-[24px] border border-stone-900/8 bg-[#f8f6f2] p-4 sm:p-5"
                     >
-                      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                        <div className="space-y-1">
+                      <div className="grid gap-5 xl:grid-cols-2 xl:gap-8">
+                        <div className="space-y-1 xl:min-w-0">
                           <p className="text-lg font-semibold text-stone-950">{user.full_name || user.username}</p>
                           <p className="text-sm text-stone-500">@{user.username}</p>
                           <p className="text-sm text-stone-500">{user.email || "No email"}</p>
                           <p className="text-sm text-stone-500">{user.phone_number || "No phone number"}</p>
                         </div>
 
-                        <div className="grid gap-3 sm:grid-cols-2 xl:min-w-[540px]">
+                        <div className="grid gap-4 xl:min-w-0">
                           <label className="space-y-2">
                             <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Role</span>
                             <select
@@ -160,17 +195,19 @@ export function AdminUsersPage() {
                               <option value="admin">Admin</option>
                             </select>
                             {isCurrentAdmin && user.role === "admin" ? (
-                              <p className="text-xs leading-5 text-stone-500">
+                              <p className="min-h-[20px] text-xs leading-5 text-stone-500">
                                 Your own admin account cannot be downgraded here.
                               </p>
-                            ) : null}
+                            ) : (
+                              <div className="min-h-[20px]" aria-hidden="true" />
+                            )}
                           </label>
 
                           <label className="space-y-2 sm:col-span-2">
                             <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
                               Admin override code
                             </span>
-                            <div className="flex flex-col gap-3 sm:flex-row">
+                            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_164px]">
                               <Input
                                 type="password"
                                 value={overrideDrafts[user.id] || ""}
@@ -180,8 +217,12 @@ export function AdminUsersPage() {
                                 placeholder={user.role === "admin" ? "Set or clear override code" : "Available for admin only"}
                                 disabled={isBusy || user.role !== "admin"}
                               />
-                              <Button onClick={() => handleOverrideUpdate(user.id)} disabled={isBusy || user.role !== "admin"}>
-                                Active change
+                              <Button
+                                className="w-full"
+                                onClick={() => handleOverrideUpdate(user.id)}
+                                disabled={isBusy || user.role !== "admin"}
+                              >
+                                {user.role === "admin" ? "Activate" : "Modify"}
                               </Button>
                             </div>
                           </label>
