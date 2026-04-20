@@ -51,7 +51,9 @@ from .audit import record_audit_log, serialize_audit_value, snapshot_instance
 from .permissions import (
     IsAdminRole,
     IsAuthenticatedReadOnlyOrAdminWriteOrOverride,
+    get_request_admin_override_code,
     get_request_admin_override_profile,
+    get_valid_admin_override_profile,
     is_admin_user,
 )
 from .serializers import (
@@ -2157,10 +2159,16 @@ class UserManagementViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mi
     permission_classes = [IsAdminRole]
 
     def _require_admin_override(self, request):
-        override_profile = get_request_admin_override_profile(request)
-        if override_profile is None:
+        raw_code = get_request_admin_override_code(request)
+        if not raw_code:
             return Response(
                 {'detail': 'Admin override code is required for this action.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        override_profile = get_valid_admin_override_profile(raw_code)
+        if override_profile is None:
+            return Response(
+                {'detail': 'Admin override code is incorrect.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         return override_profile
