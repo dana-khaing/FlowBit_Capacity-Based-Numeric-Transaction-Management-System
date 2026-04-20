@@ -43,6 +43,10 @@ type ProfileUpdatePayload = {
   phone_number: string;
 };
 
+type AccountDeletionPayload = {
+  admin_override_code?: string;
+};
+
 function setStoredSession(token: string, user: AuthUser, remember: boolean) {
   if (typeof window === "undefined") {
     return;
@@ -166,6 +170,19 @@ export async function updateCurrentUserProfile(payload: ProfileUpdatePayload) {
   }
 
   return response.user;
+}
+
+export async function deleteCurrentUserAccount(payload: AccountDeletionPayload) {
+  const token = getStoredToken();
+  if (!token) {
+    throw new Error("No session found.");
+  }
+
+  return apiRequest<{ message: string }>("/auth/me/", {
+    method: "DELETE",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function logoutFromBackend() {
