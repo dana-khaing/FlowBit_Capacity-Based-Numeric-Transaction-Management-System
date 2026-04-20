@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { WorkspaceShell } from "@/components/app/workspace-shell";
 import { AdminAccessGuard } from "@/components/admin/admin-access-guard";
 import { AdminPageHeader } from "@/components/admin/admin-page-header";
+import { AdminActionToast } from "@/components/admin/admin-action-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -16,6 +17,10 @@ import {
 
 type OverrideDraftState = Record<number, string>;
 type BusyState = Record<number, boolean>;
+type ToastState = {
+  message: string;
+  type: "success" | "error";
+} | null;
 
 export function AdminUsersPage() {
   const [users, setUsers] = useState<ManagedUser[]>([]);
@@ -23,13 +28,14 @@ export function AdminUsersPage() {
   const [overrideDrafts, setOverrideDrafts] = useState<OverrideDraftState>({});
   const [adminOverrideCode, setAdminOverrideCode] = useState("");
   const [search, setSearch] = useState("");
-  const [statusMessage, setStatusMessage] = useState("");
-  const [errorMessage, setErrorMessage] = useState("");
+  const [toast, setToast] = useState<ToastState>(null);
 
   useEffect(() => {
     fetchManagedUsers()
       .then(setUsers)
-      .catch((error) => setErrorMessage(error.message));
+      .catch((error) =>
+        setToast({ message: error instanceof Error ? error.message : "Could not load users.", type: "error" }),
+      );
   }, []);
 
   const filteredUsers = useMemo(() => {
@@ -50,8 +56,10 @@ export function AdminUsersPage() {
   function requireAuthorizationCode() {
     const normalizedCode = adminOverrideCode.trim();
     if (!normalizedCode) {
-      setStatusMessage("");
-      setErrorMessage("Enter your admin override code before changing or deleting a user.");
+      setToast({
+        message: "Enter your admin override code before changing or deleting a user.",
+        type: "error",
+      });
       return null;
     }
     return normalizedCode;
@@ -62,16 +70,19 @@ export function AdminUsersPage() {
     if (!authorizationCode) {
       return;
     }
+    const targetUser = users.find((user) => user.id === userId);
+    if (!targetUser || !window.confirm(`Change ${targetUser.username} to ${role}?`)) {
+      return;
+    }
 
     setBusy(userId, true);
-    setErrorMessage("");
-    setStatusMessage("");
+    setToast(null);
     try {
       const response = await updateManagedUserRole(userId, role, { adminOverrideCode: authorizationCode });
       setUsers((current) => current.map((user) => (user.id === userId ? response.user : user)));
-      setStatusMessage(response.message);
+      setToast({ message: response.message, type: "success" });
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Role update failed.");
+      setToast({ message: error instanceof Error ? error.message : "Role update failed.", type: "error" });
     } finally {
       setBusy(userId, false);
     }
@@ -82,18 +93,21 @@ export function AdminUsersPage() {
     if (!authorizationCode) {
       return;
     }
+    const targetUser = users.find((user) => user.id === userId);
+    if (!targetUser || !window.confirm(`Update the override code for ${targetUser.username}?`)) {
+      return;
+    }
 
     setBusy(userId, true);
-    setErrorMessage("");
-    setStatusMessage("");
+    setToast(null);
     try {
       const response = await updateManagedUserOverride(userId, overrideDrafts[userId] || "", {
         adminOverrideCode: authorizationCode,
       });
-      setStatusMessage(response.message);
+      setToast({ message: response.message, type: "success" });
       setOverrideDrafts((current) => ({ ...current, [userId]: "" }));
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Override update failed.");
+      setToast({ message: error instanceof Error ? error.message : "Override update failed.", type: "error" });
     } finally {
       setBusy(userId, false);
     }
@@ -111,14 +125,13 @@ export function AdminUsersPage() {
     }
 
     setBusy(userId, true);
-    setErrorMessage("");
-    setStatusMessage("");
+    setToast(null);
     try {
       const response = await deleteManagedUser(userId, { adminOverrideCode: authorizationCode });
       setUsers((current) => current.filter((user) => user.id !== userId));
-      setStatusMessage(response.message);
+      setToast({ message: response.message, type: "success" });
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Account deletion failed.");
+      setToast({ message: error instanceof Error ? error.message : "Account deletion failed.", type: "error" });
     } finally {
       setBusy(userId, false);
     }
@@ -128,6 +141,7 @@ export function AdminUsersPage() {
     <AdminAccessGuard>
       {(currentAdmin) => (
         <WorkspaceShell>
+          {toast ? <AdminActionToast message={toast.message} type={toast.type} onClose={() => setToast(null)} /> : null}
           <div className="mx-auto w-full max-w-[1800px] px-4 py-4 sm:px-6 lg:px-8 lg:py-8">
             <AdminPageHeader
               eyebrow="Admin"
@@ -159,9 +173,6 @@ export function AdminUsersPage() {
                   />
                 </div>
               </div>
-
-              {statusMessage ? <p className="mt-4 text-sm font-medium text-emerald-700">{statusMessage}</p> : null}
-              {errorMessage ? <p className="mt-4 text-sm font-medium text-rose-700">{errorMessage}</p> : null}
 
               <div className="mt-5 grid gap-4">
                 {filteredUsers.map((user) => {
