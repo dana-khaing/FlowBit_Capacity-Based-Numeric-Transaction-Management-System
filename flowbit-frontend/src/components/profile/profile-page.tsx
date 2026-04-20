@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { WorkspaceShell } from "@/components/app/workspace-shell";
 import { ProfileAvatarCard } from "@/components/profile/profile-avatar-card";
+import { ProfileAdminActionsCard } from "@/components/profile/profile-admin-actions-card";
 import { ProfileDangerZoneCard } from "@/components/profile/profile-danger-zone-card";
 import { ProfileDetailsCard } from "@/components/profile/profile-details-card";
 import { ProfileOverviewCard } from "@/components/profile/profile-overview-card";
@@ -46,6 +47,7 @@ export function ProfilePage() {
           <div className="space-y-5">
             <ProfilePasswordCard onNotify={setToastMessage} />
             <ProfileSessionCard user={user} />
+            <ProfileAdminActionsCard user={user} />
             <ProfileSecurityCard />
             <ProfileDangerZoneCard user={user} />
           </div>
