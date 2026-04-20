@@ -1,5 +1,5 @@
 # All imports organized in ONE place at the top
-from rest_framework import viewsets, generics, status
+from rest_framework import viewsets, generics, status, mixins
 from rest_framework.permissions import AllowAny
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.views import APIView
@@ -69,6 +69,7 @@ from .serializers import (
     UserProfileSerializer,
     UserProfileUpdateSerializer,
     ChangePasswordSerializer,
+    AccountDeletionSerializer,
     ForgotPasswordSerializer,
     ResetPasswordConfirmSerializer,
     CollaboratorManageSerializer,
@@ -2037,6 +2038,44 @@ class MeView(APIView):
 
         return Response({'user': UserProfileSerializer(user).data}, status=status.HTTP_200_OK)
 
+    def delete(self, request):
+        serializer = AccountDeletionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        override_profile = get_request_admin_override_profile(request)
+        if not is_admin_user(request.user) and override_profile is None:
+            return Response(
+                {'detail': 'Admin override code is required to delete this account.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        target_user = request.user
+        deleted_username = target_user.username
+        deleted_user_id = target_user.id
+        deleted_role = getattr(target_user.profile, 'role', '')
+        deleted_by = request.user.username
+        override_owner = override_profile.user.username if override_profile else None
+
+        record_audit_log(
+            request,
+            'auth.account_deleted',
+            target=target_user,
+            details=f"User '{deleted_username}' deleted their account",
+            changes={
+                'deleted_user_id': deleted_user_id,
+                'deleted_username': deleted_username,
+                'deleted_role': deleted_role,
+                'deleted_by': deleted_by,
+                'used_admin_override': override_profile is not None and not is_admin_user(request.user),
+                'admin_override_owner': override_owner,
+            },
+        )
+
+        Token.objects.filter(user=target_user).delete()
+        target_user.delete()
+
+        return Response({'message': 'Account deleted successfully.'}, status=status.HTTP_200_OK)
+
 
 class ChangePasswordView(APIView):
     permission_classes = [IsAuthenticated]
@@ -2069,7 +2108,7 @@ class ChangePasswordView(APIView):
         }, status=status.HTTP_200_OK)
 
 
-class UserManagementViewSet(viewsets.ReadOnlyModelViewSet):
+class UserManagementViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.DestroyModelMixin, viewsets.GenericViewSet):
     queryset = User.objects.all().order_by('username')
     serializer_class = UserProfileSerializer
     permission_classes = [IsAdminRole]
@@ -2133,6 +2172,29 @@ class UserManagementViewSet(viewsets.ReadOnlyModelViewSet):
             'message': 'Master override password updated successfully.',
             'override_enabled': override_enabled,
         }, status=status.HTTP_200_OK)
+
+    def destroy(self, request, *args, **kwargs):
+        target_user = self.get_object()
+        deleted_user_id = target_user.id
+        deleted_username = target_user.username
+        deleted_role = getattr(target_user.profile, 'role', '')
+
+        record_audit_log(
+            request,
+            'user.account_deleted',
+            target=target_user,
+            details=f"Admin deleted account '{deleted_username}'",
+            changes={
+                'deleted_user_id': deleted_user_id,
+                'deleted_username': deleted_username,
+                'deleted_role': deleted_role,
+                'deleted_by': request.user.username,
+            },
+        )
+
+        Token.objects.filter(user=target_user).delete()
+        target_user.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class TicketListView(generics.ListAPIView):

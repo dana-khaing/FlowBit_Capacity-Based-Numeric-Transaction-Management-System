@@ -250,6 +250,48 @@ class AuthAPITests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('username', response.data)
 
+    def test_regular_user_cannot_delete_account_without_admin_override_code(self):
+        token = Token.objects.create(user=self.user)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {token.key}')
+
+        response = self.client.delete('/api/auth/me/', {}, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['detail'], 'Admin override code is required to delete this account.')
+        self.assertTrue(User.objects.filter(pk=self.user.pk).exists())
+
+    def test_regular_user_can_delete_account_with_admin_override_code(self):
+        admin_user = User.objects.create_user(
+            username='account_admin',
+            password='password123',
+            email='account-admin@example.com',
+        )
+        admin_user.profile.role = 'admin'
+        admin_user.profile.set_master_override_password('override-123')
+        admin_user.profile.save(update_fields=['role', 'master_override_password', 'updated_at'])
+
+        token = Token.objects.create(user=self.user)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {token.key}')
+
+        response = self.client.delete('/api/auth/me/', {
+            'admin_override_code': 'override-123',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(User.objects.filter(pk=self.user.pk).exists())
+        self.assertTrue(AuditLog.objects.filter(action='auth.account_deleted').exists())
+
+    def test_admin_user_can_delete_own_account_without_override_code(self):
+        self.user.profile.role = 'admin'
+        self.user.profile.save(update_fields=['role', 'updated_at'])
+        token = Token.objects.create(user=self.user)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {token.key}')
+
+        response = self.client.delete('/api/auth/me/', {}, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(User.objects.filter(pk=self.user.pk).exists())
+
     def test_logout_deletes_token(self):
         token = Token.objects.create(user=self.user)
         self.client.credentials(HTTP_AUTHORIZATION=f'Token {token.key}')
@@ -579,6 +621,15 @@ class RolePermissionTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.regular_user.refresh_from_db()
         self.assertTrue(self.regular_user.profile.check_master_override_password('override-123'))
+
+    def test_admin_can_delete_user_account(self):
+        self.client.force_authenticate(user=self.admin_user)
+
+        response = self.client.delete(f'/api/users/{self.regular_user.id}/')
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(User.objects.filter(pk=self.regular_user.pk).exists())
+        self.assertTrue(AuditLog.objects.filter(action='user.account_deleted').exists())
 
     def test_admin_cannot_set_master_override_password_for_non_admin_user(self):
         self.client.force_authenticate(user=self.admin_user)
