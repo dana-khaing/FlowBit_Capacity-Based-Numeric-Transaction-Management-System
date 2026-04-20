@@ -47,7 +47,7 @@ export function ProfileDangerZoneCard({ user }: ProfileDangerZoneCardProps) {
           <h2 className="mt-2 text-2xl font-semibold text-stone-950">Delete account</h2>
           <p className="mt-2 text-sm leading-6 text-stone-600">
             This permanently removes the account for <span className="font-medium">{user.full_name || user.username}</span>.
-            Regular users need a valid admin override code. Admin users can delete their own account directly.
+            Regular users need a valid admin override code.
           </p>
         </div>
       </div>
