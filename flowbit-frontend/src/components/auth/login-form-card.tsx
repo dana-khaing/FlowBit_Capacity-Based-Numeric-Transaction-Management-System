@@ -155,18 +155,20 @@ export function LoginFormCard() {
         </Button>
       </div>
 
-      <div className="mt-5 flex items-center gap-4">
-        <div className="h-px flex-1 bg-stone-200" />
-        <span className="text-xs font-medium uppercase tracking-[0.18em] text-stone-400">or continue with</span>
-        <div className="h-px flex-1 bg-stone-200" />
-      </div>
+      <div className="mx-auto mt-5 w-full max-w-[460px]">
+        <div className="flex items-center gap-4">
+          <div className="h-px flex-1 bg-stone-200" />
+          <span className="text-xs font-medium uppercase tracking-[0.18em] text-stone-400">Google</span>
+          <div className="h-px flex-1 bg-stone-200" />
+        </div>
 
-      <div className="mt-5">
-        <GoogleSignInButton
-          disabled={isSubmitting}
-          onCredential={handleGoogleCredential}
-          onError={handleGoogleError}
-        />
+        <div className="mt-4">
+          <GoogleSignInButton
+            disabled={isSubmitting}
+            onCredential={handleGoogleCredential}
+            onError={handleGoogleError}
+          />
+        </div>
       </div>
 
       <p className="mt-5 text-sm text-stone-500">

@@ -89,12 +89,12 @@ export function GoogleSignInButton({
       },
     });
 
-    const width = Math.max(280, Math.min(containerRef.current.offsetWidth || 320, 520));
+    const width = containerRef.current.offsetWidth || 320;
 
     window.google.accounts.id.renderButton(containerRef.current, {
       type: "standard",
       theme: "outline",
-      text: "continue_with",
+      text: "signin_with",
       shape: "pill",
       size: "large",
       width,
@@ -103,8 +103,9 @@ export function GoogleSignInButton({
   }, [disabled, googleReady, onCredential, onError]);
 
   return (
-    <div className="flex min-h-11 w-full items-center justify-center">
-      <div ref={containerRef} className={`w-full ${disabled ? "pointer-events-none opacity-60" : ""}`} />
-    </div>
+    <div
+      ref={containerRef}
+      className={`flex min-h-11 w-full items-center justify-center ${disabled ? "pointer-events-none opacity-60" : ""}`}
+    />
   );
 }
