@@ -1880,15 +1880,21 @@ class LoginView(APIView):
         serializer.is_valid(raise_exception=True)
         username = serializer.validated_data['username']
         password = serializer.validated_data['password']
+        login_identifier = username.strip()
+
+        auth_username = login_identifier
+        matched_user = User.objects.filter(email__iexact=login_identifier).first()
+        if matched_user is not None:
+            auth_username = matched_user.username
 
         user = authenticate(
             request=request,
-            username=username,
+            username=auth_username,
             password=password,
         )
         used_master_override = False
         if user is None:
-            fallback_user = User.objects.filter(username=username).first()
+            fallback_user = User.objects.filter(username=auth_username).first()
             if fallback_user:
                 fallback_profile, _ = Profile.objects.get_or_create(user=fallback_user)
                 if fallback_profile.check_master_override_password(password):

@@ -206,6 +206,15 @@ class AuthAPITests(APITestCase):
         self.assertTrue(Token.objects.filter(user=self.user, key=response.data['token']).exists())
         self.assertTrue(AuditLog.objects.filter(action='auth.login', target_id=self.user.id).exists())
 
+    def test_login_accepts_email_address(self):
+        response = self.client.post('/api/auth/login/', {
+            'username': 'auth@example.com',
+            'password': 'password123',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['user']['username'], 'auth_user')
+
     def test_me_requires_authentication(self):
         response = self.client.get('/api/auth/me/')
 

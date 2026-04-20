@@ -49,7 +49,7 @@ export function LoginFormCard() {
     const nextErrors: { username?: string; password?: string } = {};
 
     if (!credentials.username.trim()) {
-      nextErrors.username = "Enter your username to continue.";
+      nextErrors.username = "Enter your username or email to continue.";
     }
 
     if (!credentials.password) {
@@ -137,9 +137,9 @@ export function LoginFormCard() {
 
       <div className="mt-8 grid gap-4 md:grid-cols-2">
         <AuthInput
-          label="Username"
+          label="Username or email"
           type="text"
-          placeholder="Enter your username"
+          placeholder="Enter your username or email"
           name="username"
           autoComplete="username"
           error={fieldErrors.username}
