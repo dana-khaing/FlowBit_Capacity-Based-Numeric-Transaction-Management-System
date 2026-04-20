@@ -2223,6 +2223,11 @@ class UserManagementViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mi
                 {'detail': 'Master override password can only be configured for admin users.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        if target_user.pk != request.user.pk:
+            return Response(
+                {'detail': 'Admin users can only manage their own override code.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         override_result = self._require_admin_override(request, allow_initial_setup_profile=profile)
         if isinstance(override_result, Response):
             return override_result
