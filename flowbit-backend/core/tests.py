@@ -217,6 +217,39 @@ class AuthAPITests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['user']['username'], 'auth_user')
 
+    def test_me_patch_updates_full_name_username_and_phone_number(self):
+        token = Token.objects.create(user=self.user)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {token.key}')
+
+        response = self.client.patch('/api/auth/me/', {
+            'full_name': 'Updated Auth User',
+            'username': 'updated_auth_user',
+            'phone_number': '+44-7000-111111',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.username, 'updated_auth_user')
+        self.assertEqual(self.user.first_name, 'Updated')
+        self.assertEqual(self.user.last_name, 'Auth User')
+        self.assertEqual(self.user.profile.phone_number, '+44-7000-111111')
+        self.assertEqual(response.data['user']['full_name'], 'Updated Auth User')
+        self.assertTrue(AuditLog.objects.filter(action='auth.profile_update', target_id=self.user.id).exists())
+
+    def test_me_patch_rejects_duplicate_username(self):
+        User.objects.create_user(username='taken_name', password='secret123', email='taken@example.com')
+        token = Token.objects.create(user=self.user)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {token.key}')
+
+        response = self.client.patch('/api/auth/me/', {
+            'full_name': 'Updated Auth User',
+            'username': 'taken_name',
+            'phone_number': '+44-7000-111111',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('username', response.data)
+
     def test_logout_deletes_token(self):
         token = Token.objects.create(user=self.user)
         self.client.credentials(HTTP_AUTHORIZATION=f'Token {token.key}')
