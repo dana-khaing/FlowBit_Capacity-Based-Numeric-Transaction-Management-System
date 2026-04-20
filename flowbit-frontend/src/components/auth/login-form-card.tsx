@@ -153,13 +153,20 @@ export function LoginFormCard() {
           <FontAwesomeIcon icon={faArrowRightToBracket} className="h-4 w-4" />
           {isSubmitting ? "Signing in..." : "Log in to FlowBit"}
         </Button>
-        <div className="flex flex-1 items-center justify-center rounded-[20px] border border-stone-900/10 bg-white px-4 py-3">
-          <GoogleSignInButton
-            disabled={isSubmitting}
-            onCredential={handleGoogleCredential}
-            onError={handleGoogleError}
-          />
-        </div>
+      </div>
+
+      <div className="mt-5 flex items-center gap-4">
+        <div className="h-px flex-1 bg-stone-200" />
+        <span className="text-xs font-medium uppercase tracking-[0.18em] text-stone-400">or continue with</span>
+        <div className="h-px flex-1 bg-stone-200" />
+      </div>
+
+      <div className="mt-5">
+        <GoogleSignInButton
+          disabled={isSubmitting}
+          onCredential={handleGoogleCredential}
+          onError={handleGoogleError}
+        />
       </div>
 
       <p className="mt-5 text-sm text-stone-500">

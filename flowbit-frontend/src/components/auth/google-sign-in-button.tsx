@@ -89,20 +89,22 @@ export function GoogleSignInButton({
       },
     });
 
+    const width = Math.max(280, Math.min(containerRef.current.offsetWidth || 320, 520));
+
     window.google.accounts.id.renderButton(containerRef.current, {
       type: "standard",
       theme: "outline",
       text: "continue_with",
       shape: "pill",
       size: "large",
-      width: 320,
+      width,
       logo_alignment: "left",
     });
   }, [disabled, googleReady, onCredential, onError]);
 
   return (
-    <div className="flex min-h-11 items-center justify-center">
-      <div ref={containerRef} className={disabled ? "pointer-events-none opacity-60" : ""} />
+    <div className="flex min-h-11 w-full items-center justify-center">
+      <div ref={containerRef} className={`w-full ${disabled ? "pointer-events-none opacity-60" : ""}`} />
     </div>
   );
 }
