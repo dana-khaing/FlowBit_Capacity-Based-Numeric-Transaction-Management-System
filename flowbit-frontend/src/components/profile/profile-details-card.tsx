@@ -10,9 +10,10 @@ import { updateCurrentUserProfile, type AuthUser } from "@/lib/auth-client";
 type ProfileDetailsCardProps = {
   user: AuthUser;
   onUserChange: (user: AuthUser) => void;
+  onNotify: (message: string) => void;
 };
 
-export function ProfileDetailsCard({ user, onUserChange }: ProfileDetailsCardProps) {
+export function ProfileDetailsCard({ user, onUserChange, onNotify }: ProfileDetailsCardProps) {
   const [formValues, setFormValues] = useState({
     full_name: user.full_name || "",
     username: user.username,
@@ -26,7 +27,6 @@ export function ProfileDetailsCard({ user, onUserChange }: ProfileDetailsCardPro
     phone_number?: string;
   }>({});
   const [errorMessage, setErrorMessage] = useState("");
-  const [successMessage, setSuccessMessage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
   function validateForm() {
@@ -68,7 +68,6 @@ export function ProfileDetailsCard({ user, onUserChange }: ProfileDetailsCardPro
 
   async function handleSave() {
     setErrorMessage("");
-    setSuccessMessage("");
 
     if (!validateForm()) {
       return;
@@ -84,7 +83,7 @@ export function ProfileDetailsCard({ user, onUserChange }: ProfileDetailsCardPro
         email: updatedUser.email || "",
         phone_number: updatedUser.phone_number || "",
       });
-      setSuccessMessage("Profile updated successfully.");
+      onNotify("Profile updated successfully.");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to update your profile.";
       if (message.toLowerCase().includes("username")) {
@@ -164,12 +163,6 @@ export function ProfileDetailsCard({ user, onUserChange }: ProfileDetailsCardPro
         />
 
       </div>
-
-      {successMessage ? (
-        <div className="mt-5 rounded-[20px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-          {successMessage}
-        </div>
-      ) : null}
 
       {errorMessage ? (
         <div className="mt-5 rounded-[20px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
