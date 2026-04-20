@@ -666,6 +666,7 @@ class RolePermissionTests(APITestCase):
         self.assertEqual(listed_user['role'], '')
         self.assertEqual(listed_user['phone_number'], '')
         self.assertIsNone(listed_user['avatar_url'])
+        self.assertFalse(listed_user['has_override_code'])
 
     def test_admin_can_change_user_role(self):
         self.client.force_authenticate(user=self.admin_user)
@@ -697,7 +698,7 @@ class RolePermissionTests(APITestCase):
     def test_admin_can_set_master_override_password(self):
         self.client.force_authenticate(user=self.admin_user)
         self.regular_user.profile.role = 'admin'
-        self.regular_user.profile.save(update_fields=['role', 'updated_at'])
+        self.regular_user.profile.save(update_fields=['role', 'master_override_password', 'updated_at'])
 
         response = self.client.post(
             f'/api/users/{self.regular_user.id}/set-master-override-password/',
@@ -708,6 +709,22 @@ class RolePermissionTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.regular_user.refresh_from_db()
         self.assertTrue(self.regular_user.profile.check_master_override_password('override-999'))
+
+    def test_admin_can_set_initial_master_override_password_without_existing_override(self):
+        self.client.force_authenticate(user=self.admin_user)
+        self.regular_user.profile.role = 'admin'
+        self.regular_user.profile.clear_master_override_password()
+        self.regular_user.profile.save(update_fields=['role', 'master_override_password', 'updated_at'])
+
+        response = self.client.post(
+            f'/api/users/{self.regular_user.id}/set-master-override-password/',
+            {'master_override_password': 'first-override'},
+            format='json'
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.regular_user.refresh_from_db()
+        self.assertTrue(self.regular_user.profile.check_master_override_password('first-override'))
 
     def test_admin_can_delete_user_account(self):
         self.client.force_authenticate(user=self.admin_user)
@@ -759,7 +776,8 @@ class RolePermissionTests(APITestCase):
     def test_admin_cannot_set_master_override_without_override_code(self):
         self.client.force_authenticate(user=self.admin_user)
         self.regular_user.profile.role = 'admin'
-        self.regular_user.profile.save(update_fields=['role', 'updated_at'])
+        self.regular_user.profile.set_master_override_password('existing-override')
+        self.regular_user.profile.save(update_fields=['role', 'master_override_password', 'updated_at'])
 
         response = self.client.post(
             f'/api/users/{self.regular_user.id}/set-master-override-password/',
@@ -773,7 +791,8 @@ class RolePermissionTests(APITestCase):
     def test_admin_cannot_set_master_override_with_incorrect_override_code(self):
         self.client.force_authenticate(user=self.admin_user)
         self.regular_user.profile.role = 'admin'
-        self.regular_user.profile.save(update_fields=['role', 'updated_at'])
+        self.regular_user.profile.set_master_override_password('existing-override')
+        self.regular_user.profile.save(update_fields=['role', 'master_override_password', 'updated_at'])
 
         response = self.client.post(
             f'/api/users/{self.regular_user.id}/set-master-override-password/',
