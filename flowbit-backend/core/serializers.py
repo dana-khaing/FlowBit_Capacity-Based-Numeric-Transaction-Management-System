@@ -350,10 +350,25 @@ class UserProfileSerializer(serializers.ModelSerializer):
     role = serializers.CharField(source='profile.role', read_only=True)
     phone_number = serializers.CharField(source='profile.phone_number', read_only=True)
     full_name = serializers.SerializerMethodField()
+    last_activity = serializers.DateTimeField(source='profile.last_activity', read_only=True)
+    last_login = serializers.DateTimeField(read_only=True)
+    date_joined = serializers.DateTimeField(read_only=True)
 
     class Meta:
         model = User
-        fields = ['id', 'username', 'first_name', 'last_name', 'full_name', 'email', 'role', 'phone_number']
+        fields = [
+            'id',
+            'username',
+            'first_name',
+            'last_name',
+            'full_name',
+            'email',
+            'role',
+            'phone_number',
+            'last_activity',
+            'last_login',
+            'date_joined',
+        ]
 
     def get_full_name(self, obj):
         return obj.get_full_name().strip()

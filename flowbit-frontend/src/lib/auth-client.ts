@@ -15,6 +15,9 @@ export type AuthUser = {
   email: string;
   role: string;
   phone_number: string;
+  last_activity: string | null;
+  last_login: string | null;
+  date_joined: string;
 };
 
 type LoginResponse = {
