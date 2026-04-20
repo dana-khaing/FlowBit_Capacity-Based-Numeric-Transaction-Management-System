@@ -8,5 +8,6 @@ pillow==11.3.0
 psycopg2-binary==2.9.11
 python-decouple==3.8
 reportlab==4.4.10
+requests>=2.31.0,<3.0.0
 sqlparse==0.5.5
 typing_extensions==4.15.0

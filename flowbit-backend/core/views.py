@@ -1,6 +1,7 @@
 # All imports organized in ONE place at the top
 from rest_framework import viewsets, generics, status
 from rest_framework.permissions import AllowAny
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.decorators import action
@@ -63,6 +64,7 @@ from .serializers import (
     TicketSerializer,
     AuditLogSerializer,
     LoginSerializer,
+    RegisterSerializer,
     GoogleLoginSerializer,
     UserProfileSerializer,
     ChangePasswordSerializer,
@@ -214,13 +216,15 @@ def _build_unique_username(email, fallback='google_user'):
 
 def verify_google_id_token(id_token_value):
     if not settings.GOOGLE_OAUTH_CLIENT_ID:
-        raise ValidationError("Google sign-in is not configured.")
+        raise DRFValidationError("Google sign-in is not configured.")
 
     try:
         from google.auth.transport import requests as google_requests
         from google.oauth2 import id_token as google_id_token
     except ImportError as exc:
-        raise ValidationError("google-auth package is required for Google sign-in.") from exc
+        raise DRFValidationError(
+            "Google sign-in dependencies are incomplete. Please install the requests package."
+        ) from exc
 
     try:
         return google_id_token.verify_oauth2_token(
@@ -229,7 +233,7 @@ def verify_google_id_token(id_token_value):
             settings.GOOGLE_OAUTH_CLIENT_ID,
         )
     except Exception as exc:
-        raise ValidationError("Invalid Google ID token.") from exc
+        raise DRFValidationError("Invalid Google ID token.") from exc
 
 
 def resolve_collaborators_for_approval(request, collaborator_ids):
@@ -1832,6 +1836,35 @@ class ResetPasswordConfirmView(APIView):
                 'user': UserProfileSerializer(user).data,
             },
             status=status.HTTP_200_OK,
+        )
+
+
+class RegisterView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = RegisterSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+
+        record_audit_log(
+            request,
+            'auth.register',
+            target=user,
+            details=f"User '{user.username}' registered",
+            changes={
+                'email': user.email,
+                'role': user.profile.role,
+                'phone_number': user.profile.phone_number,
+            },
+        )
+
+        return Response(
+            {
+                'message': 'Account created successfully. Please log in to continue.',
+                'user': UserProfileSerializer(user).data,
+            },
+            status=status.HTTP_201_CREATED,
         )
 
 

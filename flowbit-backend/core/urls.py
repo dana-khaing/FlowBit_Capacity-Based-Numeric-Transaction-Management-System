@@ -14,6 +14,7 @@ from .views import (
     DashboardReportView,
     IdentifierCapacityReportView,
     LoginView,
+    RegisterView,
     GoogleLoginView,
     LogoutView,
     MeView,
@@ -40,6 +41,7 @@ urlpatterns = [
     path('', include(router.urls)),
 
     path('auth/login/', LoginView.as_view(), name='auth-login'),
+    path('auth/register/', RegisterView.as_view(), name='auth-register'),
     path('auth/google/', GoogleLoginView.as_view(), name='auth-google-login'),
     path('auth/logout/', LogoutView.as_view(), name='auth-logout'),
     path('auth/me/', MeView.as_view(), name='auth-me'),
