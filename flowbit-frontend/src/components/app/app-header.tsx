@@ -40,12 +40,6 @@ export function AppHeader() {
         <div className="hidden rounded-full border border-stone-900/10 bg-stone-50 px-4 py-2 text-sm text-stone-500 sm:block">
           Period: Mar 1–16
         </div>
-        {user ? (
-          <div className="hidden text-right sm:block">
-            <p className="text-sm font-medium text-stone-700">{user.full_name || user.username}</p>
-            <p className="text-xs text-stone-400">@{user.username}</p>
-          </div>
-        ) : null}
         <Link
           href="/profile"
           className="inline-flex items-center justify-center gap-3 rounded-[20px] border border-stone-900/10 bg-white px-4 py-3 text-sm font-semibold text-stone-700 transition hover:bg-stone-50"
