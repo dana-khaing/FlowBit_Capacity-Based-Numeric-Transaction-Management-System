@@ -19,11 +19,30 @@ export function ForgotPasswordFormCard() {
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const [emailError, setEmailError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  function validateEmail() {
+    if (!email.trim()) {
+      setEmailError("Enter your email address.");
+      return false;
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setEmailError("Enter a valid email address.");
+      return false;
+    }
+
+    setEmailError("");
+    return true;
+  }
 
   async function handlePasswordReset() {
     setErrorMessage("");
     setMessage("");
+    if (!validateEmail()) {
+      return;
+    }
     setIsSubmitting(true);
 
     try {
@@ -60,12 +79,21 @@ export function ForgotPasswordFormCard() {
       <div className="mt-8">
         <AuthInput
           label="Email address"
-          type="text"
+          type="email"
           placeholder="Enter your email address"
           name="email"
           autoComplete="email"
+          error={emailError}
           value={email}
-          onChange={(event) => setEmail(event.target.value)}
+          onChange={(event) => {
+            setEmail(event.target.value);
+            setEmailError("");
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              void handlePasswordReset();
+            }
+          }}
         />
       </div>
 
@@ -84,7 +112,7 @@ export function ForgotPasswordFormCard() {
       <div className="mt-6 flex flex-col gap-3 sm:flex-row">
         <Button className="flex-1" size="lg" onClick={handlePasswordReset} disabled={isSubmitting}>
           <FontAwesomeIcon icon={faEnvelope} className="h-4 w-4" />
-          {isSubmitting ? "Sending..." : "Send recovery email"}
+          {isSubmitting ? "Sending..." : message ? "Email sent" : "Send recovery email"}
         </Button>
         <Link
           href="/login"

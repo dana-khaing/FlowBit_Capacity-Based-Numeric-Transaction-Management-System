@@ -26,11 +26,47 @@ export function SignUpFormCard() {
     password: "",
     confirm_password: "",
   });
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof typeof formValues, string>>>({});
   const [errorMessage, setErrorMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  function validateForm() {
+    const nextErrors: Partial<Record<keyof typeof formValues, string>> = {};
+
+    if (!formValues.full_name.trim()) {
+      nextErrors.full_name = "Enter your full name.";
+    }
+    if (!formValues.username.trim()) {
+      nextErrors.username = "Choose a username.";
+    }
+    if (!formValues.email.trim()) {
+      nextErrors.email = "Enter your email address.";
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formValues.email)) {
+      nextErrors.email = "Enter a valid email address.";
+    }
+    if (!formValues.phone_number.trim()) {
+      nextErrors.phone_number = "Enter your phone number.";
+    }
+    if (!formValues.password) {
+      nextErrors.password = "Create a password.";
+    } else if (formValues.password.length < 8) {
+      nextErrors.password = "Use at least 8 characters.";
+    }
+    if (!formValues.confirm_password) {
+      nextErrors.confirm_password = "Confirm your password.";
+    } else if (formValues.confirm_password !== formValues.password) {
+      nextErrors.confirm_password = "Passwords do not match.";
+    }
+
+    setFieldErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  }
+
   async function handleCreateAccount() {
     setErrorMessage("");
+    if (!validateForm()) {
+      return;
+    }
     setIsSubmitting(true);
 
     try {
@@ -64,43 +100,73 @@ export function SignUpFormCard() {
           label="Full name"
           type="text"
           placeholder="Enter your full name"
+          error={fieldErrors.full_name}
           value={formValues.full_name}
-          onChange={(event) => setFormValues((current) => ({ ...current, full_name: event.target.value }))}
+          onChange={(event) => {
+            setFormValues((current) => ({ ...current, full_name: event.target.value }));
+            setFieldErrors((current) => ({ ...current, full_name: undefined }));
+          }}
         />
         <AuthInput
           label="Username"
           type="text"
           placeholder="Choose a username"
+          error={fieldErrors.username}
           value={formValues.username}
-          onChange={(event) => setFormValues((current) => ({ ...current, username: event.target.value }))}
+          onChange={(event) => {
+            setFormValues((current) => ({ ...current, username: event.target.value }));
+            setFieldErrors((current) => ({ ...current, username: undefined }));
+          }}
         />
         <AuthInput
           label="Email address"
-          type="text"
+          type="email"
           placeholder="Enter your email address"
+          autoComplete="email"
+          error={fieldErrors.email}
           value={formValues.email}
-          onChange={(event) => setFormValues((current) => ({ ...current, email: event.target.value }))}
+          onChange={(event) => {
+            setFormValues((current) => ({ ...current, email: event.target.value }));
+            setFieldErrors((current) => ({ ...current, email: undefined }));
+          }}
         />
         <AuthInput
           label="Phone number"
-          type="text"
+          type="tel"
           placeholder="Enter your phone number"
+          autoComplete="tel"
+          inputMode="tel"
+          error={fieldErrors.phone_number}
           value={formValues.phone_number}
-          onChange={(event) => setFormValues((current) => ({ ...current, phone_number: event.target.value }))}
+          onChange={(event) => {
+            setFormValues((current) => ({ ...current, phone_number: event.target.value }));
+            setFieldErrors((current) => ({ ...current, phone_number: undefined }));
+          }}
         />
         <AuthInput
           label="Password"
           type="password"
           placeholder="Create a password"
+          autoComplete="new-password"
+          hint="Use at least 8 characters."
+          error={fieldErrors.password}
           value={formValues.password}
-          onChange={(event) => setFormValues((current) => ({ ...current, password: event.target.value }))}
+          onChange={(event) => {
+            setFormValues((current) => ({ ...current, password: event.target.value }));
+            setFieldErrors((current) => ({ ...current, password: undefined }));
+          }}
         />
         <AuthInput
           label="Confirm password"
           type="password"
           placeholder="Confirm your password"
+          autoComplete="new-password"
+          error={fieldErrors.confirm_password}
           value={formValues.confirm_password}
-          onChange={(event) => setFormValues((current) => ({ ...current, confirm_password: event.target.value }))}
+          onChange={(event) => {
+            setFormValues((current) => ({ ...current, confirm_password: event.target.value }));
+            setFieldErrors((current) => ({ ...current, confirm_password: undefined }));
+          }}
         />
       </div>
 

@@ -19,8 +19,10 @@ type ResetPasswordFormCardProps = {
 export function ResetPasswordFormCard({ selector, token }: ResetPasswordFormCardProps) {
   const router = useRouter();
   const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [message, setMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<{ newPassword?: string; confirmPassword?: string }>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [keepSignedIn, setKeepSignedIn] = useState(false);
 
@@ -30,9 +32,31 @@ export function ResetPasswordFormCard({ selector, token }: ResetPasswordFormCard
     }
   }, []);
 
+  function validateForm() {
+    const nextErrors: { newPassword?: string; confirmPassword?: string } = {};
+
+    if (!newPassword) {
+      nextErrors.newPassword = "Enter your new password.";
+    } else if (newPassword.length < 8) {
+      nextErrors.newPassword = "Use at least 8 characters.";
+    }
+
+    if (!confirmPassword) {
+      nextErrors.confirmPassword = "Confirm your new password.";
+    } else if (confirmPassword !== newPassword) {
+      nextErrors.confirmPassword = "Passwords do not match.";
+    }
+
+    setFieldErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  }
+
   async function handleResetPassword() {
     setErrorMessage("");
     setMessage("");
+    if (!validateForm()) {
+      return;
+    }
     setIsSubmitting(true);
 
     try {
@@ -72,8 +96,29 @@ export function ResetPasswordFormCard({ selector, token }: ResetPasswordFormCard
           label="New password"
           type="password"
           placeholder="Enter your new password"
+          autoComplete="new-password"
+          hint="Use a password you do not use elsewhere."
+          error={fieldErrors.newPassword}
           value={newPassword}
-          onChange={(event) => setNewPassword(event.target.value)}
+          onChange={(event) => {
+            setNewPassword(event.target.value);
+            setFieldErrors((current) => ({ ...current, newPassword: undefined }));
+          }}
+        />
+      </div>
+
+      <div className="mt-4">
+        <AuthInput
+          label="Confirm new password"
+          type="password"
+          placeholder="Confirm your new password"
+          autoComplete="new-password"
+          error={fieldErrors.confirmPassword}
+          value={confirmPassword}
+          onChange={(event) => {
+            setConfirmPassword(event.target.value);
+            setFieldErrors((current) => ({ ...current, confirmPassword: undefined }));
+          }}
         />
       </div>
 
