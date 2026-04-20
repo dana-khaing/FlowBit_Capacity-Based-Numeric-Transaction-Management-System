@@ -16,15 +16,16 @@ export function ProfileDetailsCard({ user, onUserChange }: ProfileDetailsCardPro
   const [formValues, setFormValues] = useState({
     full_name: user.full_name || "",
     username: user.username,
+    email: user.email || "",
     phone_number: user.phone_number || "",
   });
-  const [fieldErrors, setFieldErrors] = useState<{ full_name?: string; username?: string }>({});
+  const [fieldErrors, setFieldErrors] = useState<{ full_name?: string; username?: string; email?: string }>({});
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
   function validateForm() {
-    const nextErrors: { full_name?: string; username?: string } = {};
+    const nextErrors: { full_name?: string; username?: string; email?: string } = {};
 
     if (!formValues.full_name.trim()) {
       nextErrors.full_name = "Enter your full name.";
@@ -32,6 +33,12 @@ export function ProfileDetailsCard({ user, onUserChange }: ProfileDetailsCardPro
 
     if (!formValues.username.trim()) {
       nextErrors.username = "Enter your username.";
+    }
+
+    if (!formValues.email.trim()) {
+      nextErrors.email = "Enter your email address.";
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formValues.email)) {
+      nextErrors.email = "Enter a valid email address.";
     }
 
     setFieldErrors(nextErrors);
@@ -53,6 +60,7 @@ export function ProfileDetailsCard({ user, onUserChange }: ProfileDetailsCardPro
       setFormValues({
         full_name: updatedUser.full_name || "",
         username: updatedUser.username,
+        email: updatedUser.email || "",
         phone_number: updatedUser.phone_number || "",
       });
       setSuccessMessage("Profile updated successfully.");
@@ -99,6 +107,19 @@ export function ProfileDetailsCard({ user, onUserChange }: ProfileDetailsCardPro
         />
 
         <AuthInput
+          label="Email address"
+          type="email"
+          placeholder="Enter your email address"
+          autoComplete="email"
+          value={formValues.email}
+          error={fieldErrors.email}
+          onChange={(event) => {
+            setFormValues((current) => ({ ...current, email: event.target.value }));
+            setFieldErrors((current) => ({ ...current, email: undefined }));
+          }}
+        />
+
+        <AuthInput
           label="Phone number"
           type="tel"
           placeholder="Enter your phone number"
@@ -109,10 +130,6 @@ export function ProfileDetailsCard({ user, onUserChange }: ProfileDetailsCardPro
           }}
         />
 
-        <div className="rounded-[20px] border border-stone-900/8 bg-white px-4 py-4">
-          <p className="text-sm font-medium text-stone-500">Email address</p>
-          <p className="mt-2 text-base text-stone-900">{user.email || "Not provided"}</p>
-        </div>
       </div>
 
       {successMessage ? (

@@ -227,12 +227,14 @@ class AuthAPITests(APITestCase):
         response = self.client.patch('/api/auth/me/', {
             'full_name': 'Updated Auth User',
             'username': 'updated_auth_user',
+            'email': 'updated-auth@example.com',
             'phone_number': '+44-7000-111111',
         }, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.user.refresh_from_db()
         self.assertEqual(self.user.username, 'updated_auth_user')
+        self.assertEqual(self.user.email, 'updated-auth@example.com')
         self.assertEqual(self.user.first_name, 'Updated')
         self.assertEqual(self.user.last_name, 'Auth User')
         self.assertEqual(self.user.profile.phone_number, '+44-7000-111111')
@@ -247,11 +249,27 @@ class AuthAPITests(APITestCase):
         response = self.client.patch('/api/auth/me/', {
             'full_name': 'Updated Auth User',
             'username': 'taken_name',
+            'email': 'updated-auth@example.com',
             'phone_number': '+44-7000-111111',
         }, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('username', response.data)
+
+    def test_me_patch_rejects_duplicate_email(self):
+        User.objects.create_user(username='taken_email_user', password='secret123', email='taken@example.com')
+        token = Token.objects.create(user=self.user)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {token.key}')
+
+        response = self.client.patch('/api/auth/me/', {
+            'full_name': 'Updated Auth User',
+            'username': 'updated_auth_user',
+            'email': 'taken@example.com',
+            'phone_number': '+44-7000-111111',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('email', response.data)
 
     def test_regular_user_cannot_delete_account_without_admin_override_code(self):
         token = Token.objects.create(user=self.user)
