@@ -354,6 +354,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
     last_login = serializers.DateTimeField(read_only=True)
     date_joined = serializers.DateTimeField(read_only=True)
     avatar_url = serializers.SerializerMethodField()
+    has_override_code = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -367,6 +368,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'role',
             'phone_number',
             'avatar_url',
+            'has_override_code',
             'last_activity',
             'last_login',
             'date_joined',
@@ -386,6 +388,10 @@ class UserProfileSerializer(serializers.ModelSerializer):
     def get_last_activity(self, obj):
         profile = getattr(obj, 'profile', None)
         return getattr(profile, 'last_activity', None)
+
+    def get_has_override_code(self, obj):
+        profile = getattr(obj, 'profile', None)
+        return bool(getattr(profile, 'master_override_password', ''))
 
     def get_avatar_url(self, obj):
         profile = getattr(obj, 'profile', None)

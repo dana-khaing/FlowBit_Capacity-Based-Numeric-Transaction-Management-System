@@ -2158,7 +2158,10 @@ class UserManagementViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mi
     serializer_class = UserProfileSerializer
     permission_classes = [IsAdminRole]
 
-    def _require_admin_override(self, request):
+    def _require_admin_override(self, request, allow_initial_setup_profile=None):
+        if allow_initial_setup_profile is not None and not allow_initial_setup_profile.master_override_password:
+            return request.user.profile
+
         raw_code = get_request_admin_override_code(request)
         if not raw_code:
             return Response(
@@ -2212,9 +2215,6 @@ class UserManagementViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mi
     def set_master_override_password(self, request, pk=None):
         serializer = MasterOverridePasswordSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        override_result = self._require_admin_override(request)
-        if isinstance(override_result, Response):
-            return override_result
 
         target_user = self.get_object()
         profile, _ = Profile.objects.get_or_create(user=target_user)
@@ -2223,6 +2223,9 @@ class UserManagementViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mi
                 {'detail': 'Master override password can only be configured for admin users.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        override_result = self._require_admin_override(request, allow_initial_setup_profile=profile)
+        if isinstance(override_result, Response):
+            return override_result
         raw_password = serializer.validated_data.get('master_override_password', '')
         if raw_password:
             profile.set_master_override_password(raw_password)
