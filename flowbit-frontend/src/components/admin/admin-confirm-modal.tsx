@@ -7,9 +7,10 @@ type AdminConfirmModalProps = {
   open: boolean;
   title: string;
   description: string;
-  codeLabel: string;
-  codeValue: string;
+  codeLabel?: string;
+  codeValue?: string;
   confirmLabel: string;
+  showCodeInput?: boolean;
   busy?: boolean;
   onCodeChange: (value: string) => void;
   onCancel: () => void;
@@ -20,9 +21,10 @@ export function AdminConfirmModal({
   open,
   title,
   description,
-  codeLabel,
-  codeValue,
+  codeLabel = "Current override code",
+  codeValue = "",
   confirmLabel,
+  showCodeInput = true,
   busy = false,
   onCodeChange,
   onCancel,
@@ -39,16 +41,18 @@ export function AdminConfirmModal({
         <h2 className="mt-2 text-2xl font-semibold text-stone-950">{title}</h2>
         <p className="mt-2 text-sm leading-6 text-stone-500">{description}</p>
 
-        <label className="mt-5 block space-y-2">
-          <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">{codeLabel}</span>
-          <Input
-            type="password"
-            value={codeValue}
-            onChange={(event) => onCodeChange(event.target.value)}
-            placeholder="Enter override code"
-            disabled={busy}
-          />
-        </label>
+        {showCodeInput ? (
+          <label className="mt-5 block space-y-2">
+            <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">{codeLabel}</span>
+            <Input
+              type="password"
+              value={codeValue}
+              onChange={(event) => onCodeChange(event.target.value)}
+              placeholder="Enter override code"
+              disabled={busy}
+            />
+          </label>
+        ) : null}
 
         <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-end">
           <Button variant="outline" onClick={onCancel} disabled={busy}>
