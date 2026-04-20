@@ -140,6 +140,25 @@ export async function resetPassword(payload: PasswordResetPayload, remember = fa
   return response;
 }
 
+export async function changePassword(payload: { current_password: string; new_password: string }) {
+  const token = getStoredToken();
+  if (!token) {
+    throw new Error("No session found.");
+  }
+
+  const response = await apiRequest<{ message: string; token: string }>("/auth/change-password/", {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  });
+
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, response.token);
+  }
+
+  return response;
+}
+
 export async function fetchCurrentUser() {
   const token = getStoredToken();
   if (!token) {
