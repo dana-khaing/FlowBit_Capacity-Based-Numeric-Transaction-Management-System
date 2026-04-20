@@ -10,17 +10,16 @@ import { ProfileAvatar } from "@/components/profile/profile-avatar";
 type ProfileAvatarCardProps = {
   user: AuthUser;
   onUserChange: (user: AuthUser) => void;
+  onNotify: (message: string) => void;
 };
 
-export function ProfileAvatarCard({ user, onUserChange }: ProfileAvatarCardProps) {
+export function ProfileAvatarCard({ user, onUserChange, onNotify }: ProfileAvatarCardProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [successMessage, setSuccessMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [isUploading, setIsUploading] = useState(false);
 
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     setSelectedFile(event.target.files?.[0] || null);
-    setSuccessMessage("");
     setErrorMessage("");
   }
 
@@ -30,7 +29,6 @@ export function ProfileAvatarCard({ user, onUserChange }: ProfileAvatarCardProps
       return;
     }
 
-    setSuccessMessage("");
     setErrorMessage("");
     setIsUploading(true);
 
@@ -38,7 +36,7 @@ export function ProfileAvatarCard({ user, onUserChange }: ProfileAvatarCardProps
       const updatedUser = await uploadProfileAvatar(selectedFile);
       onUserChange(updatedUser);
       setSelectedFile(null);
-      setSuccessMessage("Profile photo updated successfully.");
+      onNotify("Profile photo updated successfully.");
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to upload profile photo.");
     } finally {
@@ -72,12 +70,6 @@ export function ProfileAvatarCard({ user, onUserChange }: ProfileAvatarCardProps
           </div>
         </div>
       </div>
-
-      {successMessage ? (
-        <div className="mt-5 rounded-[20px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-          {successMessage}
-        </div>
-      ) : null}
 
       {errorMessage ? (
         <div className="mt-5 rounded-[20px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">

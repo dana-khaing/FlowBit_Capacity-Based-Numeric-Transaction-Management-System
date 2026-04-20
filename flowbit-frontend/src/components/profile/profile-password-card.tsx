@@ -7,7 +7,11 @@ import { AuthInput } from "@/components/auth/auth-input";
 import { Button } from "@/components/ui/button";
 import { changePassword } from "@/lib/auth-client";
 
-export function ProfilePasswordCard() {
+type ProfilePasswordCardProps = {
+  onNotify: (message: string) => void;
+};
+
+export function ProfilePasswordCard({ onNotify }: ProfilePasswordCardProps) {
   const [formValues, setFormValues] = useState({
     current_password: "",
     new_password: "",
@@ -19,7 +23,6 @@ export function ProfilePasswordCard() {
     confirm_password?: string;
   }>({});
   const [errorMessage, setErrorMessage] = useState("");
-  const [successMessage, setSuccessMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   function validateForm() {
@@ -49,7 +52,6 @@ export function ProfilePasswordCard() {
 
   async function handleChangePassword() {
     setErrorMessage("");
-    setSuccessMessage("");
 
     if (!validateForm()) {
       return;
@@ -61,7 +63,7 @@ export function ProfilePasswordCard() {
         current_password: formValues.current_password,
         new_password: formValues.new_password,
       });
-      setSuccessMessage("Password changed successfully.");
+      onNotify("Password changed successfully.");
       setFormValues({
         current_password: "",
         new_password: "",
@@ -123,12 +125,6 @@ export function ProfilePasswordCard() {
           }}
         />
       </div>
-
-      {successMessage ? (
-        <div className="mt-5 rounded-[20px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-          {successMessage}
-        </div>
-      ) : null}
 
       {errorMessage ? (
         <div className="mt-5 rounded-[20px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
