@@ -350,13 +350,81 @@ class UserProfileSerializer(serializers.ModelSerializer):
     role = serializers.CharField(source='profile.role', read_only=True)
     phone_number = serializers.CharField(source='profile.phone_number', read_only=True)
     full_name = serializers.SerializerMethodField()
+    last_activity = serializers.DateTimeField(source='profile.last_activity', read_only=True)
+    last_login = serializers.DateTimeField(read_only=True)
+    date_joined = serializers.DateTimeField(read_only=True)
+    avatar_url = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ['id', 'username', 'first_name', 'last_name', 'full_name', 'email', 'role', 'phone_number']
+        fields = [
+            'id',
+            'username',
+            'first_name',
+            'last_name',
+            'full_name',
+            'email',
+            'role',
+            'phone_number',
+            'avatar_url',
+            'last_activity',
+            'last_login',
+            'date_joined',
+        ]
 
     def get_full_name(self, obj):
         return obj.get_full_name().strip()
+
+    def get_avatar_url(self, obj):
+        avatar = getattr(obj.profile, 'avatar', None)
+        if not avatar:
+            return None
+        request = self.context.get('request')
+        if request is not None:
+            return request.build_absolute_uri(avatar.url)
+        return avatar.url
+
+
+class UserProfileUpdateSerializer(serializers.Serializer):
+    full_name = serializers.CharField(max_length=150)
+    username = serializers.CharField(max_length=150)
+    email = serializers.EmailField()
+    phone_number = serializers.CharField(max_length=50, allow_blank=True, required=False)
+
+    def validate_username(self, value):
+        normalized = value.strip()
+        user = self.context['request'].user
+        if User.objects.filter(username__iexact=normalized).exclude(pk=user.pk).exists():
+            raise serializers.ValidationError('A user with this username already exists.')
+        return normalized
+
+    def validate_full_name(self, value):
+        normalized = value.strip()
+        if not normalized:
+            raise serializers.ValidationError('Full name is required.')
+        return normalized
+
+    def validate_email(self, value):
+        normalized = value.strip().lower()
+        user = self.context['request'].user
+        if User.objects.filter(email__iexact=normalized).exclude(pk=user.pk).exists():
+            raise serializers.ValidationError('A user with this email already exists.')
+        return normalized
+
+    def update(self, instance, validated_data):
+        full_name = validated_data['full_name']
+        first_name, _, last_name = full_name.partition(' ')
+        instance.username = validated_data['username']
+        instance.email = validated_data['email']
+        instance.first_name = first_name.strip()
+        instance.last_name = last_name.strip()
+        instance.save(update_fields=['username', 'email', 'first_name', 'last_name'])
+
+        profile, _ = Profile.objects.get_or_create(user=instance)
+        profile.phone_number = (validated_data.get('phone_number') or '').strip()
+        profile.save(update_fields=['phone_number', 'updated_at'])
+        instance.refresh_from_db()
+        return instance
 
 
 class LoginSerializer(serializers.Serializer):
@@ -441,6 +509,14 @@ class UserRoleUpdateSerializer(serializers.Serializer):
 
 class MasterOverridePasswordSerializer(serializers.Serializer):
     master_override_password = serializers.CharField(write_only=True, required=False, allow_blank=True)
+
+
+class AccountDeletionSerializer(serializers.Serializer):
+    admin_override_code = serializers.CharField(write_only=True, required=False, allow_blank=True)
+
+
+class ProfileAvatarSerializer(serializers.Serializer):
+    avatar = serializers.ImageField(required=True)
 
 
 class AuditLogSerializer(serializers.ModelSerializer):
