@@ -51,7 +51,9 @@ from .audit import record_audit_log, serialize_audit_value, snapshot_instance
 from .permissions import (
     IsAdminRole,
     IsAuthenticatedReadOnlyOrAdminWriteOrOverride,
+    get_request_admin_override_code,
     get_request_admin_override_profile,
+    get_valid_admin_override_profile,
     is_admin_user,
 )
 from .serializers import (
@@ -2156,15 +2158,44 @@ class UserManagementViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mi
     serializer_class = UserProfileSerializer
     permission_classes = [IsAdminRole]
 
+    def _require_admin_override(self, request, allow_initial_setup_profile=None):
+        if allow_initial_setup_profile is not None and not allow_initial_setup_profile.master_override_password:
+            return request.user.profile
+
+        raw_code = get_request_admin_override_code(request)
+        if not raw_code:
+            return Response(
+                {'detail': 'Admin override code is required for this action.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        override_profile = get_valid_admin_override_profile(raw_code)
+        if override_profile is None:
+            return Response(
+                {'detail': 'Admin override code is incorrect.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return override_profile
+
     @action(detail=True, methods=['post'], url_path='set-role')
     def set_role(self, request, pk=None):
         serializer = UserRoleUpdateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        override_result = self._require_admin_override(request)
+        if isinstance(override_result, Response):
+            return override_result
 
         target_user = self.get_object()
         profile, _ = Profile.objects.get_or_create(user=target_user)
+        requested_role = serializer.validated_data['role']
+
+        if target_user.pk == request.user.pk and profile.role == 'admin' and requested_role != 'admin':
+            return Response(
+                {'detail': 'Admin users cannot downgrade their own account.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         previous_role = profile.role
-        profile.role = serializer.validated_data['role']
+        profile.role = requested_role
         profile.save(update_fields=['role', 'updated_at'])
 
         record_audit_log(
@@ -2192,6 +2223,14 @@ class UserManagementViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mi
                 {'detail': 'Master override password can only be configured for admin users.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        if target_user.pk != request.user.pk:
+            return Response(
+                {'detail': 'Admin users can only manage their own override code.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        override_result = self._require_admin_override(request, allow_initial_setup_profile=profile)
+        if isinstance(override_result, Response):
+            return override_result
         raw_password = serializer.validated_data.get('master_override_password', '')
         if raw_password:
             profile.set_master_override_password(raw_password)
@@ -2217,6 +2256,10 @@ class UserManagementViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mi
         }, status=status.HTTP_200_OK)
 
     def destroy(self, request, *args, **kwargs):
+        override_result = self._require_admin_override(request)
+        if isinstance(override_result, Response):
+            return override_result
+
         target_user = self.get_object()
         deleted_user_id = target_user.id
         deleted_username = target_user.username

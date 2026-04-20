@@ -16,6 +16,7 @@ export type AuthUser = {
   role: string;
   phone_number: string;
   avatar_url: string | null;
+  has_override_code: boolean;
   last_activity: string | null;
   last_login: string | null;
   date_joined: string;
