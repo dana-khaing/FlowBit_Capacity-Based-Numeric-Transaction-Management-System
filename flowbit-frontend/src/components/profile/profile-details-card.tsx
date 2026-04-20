@@ -19,26 +19,47 @@ export function ProfileDetailsCard({ user, onUserChange }: ProfileDetailsCardPro
     email: user.email || "",
     phone_number: user.phone_number || "",
   });
-  const [fieldErrors, setFieldErrors] = useState<{ full_name?: string; username?: string; email?: string }>({});
+  const [fieldErrors, setFieldErrors] = useState<{
+    full_name?: string;
+    username?: string;
+    email?: string;
+    phone_number?: string;
+  }>({});
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
   function validateForm() {
-    const nextErrors: { full_name?: string; username?: string; email?: string } = {};
+    const nextErrors: {
+      full_name?: string;
+      username?: string;
+      email?: string;
+      phone_number?: string;
+    } = {};
 
     if (!formValues.full_name.trim()) {
       nextErrors.full_name = "Enter your full name.";
+    } else if (formValues.full_name.trim().length < 2) {
+      nextErrors.full_name = "Use at least 2 characters.";
     }
 
     if (!formValues.username.trim()) {
       nextErrors.username = "Enter your username.";
+    } else if (!/^[A-Za-z0-9._]+$/.test(formValues.username.trim())) {
+      nextErrors.username = "Use letters, numbers, dots, or underscores only.";
+    } else if (formValues.username.trim().length < 3) {
+      nextErrors.username = "Use at least 3 characters.";
     }
 
     if (!formValues.email.trim()) {
       nextErrors.email = "Enter your email address.";
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formValues.email)) {
       nextErrors.email = "Enter a valid email address.";
+    }
+
+    const trimmedPhoneNumber = formValues.phone_number.trim();
+    if (trimmedPhoneNumber && !/^[0-9+()\-\s]+$/.test(trimmedPhoneNumber)) {
+      nextErrors.phone_number = "Use digits and standard phone symbols only.";
     }
 
     setFieldErrors(nextErrors);
@@ -65,7 +86,14 @@ export function ProfileDetailsCard({ user, onUserChange }: ProfileDetailsCardPro
       });
       setSuccessMessage("Profile updated successfully.");
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to update your profile.");
+      const message = error instanceof Error ? error.message : "Unable to update your profile.";
+      if (message.toLowerCase().includes("username")) {
+        setFieldErrors((current) => ({ ...current, username: message }));
+      } else if (message.toLowerCase().includes("email")) {
+        setFieldErrors((current) => ({ ...current, email: message }));
+      } else {
+        setErrorMessage(message);
+      }
     } finally {
       setIsSaving(false);
     }
@@ -88,6 +116,7 @@ export function ProfileDetailsCard({ user, onUserChange }: ProfileDetailsCardPro
           placeholder="Enter your full name"
           value={formValues.full_name}
           error={fieldErrors.full_name}
+          hint="This name appears across your FlowBit workspace."
           onChange={(event) => {
             setFormValues((current) => ({ ...current, full_name: event.target.value }));
             setFieldErrors((current) => ({ ...current, full_name: undefined }));
@@ -100,6 +129,7 @@ export function ProfileDetailsCard({ user, onUserChange }: ProfileDetailsCardPro
           placeholder="Enter your username"
           value={formValues.username}
           error={fieldErrors.username}
+          hint="Use letters, numbers, dots, or underscores."
           onChange={(event) => {
             setFormValues((current) => ({ ...current, username: event.target.value }));
             setFieldErrors((current) => ({ ...current, username: undefined }));
@@ -125,8 +155,11 @@ export function ProfileDetailsCard({ user, onUserChange }: ProfileDetailsCardPro
           placeholder="Enter your phone number"
           inputMode="tel"
           value={formValues.phone_number}
+          error={fieldErrors.phone_number}
+          hint="Optional. Use digits, spaces, +, -, or parentheses."
           onChange={(event) => {
             setFormValues((current) => ({ ...current, phone_number: event.target.value }));
+            setFieldErrors((current) => ({ ...current, phone_number: undefined }));
           }}
         />
 
