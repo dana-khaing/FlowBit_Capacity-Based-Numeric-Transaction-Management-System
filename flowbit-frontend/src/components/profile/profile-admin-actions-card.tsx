@@ -24,6 +24,12 @@ const buildAdminLinks = () => {
       external: false,
     },
     {
+      label: "Manage Override code",
+      href: "/admin/users",
+      description: "Open user management to update admin override codes and review confirmation workflows.",
+      external: false,
+    },
+    {
       label: "API docs",
       href: `${backendBaseUrl}/api/docs/`,
       description: "Open the protected API reference and testing surface.",
