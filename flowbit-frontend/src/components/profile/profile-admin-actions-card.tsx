@@ -25,8 +25,8 @@ const buildAdminLinks = () => {
     },
     {
       label: "Manage Override code",
-      href: "/admin/users",
-      description: "Open user management to update admin override codes and review confirmation workflows.",
+      href: "/admin/override-codes",
+      description: "Set up first-time override codes or rotate existing ones in a dedicated admin workflow.",
       external: false,
     },
     {

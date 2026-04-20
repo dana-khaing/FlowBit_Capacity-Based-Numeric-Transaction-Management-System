@@ -8,16 +8,8 @@ import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { AdminActionToast } from "@/components/admin/admin-action-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  deleteManagedUser,
-  fetchManagedUsers,
-  updateManagedUserOverride,
-  updateManagedUserRole,
-  type ManagedUser,
-} from "@/lib/admin-client";
+import { deleteManagedUser, fetchManagedUsers, updateManagedUserRole, type ManagedUser } from "@/lib/admin-client";
 
-type OverrideDraftState = Record<number, string>;
-type OldOverrideDraftState = Record<number, string>;
 type BusyState = Record<number, boolean>;
 type ToastState = {
   message: string;
@@ -46,8 +38,6 @@ type PendingActionState =
 export function AdminUsersPage() {
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [busyMap, setBusyMap] = useState<BusyState>({});
-  const [overrideDrafts, setOverrideDrafts] = useState<OverrideDraftState>({});
-  const [oldOverrideDrafts, setOldOverrideDrafts] = useState<OldOverrideDraftState>({});
   const [search, setSearch] = useState("");
   const [toast, setToast] = useState<ToastState>(null);
   const [pendingAction, setPendingAction] = useState<PendingActionState>(null);
@@ -129,65 +119,6 @@ export function AdminUsersPage() {
     }
   }
 
-  async function handleOverrideUpdate(userId: number) {
-    const targetUser = users.find((user) => user.id === userId);
-    if (!targetUser) {
-      return;
-    }
-    if (targetUser.role !== "admin") {
-      setToast({
-        message: "Promote this account to admin before setting an override code.",
-        type: "error",
-      });
-      return;
-    }
-    const newOverrideCode = (overrideDrafts[userId] || "").trim();
-    if (!newOverrideCode) {
-      setToast({ message: "Enter the new override code before activating the change.", type: "error" });
-      return;
-    }
-
-    setPendingAction({
-      type: "override",
-      userId,
-      username: targetUser.username,
-    });
-    setPendingActionCode("");
-  }
-
-  async function confirmOverrideUpdate() {
-    if (!pendingAction || pendingAction.type !== "override") {
-      return;
-    }
-
-    const { userId } = pendingAction;
-    const authorizationCode = requireAuthorizationCode(oldOverrideDrafts[userId] || "");
-    if (!authorizationCode) {
-      return;
-    }
-    const newOverrideCode = (overrideDrafts[userId] || "").trim();
-    if (!newOverrideCode) {
-      setToast({ message: "Enter the new override code before activating the change.", type: "error" });
-      return;
-    }
-
-    setBusy(userId, true);
-    setToast(null);
-    try {
-      const response = await updateManagedUserOverride(userId, newOverrideCode, {
-        adminOverrideCode: authorizationCode,
-      });
-      setToast({ message: response.message, type: "success" });
-      setOverrideDrafts((current) => ({ ...current, [userId]: "" }));
-      setOldOverrideDrafts((current) => ({ ...current, [userId]: "" }));
-      setPendingAction(null);
-    } catch (error) {
-      setToast({ message: error instanceof Error ? error.message : "Override update failed.", type: "error" });
-    } finally {
-      setBusy(userId, false);
-    }
-  }
-
   function handleDelete(userId: number, isSelf: boolean) {
     const targetUser = users.find((user) => user.id === userId);
     if (!targetUser) {
@@ -241,8 +172,6 @@ export function AdminUsersPage() {
                 ? pendingAction.isSelf
                   ? "Delete your account"
                   : `Delete ${pendingAction.username}`
-                : pendingAction?.type === "override"
-                  ? `Activate override code for ${pendingAction.username}`
                 : pendingAction?.type === "role"
                   ? `Change ${pendingAction.username}`
                   : "Confirm action"
@@ -252,29 +181,20 @@ export function AdminUsersPage() {
                 ? pendingAction.isSelf
                   ? "Enter your current override code to confirm deleting your own account."
                   : "Enter your current override code to confirm deleting this account."
-                : pendingAction?.type === "override"
-                  ? "Confirm this override code change for the selected admin account."
                 : pendingAction?.type === "role"
                   ? `Enter your current override code to change this account to ${pendingAction.role}.`
                   : ""
             }
-            showCodeInput={pendingAction?.type !== "override"}
             codeLabel="Current override code"
             codeValue={pendingActionCode}
-            confirmLabel={pendingAction?.type === "delete" ? "Delete" : pendingAction?.type === "override" ? "Activate" : "Confirm"}
+            confirmLabel={pendingAction?.type === "delete" ? "Delete" : "Confirm"}
             busy={pendingAction ? Boolean(busyMap[pendingAction.userId]) : false}
             onCodeChange={setPendingActionCode}
             onCancel={() => {
               setPendingAction(null);
               setPendingActionCode("");
             }}
-            onConfirm={
-              pendingAction?.type === "delete"
-                ? confirmDelete
-                : pendingAction?.type === "override"
-                  ? confirmOverrideUpdate
-                  : confirmRoleChange
-            }
+            onConfirm={pendingAction?.type === "delete" ? confirmDelete : confirmRoleChange}
           />
           <div className="mx-auto w-full max-w-[1800px] px-4 py-4 sm:px-6 lg:px-8 lg:py-8">
             <AdminPageHeader
@@ -288,7 +208,7 @@ export function AdminUsersPage() {
                 <div>
                   <h2 className="text-xl font-semibold text-stone-950">Accounts</h2>
                   <p className="mt-1 text-sm leading-6 text-stone-500">
-                    Search by name, username, email, or role. User changes ask for your current override code before they are applied.
+                    Search by name, username, email, or role. Role changes and deletions ask for your current override code before they are applied.
                   </p>
                 </div>
                 <div className="w-full max-w-sm">
@@ -341,51 +261,6 @@ export function AdminUsersPage() {
                             )}
                           </label>
 
-                          <label className="space-y-2 sm:col-span-2">
-                            <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
-                              {user.role === "admin" ? "Old override code" : "Admin override code"}
-                            </span>
-                            <div className="grid gap-3">
-                              <Input
-                                type="password"
-                                value={user.role === "admin" ? oldOverrideDrafts[user.id] || "" : overrideDrafts[user.id] || ""}
-                                onChange={(event) =>
-                                  user.role === "admin"
-                                    ? setOldOverrideDrafts((current) => ({ ...current, [user.id]: event.target.value }))
-                                    : setOverrideDrafts((current) => ({ ...current, [user.id]: event.target.value }))
-                                }
-                                placeholder={user.role === "admin" ? "Enter current override code" : "Enter override code"}
-                                disabled={isBusy}
-                              />
-                            </div>
-                            {user.role === "admin" ? (
-                              <div className="space-y-2 pt-1">
-                                <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
-                                  New override code
-                                </span>
-                                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_164px]">
-                                  <Input
-                                    type="password"
-                                    value={overrideDrafts[user.id] || ""}
-                                    onChange={(event) =>
-                                      setOverrideDrafts((current) => ({ ...current, [user.id]: event.target.value }))
-                                    }
-                                    placeholder="Enter new override code"
-                                    disabled={isBusy}
-                                  />
-                                  <Button className="w-full" onClick={() => handleOverrideUpdate(user.id)} disabled={isBusy}>
-                                    Activate
-                                  </Button>
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="pt-1">
-                                <Button className="w-full sm:w-[164px]" onClick={() => handleOverrideUpdate(user.id)} disabled={isBusy}>
-                                  Modify
-                                </Button>
-                              </div>
-                            )}
-                          </label>
                         </div>
                       </div>
 
