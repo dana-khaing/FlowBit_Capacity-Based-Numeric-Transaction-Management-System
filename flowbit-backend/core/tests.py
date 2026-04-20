@@ -648,6 +648,24 @@ class RolePermissionTests(APITestCase):
         self.assertIn('admin_role_user', usernames)
         self.assertIn('regular_role_user', usernames)
 
+    def test_admin_can_list_users_without_profile_records(self):
+        self.client.force_authenticate(user=self.admin_user)
+        profileless_user = User.objects.create_user(
+            username='profileless_user',
+            email='profileless@example.com',
+            password='password123',
+        )
+        profileless_user.profile.delete()
+
+        response = self.client.get('/api/users/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        listed_user = next((item for item in response.data if item['id'] == profileless_user.id), None)
+        self.assertIsNotNone(listed_user)
+        self.assertEqual(listed_user['role'], '')
+        self.assertEqual(listed_user['phone_number'], '')
+        self.assertIsNone(listed_user['avatar_url'])
+
     def test_admin_can_change_user_role(self):
         self.client.force_authenticate(user=self.admin_user)
 
