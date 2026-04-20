@@ -69,6 +69,8 @@ yarn-error.log*
 .env.development.local
 .env.test.local
 .env.production.local
+!flowbit-frontend/src/lib/
+!flowbit-frontend/src/lib/**
 
 # Next.js build artifacts
 dist/
