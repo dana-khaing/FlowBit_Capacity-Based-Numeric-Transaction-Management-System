@@ -25,7 +25,7 @@ export function AdminPageHeader({
         </div>
         <Link
           href={actionHref}
-          className="inline-flex rounded-[18px] border border-stone-900/10 bg-stone-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-stone-800"
+          className="inline-flex rounded-[18px] border border-stone-900/10 bg-stone-100 px-5 py-3 text-sm font-semibold text-stone-700 transition hover:bg-stone-200"
         >
           {actionLabel}
         </Link>

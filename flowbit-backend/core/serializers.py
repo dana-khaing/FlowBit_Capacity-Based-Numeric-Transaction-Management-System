@@ -347,10 +347,10 @@ class ProfileSerializer(serializers.ModelSerializer):
 
 
 class UserProfileSerializer(serializers.ModelSerializer):
-    role = serializers.CharField(source='profile.role', read_only=True)
-    phone_number = serializers.CharField(source='profile.phone_number', read_only=True)
+    role = serializers.SerializerMethodField()
+    phone_number = serializers.SerializerMethodField()
     full_name = serializers.SerializerMethodField()
-    last_activity = serializers.DateTimeField(source='profile.last_activity', read_only=True)
+    last_activity = serializers.SerializerMethodField()
     last_login = serializers.DateTimeField(read_only=True)
     date_joined = serializers.DateTimeField(read_only=True)
     avatar_url = serializers.SerializerMethodField()
@@ -375,8 +375,21 @@ class UserProfileSerializer(serializers.ModelSerializer):
     def get_full_name(self, obj):
         return obj.get_full_name().strip()
 
+    def get_role(self, obj):
+        profile = getattr(obj, 'profile', None)
+        return getattr(profile, 'role', '')
+
+    def get_phone_number(self, obj):
+        profile = getattr(obj, 'profile', None)
+        return getattr(profile, 'phone_number', '')
+
+    def get_last_activity(self, obj):
+        profile = getattr(obj, 'profile', None)
+        return getattr(profile, 'last_activity', None)
+
     def get_avatar_url(self, obj):
-        avatar = getattr(obj.profile, 'avatar', None)
+        profile = getattr(obj, 'profile', None)
+        avatar = getattr(profile, 'avatar', None)
         if not avatar:
             return None
         request = self.context.get('request')
