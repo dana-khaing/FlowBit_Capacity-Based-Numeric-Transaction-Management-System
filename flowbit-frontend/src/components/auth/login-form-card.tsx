@@ -24,6 +24,7 @@ export function LoginFormCard() {
   const [keepSignedIn, setKeepSignedIn] = useState(false);
   const [showSignUpSuccess, setShowSignUpSuccess] = useState(false);
   const [credentials, setCredentials] = useState({ username: "", password: "" });
+  const [fieldErrors, setFieldErrors] = useState<{ username?: string; password?: string }>({});
   const [errorMessage, setErrorMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -44,8 +45,26 @@ export function LoginFormCard() {
     }
   }
 
+  function validateForm() {
+    const nextErrors: { username?: string; password?: string } = {};
+
+    if (!credentials.username.trim()) {
+      nextErrors.username = "Enter your username to continue.";
+    }
+
+    if (!credentials.password) {
+      nextErrors.password = "Enter your password to continue.";
+    }
+
+    setFieldErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  }
+
   async function handleLogin() {
     setErrorMessage("");
+    if (!validateForm()) {
+      return;
+    }
     setIsSubmitting(true);
 
     try {
@@ -123,8 +142,17 @@ export function LoginFormCard() {
           placeholder="Enter your username"
           name="username"
           autoComplete="username"
+          error={fieldErrors.username}
           value={credentials.username}
-          onChange={(event) => setCredentials((current) => ({ ...current, username: event.target.value }))}
+          onChange={(event) => {
+            setCredentials((current) => ({ ...current, username: event.target.value }));
+            setFieldErrors((current) => ({ ...current, username: undefined }));
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              void handleLogin();
+            }
+          }}
         />
         <AuthInput
           label="Password"
@@ -132,8 +160,17 @@ export function LoginFormCard() {
           placeholder="Enter your password"
           name="password"
           autoComplete="current-password"
+          error={fieldErrors.password}
           value={credentials.password}
-          onChange={(event) => setCredentials((current) => ({ ...current, password: event.target.value }))}
+          onChange={(event) => {
+            setCredentials((current) => ({ ...current, password: event.target.value }));
+            setFieldErrors((current) => ({ ...current, password: undefined }));
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              void handleLogin();
+            }
+          }}
         />
       </div>
 
