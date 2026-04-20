@@ -2163,8 +2163,16 @@ class UserManagementViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mi
 
         target_user = self.get_object()
         profile, _ = Profile.objects.get_or_create(user=target_user)
+        requested_role = serializer.validated_data['role']
+
+        if target_user.pk == request.user.pk and profile.role == 'admin' and requested_role != 'admin':
+            return Response(
+                {'detail': 'Admin users cannot downgrade their own account.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         previous_role = profile.role
-        profile.role = serializer.validated_data['role']
+        profile.role = requested_role
         profile.save(update_fields=['role', 'updated_at'])
 
         record_audit_log(

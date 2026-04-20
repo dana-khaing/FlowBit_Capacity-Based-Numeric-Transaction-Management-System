@@ -98,7 +98,7 @@ export function AdminUsersPage() {
 
   return (
     <AdminAccessGuard>
-      {() => (
+      {(currentAdmin) => (
         <WorkspaceShell>
           <div className="mx-auto w-full max-w-[1800px] px-4 py-4 sm:px-6 lg:px-8 lg:py-8">
             <AdminPageHeader
@@ -131,6 +131,7 @@ export function AdminUsersPage() {
               <div className="mt-5 grid gap-4">
                 {filteredUsers.map((user) => {
                   const isBusy = Boolean(busyMap[user.id]);
+                  const isCurrentAdmin = currentAdmin.id === user.id;
                   return (
                     <article
                       key={user.id}
@@ -153,9 +154,16 @@ export function AdminUsersPage() {
                               disabled={isBusy}
                               className="flex h-12 w-full rounded-[18px] border border-stone-900/10 bg-white px-4 py-3 text-sm text-stone-950 outline-none transition focus:border-stone-950"
                             >
-                              <option value="user">User</option>
+                              <option value="user" disabled={isCurrentAdmin && user.role === "admin"}>
+                                User
+                              </option>
                               <option value="admin">Admin</option>
                             </select>
+                            {isCurrentAdmin && user.role === "admin" ? (
+                              <p className="text-xs leading-5 text-stone-500">
+                                Your own admin account cannot be downgraded here.
+                              </p>
+                            ) : null}
                           </label>
 
                           <label className="space-y-2 sm:col-span-2">
@@ -173,7 +181,7 @@ export function AdminUsersPage() {
                                 disabled={isBusy || user.role !== "admin"}
                               />
                               <Button onClick={() => handleOverrideUpdate(user.id)} disabled={isBusy || user.role !== "admin"}>
-                                Save code
+                                Active change
                               </Button>
                             </div>
                           </label>
