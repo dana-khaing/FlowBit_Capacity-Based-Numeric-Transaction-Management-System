@@ -4,13 +4,17 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faArrowRightFromBracket } from "@fortawesome/free-solid-svg-icons";
+import { faArrowRightFromBracket, faBars } from "@fortawesome/free-solid-svg-icons";
 import { AdminConfirmModal } from "@/components/admin/admin-confirm-modal";
 import { Button } from "@/components/ui/button";
 import { ProfileAvatar } from "@/components/profile/profile-avatar";
 import { fetchCurrentUser, getStoredUser, logoutFromBackend, type AuthUser } from "@/lib/auth-client";
 
-export function AppHeader() {
+type AppHeaderProps = {
+  onMenuClick: () => void;
+};
+
+export function AppHeader({ onMenuClick }: AppHeaderProps) {
   const router = useRouter();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLogoutPending, setIsLogoutPending] = useState(false);
@@ -46,9 +50,9 @@ export function AppHeader() {
 
       <div className="mx-auto flex w-full max-w-[1800px] items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
         <div className="flex items-center gap-4">
-          <button className="flex h-11 w-11 items-center justify-center rounded-2xl border border-stone-900/10 bg-white text-2xl text-stone-500">
-            ≡
-          </button>
+          <Button variant="outline" size="icon" onClick={onMenuClick} aria-label="Open navigation menu">
+            <FontAwesomeIcon icon={faBars} className="h-4 w-4" />
+          </Button>
           <Link
             href="/"
             className="rounded-xl px-1 py-1 text-[15px] font-medium text-stone-500 transition hover:text-stone-900"
