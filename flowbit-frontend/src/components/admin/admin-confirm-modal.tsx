@@ -35,8 +35,14 @@ export function AdminConfirmModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/30 px-4">
-      <div className="w-full max-w-md rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_18px_48px_rgba(24,24,24,0.18)] sm:p-6">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/30 px-4"
+      onClick={onCancel}
+    >
+      <div
+        className="w-full max-w-md rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_18px_48px_rgba(24,24,24,0.18)] sm:p-6"
+        onClick={(event) => event.stopPropagation()}
+      >
         <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-500">Confirmation</p>
         <h2 className="mt-2 text-2xl font-semibold text-stone-950">{title}</h2>
         <p className="mt-2 text-sm leading-6 text-stone-500">{description}</p>
