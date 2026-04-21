@@ -15,6 +15,13 @@ type AppSideDrawerProps = {
 export function AppSideDrawer({ open, onClose }: AppSideDrawerProps) {
   const pathname = usePathname();
 
+  function isItemActive(href: string) {
+    if (href === "/") {
+      return pathname === "/";
+    }
+    return pathname === href || pathname.startsWith(`${href}/`);
+  }
+
   if (!open) {
     return null;
   }
@@ -37,7 +44,7 @@ export function AppSideDrawer({ open, onClose }: AppSideDrawerProps) {
 
         <nav className="mt-8 flex flex-1 flex-col gap-2">
           {primaryNavItems.map((item) => {
-            const isActive = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href));
+            const isActive = isItemActive(item.href);
 
             return (
               <Link
