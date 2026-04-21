@@ -49,9 +49,12 @@ export function AppHeader() {
           <button className="flex h-11 w-11 items-center justify-center rounded-2xl border border-stone-900/10 bg-white text-2xl text-stone-500">
             ≡
           </button>
-          <div>
+          <Link
+            href="/"
+            className="rounded-xl px-1 py-1 text-[15px] font-medium text-stone-500 transition hover:text-stone-900"
+          >
             <p className="text-[15px] font-medium text-stone-500">FlowBit</p>
-          </div>
+          </Link>
         </div>
 
         <div className="flex items-center gap-3">
