@@ -334,6 +334,10 @@ class AuthAPITests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertFalse(User.objects.filter(pk=self.user.pk).exists())
         self.assertTrue(AuditLog.objects.filter(action='auth.account_deleted').exists())
+        admin_audit = AuditLog.objects.get(user=admin_user, action='auth.account_deleted')
+        self.assertEqual(admin_audit.changes['override_actor_username'], 'auth_user')
+        self.assertEqual(admin_audit.changes['override_owner_username'], 'account_admin')
+        self.assertTrue(admin_audit.changes['admin_override_used'])
 
     def test_admin_user_can_delete_own_account_without_override_code(self):
         self.user.profile.role = 'admin'
@@ -597,6 +601,10 @@ class RolePermissionTests(APITestCase):
         }, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        admin_audit = AuditLog.objects.get(user=self.admin_user, action='period.created')
+        self.assertEqual(admin_audit.changes['override_actor_username'], 'regular_role_user')
+        self.assertEqual(admin_audit.changes['override_owner_username'], 'admin_role_user')
+        self.assertTrue(admin_audit.changes['admin_override_used'])
 
     def test_regular_user_can_close_ledger_with_admin_override_code(self):
         self.admin_user.profile.set_master_override_password('override-123')
@@ -1423,6 +1431,10 @@ class LedgerArchiveAPITests(APITestCase):
         self.assertEqual(refund_response.status_code, status.HTTP_200_OK)
         overflow.refresh_from_db()
         self.assertEqual(overflow.status, Overflow.STATUS_REFUNDED)
+        admin_audit = AuditLog.objects.get(user=self.approver, action='overflow.refunded')
+        self.assertEqual(admin_audit.changes['override_actor_username'], 'refund_override_user')
+        self.assertEqual(admin_audit.changes['override_owner_username'], self.approver.username)
+        self.assertTrue(admin_audit.changes['admin_override_used'])
 
     def test_refunding_transaction_reprocesses_next_pending_overflow(self):
         tx1 = Transaction.objects.create(
