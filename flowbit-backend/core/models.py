@@ -88,11 +88,6 @@ class Period(models.Model):
         if not last_closed_period or last_closed_period.pk != self.pk:
             raise ValidationError("Only the most recently closed period can be reopened.")
 
-        today = timezone.localdate()
-        period_end_date = timezone.localtime(self.end_date).date() if timezone.is_aware(self.end_date) else self.end_date.date()
-        if today > period_end_date:
-            raise ValidationError("This period can no longer be reopened because its end date has passed.")
-
     def reopen(self, save=True):
         self.can_reopen()
 
@@ -109,6 +104,17 @@ class Period(models.Model):
             )
 
         return self
+
+    def can_delete(self):
+        if self.is_open:
+            raise ValidationError("Close the active period before deleting it.")
+
+        last_closed_period = Period.get_last_closed_period()
+        if not last_closed_period or last_closed_period.pk != self.pk:
+            raise ValidationError("Only the most recently closed period can be deleted.")
+
+        if LedgerAllocation.objects.filter(ledger__period=self).exists():
+            raise ValidationError("This period cannot be deleted because it already has ticket activity.")
 
 
 class Ledger(models.Model):
