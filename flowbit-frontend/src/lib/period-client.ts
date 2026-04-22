@@ -95,3 +95,11 @@ export async function reopenPeriod(periodId: number, adminOverrideCode?: string)
     body: JSON.stringify(adminOverrideCode ? { admin_override_code: adminOverrideCode } : {}),
   });
 }
+
+export async function deletePeriod(periodId: number, adminOverrideCode?: string) {
+  return apiRequest<{ detail?: string }>(`/periods/${periodId}/`, {
+    method: "DELETE",
+    headers: authHeaders(),
+    body: JSON.stringify(adminOverrideCode ? { admin_override_code: adminOverrideCode } : {}),
+  });
+}
