@@ -31,7 +31,7 @@ export function AppSideDrawer({ open, onClose }: AppSideDrawerProps) {
   return (
     <div className="fixed inset-0 z-50 flex bg-stone-950/30" onClick={onClose}>
       <aside
-        className="flex h-full w-full max-w-[340px] flex-col border-r border-stone-900/8 bg-[#f5f2ec] px-5 py-5 shadow-[0_18px_48px_rgba(24,24,24,0.18)] sm:px-6"
+        className="flex h-full w-full max-w-[340px] flex-col overflow-hidden border-r border-stone-900/8 bg-[#f5f2ec] px-5 py-5 shadow-[0_18px_48px_rgba(24,24,24,0.18)] sm:px-6"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-center justify-between gap-4">
@@ -44,7 +44,7 @@ export function AppSideDrawer({ open, onClose }: AppSideDrawerProps) {
           </Button>
         </div>
 
-        <nav className="mt-8 flex flex-1 flex-col gap-2">
+        <nav className="mt-8 flex-1 space-y-2 overflow-y-auto pr-1">
           {primaryNavItems.map((item) => {
             const isActive = activeHref === item.href;
 
@@ -67,10 +67,6 @@ export function AppSideDrawer({ open, onClose }: AppSideDrawerProps) {
             );
           })}
         </nav>
-
-        <div className="rounded-[24px] border border-stone-900/8 bg-white px-4 py-4 text-sm text-stone-500">
-          Move between ticket entry, ledger review, overflow handling, exports, and archive screens from one place.
-        </div>
       </aside>
     </div>
   );
