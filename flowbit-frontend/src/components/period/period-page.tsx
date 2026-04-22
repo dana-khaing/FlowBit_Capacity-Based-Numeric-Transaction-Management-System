@@ -223,7 +223,7 @@ export function PeriodPage() {
               Use date-only inputs and set the close time for the period. End-of-day close is usually 15:00.
             </p>
 
-            {canManagePeriods ? (
+            {canManagePeriods && !activePeriod ? (
               <form className="mt-6 space-y-4" onSubmit={handleCreatePeriod}>
                 <label className="block space-y-2">
                   <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Period name</span>
@@ -269,6 +269,10 @@ export function PeriodPage() {
                   {isSaving ? "Creating period..." : "Create period"}
                 </Button>
               </form>
+            ) : canManagePeriods ? (
+              <div className="mt-6 rounded-[24px] border border-amber-200 bg-amber-50 px-5 py-5 text-sm leading-6 text-stone-600">
+                There is already an active period. Close the current period first before creating another one.
+              </div>
             ) : (
               <div className="mt-6 rounded-[24px] border border-stone-900/8 bg-[#f3f0ea] px-5 py-5 text-sm leading-6 text-stone-500">
                 Only admin users can create or update periods. You can still review the active period and period history here.
