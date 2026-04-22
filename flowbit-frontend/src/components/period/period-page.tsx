@@ -230,10 +230,10 @@ export function PeriodPage() {
 
       <div className="mx-auto w-full max-w-[1800px] px-4 py-5 sm:px-6 lg:px-8 lg:py-8">
         <section className="rounded-[28px] border border-stone-900/8 bg-white px-5 py-6 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:px-8 sm:py-8">
-          <p className="text-sm font-medium uppercase tracking-[0.2em] text-stone-400">Periods</p>
-          <h1 className="mt-3 text-4xl font-semibold tracking-[-0.02em] text-stone-950 sm:text-5xl">Period control</h1>
-          <p className="mt-4 max-w-3xl text-base leading-7 text-stone-500 sm:text-lg">
-            Create the active period term first. Ticket entry, ledgers, spill-over, and ticket history stay locked until an active period exists.
+          <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Periods</p>
+          <h1 className="mt-2 text-3xl font-semibold tracking-[-0.02em] text-stone-950 sm:text-[2rem]">Period control</h1>
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-500 sm:text-[15px]">
+            Start with an active period term. Ticket entry, ledgers, spill-over, and tickets stay locked until one is in place.
           </p>
         </section>
 
