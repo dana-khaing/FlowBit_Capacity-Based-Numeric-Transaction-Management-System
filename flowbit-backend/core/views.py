@@ -421,6 +421,34 @@ class PeriodViewSet(viewsets.ModelViewSet):
             "closed_ledgers": period.ledgers.filter(is_capacity_reserve=False).count(),
         }, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['post'], url_path='reopen')
+    def reopen_period(self, request, pk=None):
+        period = self.get_object()
+
+        try:
+            period.reopen()
+        except ValidationError as exc:
+            message = exc.messages[0] if getattr(exc, 'messages', None) else str(exc)
+            return Response({"detail": message}, status=status.HTTP_400_BAD_REQUEST)
+
+        record_audit_log(
+            request,
+            'period.reopened',
+            target=period,
+            details=f"Reopened period '{period.name}'",
+            changes={
+                'reopened_at': serialize_audit_value(timezone.now()),
+                'reactivated_ledgers': period.ledgers.filter(is_capacity_reserve=False).count(),
+            },
+        )
+
+        serializer = self.get_serializer(period)
+        return Response({
+            "message": f"Period '{period.name}' reopened successfully",
+            "period": serializer.data,
+            "reactivated_ledgers": period.ledgers.filter(is_capacity_reserve=False).count(),
+        }, status=status.HTTP_200_OK)
+
     @action(detail=True, methods=['get'], url_path='summary')
     def summary(self, request, pk=None):
         period = self.get_object()

@@ -1090,6 +1090,58 @@ class LedgerArchiveAPITests(APITestCase):
         self.assertEqual(response.data['overflow_count'], 0)
         self.assertEqual(response.data['total_transaction_amount'], '75')
 
+    def test_last_closed_period_can_be_reopened_before_end_date(self):
+        self.active_period.close(closed_at=timezone.make_aware(datetime(2026, 2, 10, 10, 0, 0)))
+
+        response = self.client.post(f'/api/periods/{self.active_period.id}/reopen/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.active_period.refresh_from_db()
+        self.active_ledger.refresh_from_db()
+        self.assertTrue(self.active_period.is_open)
+        self.assertIsNone(self.active_period.closed_at)
+        self.assertTrue(self.active_ledger.is_active)
+        self.assertIsNone(self.active_ledger.closed_at)
+
+    def test_period_cannot_reopen_if_another_period_is_active(self):
+        self.active_period.close(closed_at=timezone.make_aware(datetime(2026, 2, 10, 10, 0, 0)))
+        replacement_period = Period.objects.create(
+            name='Replacement Active Period',
+            start_date=timezone.make_aware(datetime(2027, 1, 1, 0, 0, 0)),
+            end_date=timezone.make_aware(datetime(2027, 12, 31, 23, 59, 59)),
+            is_open=True,
+        )
+
+        response = self.client.post(f'/api/periods/{self.active_period.id}/reopen/')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['detail'], 'Close the active period before reopening another one.')
+        replacement_period.refresh_from_db()
+        self.assertTrue(replacement_period.is_open)
+
+    def test_only_most_recently_closed_period_can_be_reopened(self):
+        older_period = self.archived_period
+        self.active_period.close(closed_at=timezone.make_aware(datetime(2026, 2, 10, 10, 0, 0)))
+
+        response = self.client.post(f'/api/periods/{older_period.id}/reopen/')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['detail'], 'Only the most recently closed period can be reopened.')
+
+    @override_settings(USE_TZ=True, TIME_ZONE='Europe/London')
+    @patch('core.models.timezone.localdate', return_value=datetime(2027, 1, 17).date())
+    def test_period_cannot_reopen_after_end_date_has_passed(self, mocked_localdate):
+        self.active_period.close(closed_at=timezone.make_aware(datetime(2026, 2, 10, 10, 0, 0)))
+
+        response = self.client.post(f'/api/periods/{self.active_period.id}/reopen/')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data['detail'],
+            'This period can no longer be reopened because its end date has passed.',
+        )
+        mocked_localdate.assert_called_once()
+
     def test_ledgers_can_be_filtered_by_period_id(self):
         response = self.client.get('/api/ledgers/', {'period_id': self.active_period.id})
 
