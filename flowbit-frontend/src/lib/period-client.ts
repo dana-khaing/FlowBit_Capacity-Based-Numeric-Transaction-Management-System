@@ -64,3 +64,26 @@ export async function createPeriod(payload: {
     }),
   });
 }
+
+export async function updatePeriod(
+  periodId: number,
+  payload: {
+    end_date: string;
+    close_time: string;
+    admin_override_code?: string;
+  },
+) {
+  return apiRequest<FlowBitPeriod>(`/periods/${periodId}/`, {
+    method: "PATCH",
+    headers: authHeaders(),
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function closePeriod(periodId: number, adminOverrideCode?: string) {
+  return apiRequest<{ message: string; period: FlowBitPeriod; closed_ledgers: number }>(`/periods/${periodId}/close/`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify(adminOverrideCode ? { admin_override_code: adminOverrideCode } : {}),
+  });
+}
