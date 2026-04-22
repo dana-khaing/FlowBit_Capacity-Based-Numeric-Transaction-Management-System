@@ -1065,6 +1065,20 @@ class LedgerArchiveAPITests(APITestCase):
         self.assertEqual(response.data['id'], self.active_period.id)
         self.assertTrue(response.data['is_open'])
 
+    def test_cannot_create_second_open_period_while_active_period_exists(self):
+        response = self.client.post('/api/periods/', {
+            'name': 'Blocked Next Period',
+            'start_date': '2027-01-01',
+            'end_date': '2027-01-31',
+            'is_open': True,
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data['is_open'][0],
+            'Close the active period before opening another one.',
+        )
+
     def test_period_summary_returns_dashboard_totals(self):
         response = self.client.get(f'/api/periods/{self.active_period.id}/summary/')
 

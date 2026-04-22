@@ -101,6 +101,11 @@ class PeriodSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         attrs = super().validate(attrs)
         attrs.pop('close_time', None)
+        should_be_open = attrs.get('is_open', getattr(self.instance, 'is_open', True))
+        if should_be_open and Period.objects.exclude(pk=getattr(self.instance, 'pk', None)).filter(is_open=True).exists():
+            raise serializers.ValidationError({
+                'is_open': ['Close the active period before opening another one.'],
+            })
         return attrs
 
 
