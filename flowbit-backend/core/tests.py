@@ -1128,19 +1128,57 @@ class LedgerArchiveAPITests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(response.data['detail'], 'Only the most recently closed period can be reopened.')
 
-    @override_settings(USE_TZ=True, TIME_ZONE='Europe/London')
-    @patch('core.models.timezone.localdate', return_value=datetime(2027, 1, 17).date())
-    def test_period_cannot_reopen_after_end_date_has_passed(self, mocked_localdate):
+    def test_period_can_reopen_after_original_end_date_if_no_active_period_exists(self):
         self.active_period.close(closed_at=timezone.make_aware(datetime(2026, 2, 10, 10, 0, 0)))
 
         response = self.client.post(f'/api/periods/{self.active_period.id}/reopen/')
 
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.active_period.refresh_from_db()
+        self.assertTrue(self.active_period.is_open)
+
+    def test_only_most_recently_closed_period_can_be_deleted(self):
+        older_period = self.archived_period
+        self.active_period.close(closed_at=timezone.make_aware(datetime(2026, 2, 10, 10, 0, 0)))
+
+        response = self.client.delete(f'/api/periods/{older_period.id}/')
+
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(
-            response.data['detail'],
-            'This period can no longer be reopened because its end date has passed.',
+        self.assertEqual(response.data['detail'], 'Only the most recently closed period can be deleted.')
+        self.assertTrue(Period.objects.filter(pk=older_period.pk).exists())
+
+    def test_last_closed_period_with_activity_cannot_be_deleted(self):
+        self.active_period.close(closed_at=timezone.make_aware(datetime(2026, 2, 10, 10, 0, 0)))
+
+        response = self.client.delete(f'/api/periods/{self.active_period.id}/')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['detail'], 'This period cannot be deleted because it already has ticket activity.')
+        self.assertTrue(Period.objects.filter(pk=self.active_period.pk).exists())
+
+    def test_last_closed_period_without_activity_can_be_deleted(self):
+        self.active_period.close(closed_at=timezone.now())
+        deletable_period = Period.objects.create(
+            name='Deletable Closed Period',
+            start_date=timezone.make_aware(datetime(2028, 1, 1, 0, 0, 0)),
+            end_date=timezone.make_aware(datetime(2028, 1, 31, 23, 59, 59)),
+            is_open=True,
         )
-        mocked_localdate.assert_called_once()
+        deletable_ledger = Ledger.objects.create(
+            period=deletable_period,
+            name='Deletable Ledger',
+            end_date=deletable_period.end_date,
+            limit_per_identifier=Decimal('100.00'),
+            priority=2,
+            is_active=True,
+        )
+        deletable_period.close(closed_at=timezone.make_aware(datetime(2028, 1, 15, 12, 0, 0)))
+
+        response = self.client.delete(f'/api/periods/{deletable_period.id}/')
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Period.objects.filter(pk=deletable_period.pk).exists())
+        self.assertFalse(Ledger.objects.filter(pk=deletable_ledger.pk).exists())
 
     def test_ledgers_can_be_filtered_by_period_id(self):
         response = self.client.get('/api/ledgers/', {'period_id': self.active_period.id})

@@ -347,8 +347,15 @@ class PeriodViewSet(viewsets.ModelViewSet):
         )
 
     def perform_destroy(self, instance):
+        try:
+            instance.can_delete()
+        except ValidationError as exc:
+            message = exc.messages[0] if getattr(exc, 'messages', None) else str(exc)
+            raise DRFValidationError({'detail': message})
+
         before = snapshot_instance(instance)
         period_name = instance.name
+        instance.ledgers.all().delete()
         super().perform_destroy(instance)
         record_audit_log(
             self.request,
