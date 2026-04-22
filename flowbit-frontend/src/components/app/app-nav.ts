@@ -6,6 +6,7 @@ import {
   faHeadset,
   faIdBadge,
   faLayerGroup,
+  faCalendarDays,
   faPlus,
   faTriangleExclamation,
 } from "@fortawesome/free-solid-svg-icons";
@@ -13,6 +14,7 @@ import {
 export const primaryNavItems = [
   { label: "Dashboard", href: "/", icon: faArrowTrendUp },
   { label: "Create Tickets", href: "/tickets/create", icon: faPlus },
+  { label: "Period", href: "/periods", icon: faCalendarDays },
   { label: "Ledgers", href: "/ledgers", icon: faLayerGroup },
   { label: "Spill over", href: "/spill-over", icon: faTriangleExclamation },
   { label: "Tickets", href: "/tickets", icon: faFileInvoice },
