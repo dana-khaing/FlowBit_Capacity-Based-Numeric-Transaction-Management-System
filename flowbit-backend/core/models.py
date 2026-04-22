@@ -73,6 +73,43 @@ class Period(models.Model):
     def get_open_period(cls):
         return cls.objects.filter(is_open=True).order_by('start_date').first()
 
+    @classmethod
+    def get_last_closed_period(cls):
+        return cls.objects.filter(is_open=False, closed_at__isnull=False).order_by('-closed_at', '-start_date').first()
+
+    def can_reopen(self):
+        if self.is_open:
+            raise ValidationError("Period is already open.")
+
+        if Period.objects.exclude(pk=self.pk).filter(is_open=True).exists():
+            raise ValidationError("Close the active period before reopening another one.")
+
+        last_closed_period = Period.get_last_closed_period()
+        if not last_closed_period or last_closed_period.pk != self.pk:
+            raise ValidationError("Only the most recently closed period can be reopened.")
+
+        today = timezone.localdate()
+        period_end_date = timezone.localtime(self.end_date).date() if timezone.is_aware(self.end_date) else self.end_date.date()
+        if today > period_end_date:
+            raise ValidationError("This period can no longer be reopened because its end date has passed.")
+
+    def reopen(self, save=True):
+        self.can_reopen()
+
+        with transaction.atomic():
+            self.is_open = True
+            self.closed_at = None
+
+            if save:
+                self.save(update_fields=['is_open', 'closed_at'])
+
+            self.ledgers.update(
+                is_active=True,
+                closed_at=None,
+            )
+
+        return self
+
 
 class Ledger(models.Model):
     CAPACITY_RESERVE_PRIORITY = 999999
