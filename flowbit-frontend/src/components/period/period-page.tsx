@@ -2,14 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faCalendarDays, faCircleDot, faClock, faLock } from "@fortawesome/free-solid-svg-icons";
+import { faCalendarDays, faCircleDot, faClock, faLock, faRotateLeft } from "@fortawesome/free-solid-svg-icons";
 import { AdminConfirmModal } from "@/components/admin/admin-confirm-modal";
 import { WorkspaceShell } from "@/components/app/workspace-shell";
 import { AdminActionToast } from "@/components/admin/admin-action-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { fetchCurrentUser, getStoredUser, type AuthUser } from "@/lib/auth-client";
-import { closePeriod, createPeriod, fetchPeriods, type FlowBitPeriod, updatePeriod } from "@/lib/period-client";
+import { closePeriod, createPeriod, fetchPeriods, reopenPeriod, type FlowBitPeriod, updatePeriod } from "@/lib/period-client";
 import { notifyPeriodsUpdated } from "@/components/period/use-period-state";
 
 type ToastState = {
@@ -31,7 +31,7 @@ const defaultFormState: PeriodFormState = {
   close_time: "15:00",
 };
 
-type PeriodAction = "update" | "close" | null;
+type PeriodAction = "update" | "close" | "reopen" | null;
 
 function formatPeriodDate(value: string) {
   const parsed = new Date(value);
@@ -90,6 +90,7 @@ export function PeriodPage() {
     () => periods.filter((period) => !period.is_open),
     [periods],
   );
+  const latestClosedPeriod = archivedPeriods[0] ?? null;
 
   const canManagePeriods = user?.role === "admin";
   const requiresOverride = !canManagePeriods;
@@ -186,6 +187,9 @@ export function PeriodPage() {
       } else if (pendingAction === "close") {
         await closePeriod(activePeriod.id, requiresOverride ? overrideCode : undefined);
         setToast({ type: "success", message: "Period closed successfully." });
+      } else if (pendingAction === "reopen" && latestClosedPeriod) {
+        await reopenPeriod(latestClosedPeriod.id, requiresOverride ? overrideCode : undefined);
+        setToast({ type: "success", message: "Period reopened successfully." });
       }
 
       setShowActionConfirm(false);
@@ -208,15 +212,23 @@ export function PeriodPage() {
       {toast ? <AdminActionToast message={toast.message} type={toast.type} onClose={() => setToast(null)} /> : null}
       <AdminConfirmModal
         open={showActionConfirm}
-        title={pendingAction === "close" ? "Close active period?" : "Save active period changes?"}
+        title={
+          pendingAction === "close"
+            ? "Close active period?"
+            : pendingAction === "reopen"
+              ? "Reopen the last closed period?"
+              : "Save active period changes?"
+        }
         description={
           pendingAction === "close"
             ? "Closing the current period will lock ticket entry, ledgers, spill-over, and tickets until a new period is created."
+            : pendingAction === "reopen"
+              ? "Reopen the most recently closed period if it was closed too early and its end date has not passed yet."
             : "Update the active period end date and close time for the current term."
         }
         codeValue={overrideCode}
         codeLabel="Admin override code"
-        confirmLabel={pendingAction === "close" ? "Close period" : "Save changes"}
+        confirmLabel={pendingAction === "close" ? "Close period" : pendingAction === "reopen" ? "Reopen period" : "Save changes"}
         showCodeInput={requiresOverride}
         busy={isSaving}
         onCodeChange={setOverrideCode}
@@ -304,12 +316,21 @@ export function PeriodPage() {
                         <p className="text-base font-semibold text-stone-900">{period.name}</p>
                         <p className="mt-1 text-sm text-stone-500">{formatPeriodRange(period)}</p>
                       </div>
-                      <span className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] ${
-                        period.is_open ? "bg-emerald-100 text-emerald-700" : "bg-stone-200 text-stone-600"
-                      }`}>
-                        <FontAwesomeIcon icon={period.is_open ? faCircleDot : faLock} className="h-3 w-3" />
-                        {period.is_open ? "Open" : "Closed"}
-                      </span>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <span className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] ${
+                          period.is_open ? "bg-emerald-100 text-emerald-700" : "bg-stone-200 text-stone-600"
+                        }`}>
+                          <FontAwesomeIcon icon={period.is_open ? faCircleDot : faLock} className="h-3 w-3" />
+                          {period.is_open ? "Open" : "Closed"}
+                        </span>
+
+                        {!activePeriod && latestClosedPeriod?.id === period.id ? (
+                          <Button variant="outline" onClick={() => openConfirm("reopen")} disabled={isSaving}>
+                            <FontAwesomeIcon icon={faRotateLeft} className="h-3.5 w-3.5" />
+                            Reopen
+                          </Button>
+                        ) : null}
+                      </div>
                     </div>
                   ))
                 ) : (
