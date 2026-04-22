@@ -322,9 +322,6 @@ export function PeriodPage() {
           <aside className="rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6">
             <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Setup</p>
             <h2 className="mt-2 text-2xl font-semibold text-stone-950">Create a period term</h2>
-            <p className="mt-3 text-sm leading-6 text-stone-500">
-              Use date-only inputs and set the close time for the period. End-of-day close is usually 15:00.
-            </p>
 
             {canManagePeriods && !activePeriod ? (
               <form className="mt-6 space-y-4" onSubmit={handleCreatePeriod}>
@@ -381,16 +378,6 @@ export function PeriodPage() {
                 Only admin users can create or update periods. You can still review the active period and period history here.
               </div>
             )}
-
-            <div className="mt-6 rounded-[24px] border border-stone-900/8 bg-[#f3f0ea] px-5 py-5 text-sm leading-6 text-stone-500">
-              <p className="font-semibold text-stone-900">What unlocks next</p>
-              <ul className="mt-3 space-y-2">
-                <li>Create Tickets</li>
-                <li>Ledgers</li>
-                <li>Spill over</li>
-                <li>Tickets</li>
-              </ul>
-            </div>
 
             {activePeriod ? (
               <div className="mt-6 rounded-[24px] border border-stone-900/8 bg-white px-5 py-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)]">
