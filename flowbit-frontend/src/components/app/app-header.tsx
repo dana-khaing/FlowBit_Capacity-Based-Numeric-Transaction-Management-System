@@ -6,6 +6,7 @@ import Link from "next/link";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowRightFromBracket, faBars } from "@fortawesome/free-solid-svg-icons";
 import { AdminConfirmModal } from "@/components/admin/admin-confirm-modal";
+import { usePeriodState } from "@/components/period/use-period-state";
 import { Button } from "@/components/ui/button";
 import { ProfileAvatar } from "@/components/profile/profile-avatar";
 import { fetchCurrentUser, getStoredUser, logoutFromBackend, type AuthUser } from "@/lib/auth-client";
@@ -19,6 +20,7 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLogoutPending, setIsLogoutPending] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const { activePeriod } = usePeriodState();
 
   useEffect(() => {
     setUser(getStoredUser());
@@ -33,6 +35,8 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
     router.push("/login");
     router.refresh();
   }
+
+  const periodLabel = activePeriod ? activePeriod.name : "No active period";
 
   return (
     <>
@@ -63,7 +67,7 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
 
         <div className="flex items-center gap-3">
           <div className="hidden rounded-full border border-stone-900/10 bg-stone-50 px-4 py-2 text-sm text-stone-500 sm:block">
-            Period: Mar 1–16
+            Period: {periodLabel}
           </div>
           <Link
             href="/profile"

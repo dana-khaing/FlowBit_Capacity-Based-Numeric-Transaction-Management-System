@@ -1,8 +1,8 @@
-import { AppSectionPage } from "@/components/app/app-section-page";
+import { PeriodRequiredPage } from "@/components/period/period-required-page";
 
 export default function CreateTicketsPage() {
   return (
-    <AppSectionPage
+    <PeriodRequiredPage
       eyebrow="Ticket entry"
       title="Create tickets"
       description="Enter identifiers and amounts, preview capacity instantly, and decide whether remaining amounts should continue as spill-over."
@@ -11,6 +11,6 @@ export default function CreateTicketsPage() {
         <p>This screen is the entry point for the ticket creation flow we’re building next.</p>
         <p>It will host the multi-line ticket form, manual ledger allocation preview, and overflow confirmation handling.</p>
       </div>
-    </AppSectionPage>
+    </PeriodRequiredPage>
   );
 }
