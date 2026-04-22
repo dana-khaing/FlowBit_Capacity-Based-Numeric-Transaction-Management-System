@@ -2,14 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faCalendarDays, faCircleDot, faClock, faLock, faRotateLeft } from "@fortawesome/free-solid-svg-icons";
+import { faCalendarDays, faCircleDot, faClock, faLock, faRotateLeft, faTrashCan } from "@fortawesome/free-solid-svg-icons";
 import { AdminConfirmModal } from "@/components/admin/admin-confirm-modal";
 import { WorkspaceShell } from "@/components/app/workspace-shell";
 import { AdminActionToast } from "@/components/admin/admin-action-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { fetchCurrentUser, getStoredUser, type AuthUser } from "@/lib/auth-client";
-import { closePeriod, createPeriod, fetchPeriods, reopenPeriod, type FlowBitPeriod, updatePeriod } from "@/lib/period-client";
+import { closePeriod, createPeriod, deletePeriod, fetchPeriods, reopenPeriod, type FlowBitPeriod, updatePeriod } from "@/lib/period-client";
 import { notifyPeriodsUpdated } from "@/components/period/use-period-state";
 
 type ToastState = {
@@ -31,7 +31,7 @@ const defaultFormState: PeriodFormState = {
   close_time: "15:00",
 };
 
-type PeriodAction = "update" | "close" | "reopen" | null;
+type PeriodAction = "update" | "close" | "reopen" | "delete" | null;
 
 function formatPeriodDate(value: string) {
   const parsed = new Date(value);
@@ -165,7 +165,7 @@ export function PeriodPage() {
   }
 
   async function handleConfirmAction() {
-    if (!activePeriod || !pendingAction) {
+    if (!pendingAction) {
       return;
     }
 
@@ -177,19 +177,22 @@ export function PeriodPage() {
 
     setIsSaving(true);
     try {
-      if (pendingAction === "update") {
+      if (pendingAction === "update" && activePeriod) {
         await updatePeriod(activePeriod.id, {
           end_date: activePeriodForm.end_date,
           close_time: activePeriodForm.close_time || "15:00",
           admin_override_code: requiresOverride ? overrideCode : undefined,
         });
         setToast({ type: "success", message: "Period updated successfully." });
-      } else if (pendingAction === "close") {
+      } else if (pendingAction === "close" && activePeriod) {
         await closePeriod(activePeriod.id, requiresOverride ? overrideCode : undefined);
         setToast({ type: "success", message: "Period closed successfully." });
       } else if (pendingAction === "reopen" && latestClosedPeriod) {
         await reopenPeriod(latestClosedPeriod.id, requiresOverride ? overrideCode : undefined);
         setToast({ type: "success", message: "Period reopened successfully." });
+      } else if (pendingAction === "delete" && latestClosedPeriod) {
+        await deletePeriod(latestClosedPeriod.id, requiresOverride ? overrideCode : undefined);
+        setToast({ type: "success", message: "Period deleted successfully." });
       }
 
       setShowActionConfirm(false);
@@ -217,18 +220,30 @@ export function PeriodPage() {
             ? "Close active period?"
             : pendingAction === "reopen"
               ? "Reopen the last closed period?"
+              : pendingAction === "delete"
+                ? "Delete the last closed period?"
               : "Save active period changes?"
         }
         description={
           pendingAction === "close"
             ? "Closing the current period will lock ticket entry, ledgers, spill-over, and tickets until a new period is created."
             : pendingAction === "reopen"
-              ? "Reopen the most recently closed period if it was closed too early and its end date has not passed yet."
+              ? "Reopen the most recently closed period so you can extend its end date or continue using it."
+            : pendingAction === "delete"
+              ? "Delete the most recently closed period. Older closed periods cannot be deleted."
             : "Update the active period end date and close time for the current term."
         }
         codeValue={overrideCode}
         codeLabel="Admin override code"
-        confirmLabel={pendingAction === "close" ? "Close period" : pendingAction === "reopen" ? "Reopen period" : "Save changes"}
+        confirmLabel={
+          pendingAction === "close"
+            ? "Close period"
+            : pendingAction === "reopen"
+              ? "Reopen period"
+              : pendingAction === "delete"
+                ? "Delete period"
+                : "Save changes"
+        }
         showCodeInput={requiresOverride}
         busy={isSaving}
         onCodeChange={setOverrideCode}
@@ -325,10 +340,16 @@ export function PeriodPage() {
                         </span>
 
                         {!activePeriod && latestClosedPeriod?.id === period.id ? (
-                          <Button variant="outline" onClick={() => openConfirm("reopen")} disabled={isSaving}>
-                            <FontAwesomeIcon icon={faRotateLeft} className="h-3.5 w-3.5" />
-                            Reopen
-                          </Button>
+                          <>
+                            <Button variant="outline" onClick={() => openConfirm("reopen")} disabled={isSaving}>
+                              <FontAwesomeIcon icon={faRotateLeft} className="h-3.5 w-3.5" />
+                              Reopen
+                            </Button>
+                            <Button variant="outline" onClick={() => openConfirm("delete")} disabled={isSaving}>
+                              <FontAwesomeIcon icon={faTrashCan} className="h-3.5 w-3.5" />
+                              Delete
+                            </Button>
+                          </>
                         ) : null}
                       </div>
                     </div>
