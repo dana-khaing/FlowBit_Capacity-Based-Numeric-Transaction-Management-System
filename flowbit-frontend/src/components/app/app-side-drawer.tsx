@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faXmark } from "@fortawesome/free-solid-svg-icons";
+import { faLock, faXmark } from "@fortawesome/free-solid-svg-icons";
 import { primaryNavItems } from "@/components/app/app-nav";
+import { usePeriodState } from "@/components/period/use-period-state";
 import { Button } from "@/components/ui/button";
 
 type AppSideDrawerProps = {
@@ -14,6 +15,8 @@ type AppSideDrawerProps = {
 
 export function AppSideDrawer({ open, onClose }: AppSideDrawerProps) {
   const pathname = usePathname();
+  const { hasActivePeriod } = usePeriodState();
+  const periodLockedRoutes = new Set(["/tickets/create", "/ledgers", "/spill-over", "/tickets"]);
 
   const activeHref = primaryNavItems
     .filter((item) => {
@@ -44,25 +47,40 @@ export function AppSideDrawer({ open, onClose }: AppSideDrawerProps) {
           </Button>
         </div>
 
-        <nav className="mt-8 flex-1 space-y-2 overflow-y-auto pr-1">
+        <nav className="thin-scrollbar mt-8 flex-1 space-y-2 overflow-y-auto pr-1">
           {primaryNavItems.map((item) => {
             const isActive = activeHref === item.href;
+            const isLocked = !hasActivePeriod && periodLockedRoutes.has(item.href);
 
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={onClose}
-                className={`flex items-center gap-3 rounded-[20px] border px-4 py-3 text-sm font-semibold transition ${
-                  isActive
-                    ? "border-stone-900/10 bg-white text-stone-950 shadow-[0_8px_18px_rgba(28,24,20,0.05)]"
-                    : "border-transparent bg-transparent text-stone-600 hover:border-stone-900/8 hover:bg-white/70 hover:text-stone-900"
-                }`}
-              >
+            const className = `flex items-center gap-3 rounded-[20px] border px-4 py-3 text-sm font-semibold transition ${
+              isActive
+                ? "border-stone-900/10 bg-white text-stone-950 shadow-[0_8px_18px_rgba(28,24,20,0.05)]"
+                : isLocked
+                  ? "border-transparent bg-transparent text-stone-400"
+                  : "border-transparent bg-transparent text-stone-600 hover:border-stone-900/8 hover:bg-white/70 hover:text-stone-900"
+            }`;
+
+            const content = (
+              <>
                 <span className="inline-flex h-9 w-9 items-center justify-center rounded-2xl bg-stone-900/[0.05] text-stone-700">
                   <FontAwesomeIcon icon={item.icon} className="h-4 w-4" />
                 </span>
-                <span>{item.label}</span>
+                <span className="flex-1">{item.label}</span>
+                {isLocked ? <FontAwesomeIcon icon={faLock} className="h-3.5 w-3.5 text-stone-400" /> : null}
+              </>
+            );
+
+            if (isLocked) {
+              return (
+                <Link key={item.href} href="/periods" onClick={onClose} className={className}>
+                  {content}
+                </Link>
+              );
+            }
+
+            return (
+              <Link key={item.href} href={item.href} onClick={onClose} className={className}>
+                {content}
               </Link>
             );
           })}

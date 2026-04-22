@@ -68,3 +68,22 @@ button {
 ::-webkit-scrollbar-track {
   background: rgba(255, 255, 255, 0.28);
 }
+
+.thin-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(52, 36, 24, 0.34) rgba(255, 255, 255, 0.16);
+}
+
+.thin-scrollbar::-webkit-scrollbar {
+  height: 6px;
+  width: 6px;
+}
+
+.thin-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(52, 36, 24, 0.34);
+  border-radius: 999px;
+}
+
+.thin-scrollbar::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.16);
+}
