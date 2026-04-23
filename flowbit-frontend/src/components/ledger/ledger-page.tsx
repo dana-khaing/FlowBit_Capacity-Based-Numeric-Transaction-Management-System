@@ -532,7 +532,7 @@ export function LedgerPage() {
 
                         {ledger.is_capacity_reserve ? (
                           <div className="rounded-[22px] border border-stone-900/8 bg-white px-4 py-4 text-sm leading-6 text-stone-500">
-                            Reserve ledgers stay visible to show helper capacity. Their time, priority, and structure are managed automatically.
+                            Managed automatically.
                           </div>
                         ) : (
                           <div className="grid gap-3 sm:grid-cols-[100px_1fr_1fr]">
