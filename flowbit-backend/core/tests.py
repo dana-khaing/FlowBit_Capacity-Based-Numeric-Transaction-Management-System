@@ -592,7 +592,7 @@ class RolePermissionTests(APITestCase):
             priority=1,
             is_active=True,
         )
-        self.identifier = Identifier.objects.get(number='101')
+        self.identifier = Identifier.objects.create(number='101')
 
     def test_regular_user_cannot_create_period(self):
         self.client.force_authenticate(user=self.regular_user)
@@ -968,6 +968,146 @@ class RolePermissionTests(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+
+class PrivateWorkspaceTests(APITestCase):
+    def setUp(self):
+        self.admin_user = User.objects.create_user(
+            username='private_admin',
+            password='password123',
+        )
+        self.admin_user.profile.role = 'admin'
+        self.admin_user.profile.set_master_override_password('override-123')
+        self.admin_user.profile.save(update_fields=['role', 'master_override_password', 'updated_at'])
+
+        self.user_one = User.objects.create_user(
+            username='private_user_one',
+            password='password123',
+        )
+        self.user_two = User.objects.create_user(
+            username='private_user_two',
+            password='password123',
+        )
+        self.identifier = Identifier.objects.create(number='101')
+        self.period = Period.objects.create(
+            name='Private Workspace Period',
+            start_date=timezone.make_aware(datetime(2027, 1, 1, 0, 0, 0)),
+            end_date=timezone.make_aware(datetime(2027, 12, 31, 23, 59, 59)),
+            is_open=True,
+        )
+        self.user_one_ledger = Ledger.objects.create(
+            owner=self.user_one,
+            period=self.period,
+            name='User One Ledger',
+            end_date=self.period.end_date,
+            limit_per_identifier=Decimal('100.00'),
+            priority=1,
+            is_active=True,
+        )
+
+    def test_regular_user_cannot_create_period_even_with_override_code(self):
+        self.client.force_authenticate(user=self.user_one)
+
+        response = self.client.post('/api/periods/', {
+            'name': 'Blocked Period',
+            'start_date': '2028-01-01',
+            'end_date': '2028-01-31',
+            'admin_override_code': 'override-123',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_ledger_list_only_returns_current_users_ledgers_and_reserve(self):
+        Ledger.objects.create(
+            owner=self.user_two,
+            period=self.period,
+            name='User Two Ledger',
+            end_date=self.period.end_date,
+            limit_per_identifier=Decimal('100.00'),
+            priority=1,
+            is_active=True,
+        )
+        self.client.force_authenticate(user=self.user_one)
+
+        response = self.client.get('/api/ledgers/', {'period_id': self.period.id})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        returned_names = {item['name'] for item in response.data}
+        self.assertIn('User One Ledger', returned_names)
+        self.assertNotIn('User Two Ledger', returned_names)
+        reserve_rows = [item for item in response.data if item['is_capacity_reserve']]
+        self.assertEqual(len(reserve_rows), 1)
+        self.assertEqual(reserve_rows[0]['owner_username'], self.user_one.username)
+
+    def test_same_priority_is_allowed_for_different_users(self):
+        self.client.force_authenticate(user=self.user_two)
+
+        response = self.client.post('/api/ledgers/', {
+            'period': self.period.id,
+            'name': 'User Two Priority One',
+            'end_date': '2027-12-31',
+            'limit_per_identifier': '120.00',
+            'priority': 1,
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['priority'], 1)
+        self.assertEqual(response.data['owner_username'], self.user_two.username)
+
+    def test_ticket_creation_uses_only_current_users_ledgers(self):
+        self.client.force_authenticate(user=self.user_two)
+
+        blocked_response = self.client.post('/api/tickets/create-with-items/', {
+            'customer_name': 'Blocked Customer',
+            'items': [
+                {'identifier': self.identifier.id, 'amount': '50.00'},
+            ],
+        }, format='json')
+
+        self.assertEqual(blocked_response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(blocked_response.data['detail'], 'No active ledgers available in the current open period.')
+
+        self.client.force_authenticate(user=self.user_one)
+        allowed_response = self.client.post('/api/tickets/create-with-items/', {
+            'customer_name': 'Allowed Customer',
+            'items': [
+                {'identifier': self.identifier.id, 'amount': '50.00'},
+            ],
+        }, format='json')
+
+        self.assertEqual(allowed_response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(Ticket.objects.filter(created_by=self.user_one).exists())
+
+    def test_transactions_and_overflows_are_private_to_the_current_user(self):
+        self.client.force_authenticate(user=self.user_one)
+        one_ticket = Ticket.objects.create(customer_name='One Ticket', created_by=self.user_one)
+        one_transaction = Transaction.objects.create(
+            ticket=one_ticket,
+            identifier=self.identifier,
+            total_amount=Decimal('150.00'),
+            created_by=self.user_one,
+        )
+        self.client.force_authenticate(user=self.user_two)
+        two_ticket = Ticket.objects.create(customer_name='Two Ticket', created_by=self.user_two)
+        two_transaction = Transaction.objects.create(
+            ticket=two_ticket,
+            identifier=self.identifier,
+            total_amount=Decimal('25.00'),
+            created_by=self.user_two,
+        )
+
+        transaction_response = self.client.get('/api/transactions/')
+        overflow_response = self.client.get('/api/overflows/')
+
+        self.assertEqual(transaction_response.status_code, status.HTTP_200_OK)
+        returned_transaction_ids = {item['id'] for item in transaction_response.data}
+        self.assertIn(two_transaction.id, returned_transaction_ids)
+        self.assertNotIn(one_transaction.id, returned_transaction_ids)
+
+        self.assertEqual(overflow_response.status_code, status.HTTP_200_OK)
+        returned_overflow_ids = {item['id'] for item in overflow_response.data}
+        self.assertTrue(Overflow.objects.filter(transaction=one_transaction).exists())
+        self.assertNotIn(Overflow.objects.get(transaction=one_transaction).id, returned_overflow_ids)
 
 
 class LedgerArchiveAPITests(APITestCase):

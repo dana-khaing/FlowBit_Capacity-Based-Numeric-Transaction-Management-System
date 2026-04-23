@@ -44,30 +44,6 @@ class Period(models.Model):
     def save(self, *args, **kwargs):
         self.full_clean()
         super().save(*args, **kwargs)
-        reserve = Ledger.get_capacity_reserve(self, create=True)
-        if reserve is None:
-            return
-
-        update_fields = []
-        if reserve.end_date != self.end_date:
-            reserve.end_date = self.end_date
-            update_fields.append('end_date')
-        if reserve.is_active != self.is_open:
-            reserve.is_active = self.is_open
-            update_fields.append('is_active')
-        expected_closed_at = None if self.is_open else self.closed_at
-        if reserve.closed_at != expected_closed_at:
-            reserve.closed_at = expected_closed_at
-            update_fields.append('closed_at')
-        if reserve.priority != Ledger.CAPACITY_RESERVE_PRIORITY:
-            reserve.priority = Ledger.CAPACITY_RESERVE_PRIORITY
-            update_fields.append('priority')
-        if reserve.name != f"{self.name} Capacity Reserve":
-            reserve.name = f"{self.name} Capacity Reserve"
-            update_fields.append('name')
-
-        if update_fields:
-            reserve.save(update_fields=update_fields)
 
     def close(self, closed_at=None, save=True, helper_name=DEFAULT_HELPER_NAME):
         if closed_at is None:
@@ -151,6 +127,13 @@ class Ledger(models.Model):
         null=True,
         blank=True
     )
+    owner = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='ledgers',
+        null=True,
+        blank=True,
+    )
     name = models.CharField(max_length=100, default='Default Ledger')
     end_date = models.DateTimeField()
     limit_per_identifier = models.DecimalField(max_digits=12, decimal_places=2, default=100000.00)
@@ -164,13 +147,17 @@ class Ledger(models.Model):
         ordering = ['priority', '-end_date']
 
     def __str__(self):
-        return f"{self.name} (Priority: {self.priority})"
+        owner_label = self.owner.username if self.owner_id else 'unowned'
+        return f"{self.name} (Priority: {self.priority}, Owner: {owner_label})"
 
     @classmethod
-    def get_capacity_reserve(cls, period, create=False):
+    def get_capacity_reserve(cls, period, owner, create=False):
+        if owner is None:
+            return None
         reserves = list(
             cls.objects.filter(
                 period=period,
+                owner=owner,
                 is_capacity_reserve=True,
             ).order_by('id')
         )
@@ -187,6 +174,7 @@ class Ledger(models.Model):
 
         return cls.objects.create(
             period=period,
+            owner=owner,
             name=f"{period.name} Capacity Reserve",
             end_date=period.end_date,
             limit_per_identifier=Decimal('0.00'),
@@ -384,6 +372,7 @@ def preview_transaction_allocation(identifier, total_amount, period, manual_allo
                 is_active=True,
                 period=period,
                 is_capacity_reserve=False,
+                owner=getattr(identifier, '_allocation_owner', None),
             ).order_by('priority', 'end_date', 'id')
         ]
 
@@ -422,6 +411,7 @@ def preview_transaction_allocation(identifier, total_amount, period, manual_allo
     reserve_available = IdentifierCapacityAdjustment.get_available_capacity(
         identifier=identifier,
         period=period,
+        owner=getattr(identifier, '_allocation_owner', None),
     )
     reserve_allocated = min(max(reserve_available, Decimal('0.00')), remaining)
     remaining -= reserve_allocated
@@ -440,6 +430,7 @@ def _allocate_transaction_amount(transaction_obj, amount, period):
         is_active=True,
         period=period,
         is_capacity_reserve=False,
+        owner=transaction_obj.created_by,
     ).order_by('priority', 'end_date', 'id')
 
     for ledger in active_ledgers:
@@ -467,9 +458,10 @@ def _allocate_transaction_amount(transaction_obj, amount, period):
         reserve_available = IdentifierCapacityAdjustment.get_available_capacity(
             identifier=transaction_obj.identifier,
             period=period,
+            owner=transaction_obj.created_by,
         )
         if reserve_available > 0:
-            reserve_ledger = Ledger.get_capacity_reserve(period, create=True)
+            reserve_ledger = Ledger.get_capacity_reserve(period, transaction_obj.created_by, create=True)
             reserve_amount = min(remaining, reserve_available)
             LedgerAllocation.objects.create(
                 transaction=transaction_obj,
@@ -500,7 +492,7 @@ def _allocate_manual_transaction_amount(transaction_obj, amount, period, manual_
         )
 
     if preview['reserve_allocated'] > 0:
-        reserve_ledger = Ledger.get_capacity_reserve(period, create=True)
+        reserve_ledger = Ledger.get_capacity_reserve(period, transaction_obj.created_by, create=True)
         LedgerAllocation.objects.create(
             transaction=transaction_obj,
             ledger=reserve_ledger,
@@ -546,16 +538,6 @@ def _resolve_pending_overflows(period, exclude_ledger_ids=None):
         return
 
     exclude_ledger_ids = exclude_ledger_ids or []
-    target_ledgers = list(
-        Ledger.objects.filter(
-            period=period,
-            is_active=True,
-            is_capacity_reserve=False,
-        )
-        .exclude(pk__in=exclude_ledger_ids)
-        .order_by('priority', 'end_date', 'id')
-    )
-
     pending_overflows = (
         Overflow.objects.filter(
             _period_overflow_filter(period),
@@ -568,6 +550,16 @@ def _resolve_pending_overflows(period, exclude_ledger_ids=None):
 
     for overflow in pending_overflows:
         remaining = overflow.excess_amount
+        target_ledgers = list(
+            Ledger.objects.filter(
+                period=period,
+                is_active=True,
+                is_capacity_reserve=False,
+                owner=overflow.transaction.created_by,
+            )
+            .exclude(pk__in=exclude_ledger_ids)
+            .order_by('priority', 'end_date', 'id')
+        )
 
         for ledger in target_ledgers:
             if remaining <= 0:
@@ -876,6 +868,13 @@ class IdentifierCapacityAdjustment(models.Model):
         on_delete=models.CASCADE,
         related_name='capacity_adjustments',
     )
+    owner = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='capacity_adjustments',
+        null=True,
+        blank=True,
+    )
     overflow = models.ForeignKey(
         Overflow,
         on_delete=models.SET_NULL,
@@ -899,14 +898,18 @@ class IdentifierCapacityAdjustment(models.Model):
         return f"{self.identifier.number} +{self.amount} ({self.period.name})"
 
     @classmethod
-    def get_available_capacity(cls, identifier, period):
+    def get_available_capacity(cls, identifier, period, owner):
+        if owner is None:
+            return Decimal('0.00')
         granted = cls.objects.filter(
             identifier=identifier,
             period=period,
+            owner=owner,
         ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
 
         used = LedgerAllocation.objects.filter(
             transaction__identifier=identifier,
+            transaction__created_by=owner,
             ledger__period=period,
             ledger__is_capacity_reserve=True,
         ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
@@ -956,10 +959,12 @@ def _grant_capacity_adjustment(overflow, amount, adjustment_type, helper_name):
     if period is None:
         return None
 
-    Ledger.get_capacity_reserve(period, create=True)
+    owner = overflow.transaction.created_by
+    Ledger.get_capacity_reserve(period, owner, create=True)
     return IdentifierCapacityAdjustment.objects.create(
         identifier=overflow.transaction.identifier,
         period=period,
+        owner=owner,
         overflow=overflow,
         amount=amount,
         adjustment_type=adjustment_type,

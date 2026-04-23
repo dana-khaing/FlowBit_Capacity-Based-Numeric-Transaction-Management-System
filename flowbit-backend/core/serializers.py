@@ -1,7 +1,9 @@
 from datetime import datetime, time
+from decimal import Decimal
 
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
+from django.db.models import Sum
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 from rest_framework import serializers
@@ -18,6 +20,7 @@ from .models import (
     PasswordResetToken,
     Collaborator,
     Ticket,
+    IdentifierCapacityAdjustment,
 )
 
 
@@ -111,6 +114,7 @@ class PeriodSerializer(serializers.ModelSerializer):
 
 class LedgerSerializer(serializers.ModelSerializer):
     period_name = serializers.CharField(source='period.name', read_only=True, allow_null=True)
+    owner_username = serializers.CharField(source='owner.username', read_only=True, allow_null=True)
     end_date = FlexibleDateTimeField(default_time=_serializer_close_time, required=False)
     close_time = serializers.TimeField(write_only=True, required=False)
     is_capacity_reserve = serializers.BooleanField(read_only=True)
@@ -121,6 +125,7 @@ class LedgerSerializer(serializers.ModelSerializer):
             'id',
             'period',
             'period_name',
+            'owner_username',
             'name',
             'end_date',
             'limit_per_identifier',
@@ -149,6 +154,7 @@ class LedgerSerializer(serializers.ModelSerializer):
         priority = attrs.get('priority', getattr(self.instance, 'priority', None))
         is_active = attrs.get('is_active', getattr(self.instance, 'is_active', True))
         close_time = attrs.pop('close_time', None)
+        owner = getattr(self.instance, 'owner', None) or self.context['request'].user
 
         if 'end_date' not in attrs and period:
             if close_time:
@@ -162,6 +168,7 @@ class LedgerSerializer(serializers.ModelSerializer):
         if period and priority is not None and is_active:
             conflicting_ledgers = Ledger.objects.filter(
                 period=period,
+                owner=owner,
                 is_active=True,
                 priority=priority,
                 is_capacity_reserve=False,
@@ -207,11 +214,11 @@ class TicketSerializer(serializers.ModelSerializer):
 
 
 class IdentifierSerializer(serializers.ModelSerializer):
-    current_utilization = serializers.ReadOnlyField()
-    remaining_capacity = serializers.ReadOnlyField()
-    current_overflow_amount = serializers.ReadOnlyField()
-    total_overflow_amount = serializers.ReadOnlyField()
-    confirmed_overflow_amount = serializers.ReadOnlyField()
+    current_utilization = serializers.SerializerMethodField()
+    remaining_capacity = serializers.SerializerMethodField()
+    current_overflow_amount = serializers.SerializerMethodField()
+    total_overflow_amount = serializers.SerializerMethodField()
+    confirmed_overflow_amount = serializers.SerializerMethodField()
 
     class Meta:
         model = Identifier
@@ -223,6 +230,83 @@ class IdentifierSerializer(serializers.ModelSerializer):
             'confirmed_overflow_amount',
             'total_overflow_amount',
         ]
+
+    def _request_user(self):
+        request = self.context.get('request')
+        if request and request.user and request.user.is_authenticated:
+            return request.user
+        return None
+
+    def get_current_utilization(self, obj):
+        user = self._request_user()
+        allocated = LedgerAllocation.objects.filter(
+            transaction__identifier=obj,
+            transaction__created_by=user,
+        ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+        overflow_total = Overflow.objects.filter(
+            transaction__identifier=obj,
+            transaction__created_by=user,
+        ).aggregate(total=Sum('excess_amount'))['total'] or Decimal('0.00')
+        return allocated + overflow_total
+
+    def get_remaining_capacity(self, obj):
+        user = self._request_user()
+        open_period = Period.get_open_period()
+        if user is None or open_period is None:
+            return Decimal('0.00')
+
+        total_limit = Ledger.objects.filter(
+            owner=user,
+            is_active=True,
+            period=open_period,
+            is_capacity_reserve=False,
+        ).aggregate(total=Sum('limit_per_identifier'))['total'] or Decimal('0.00')
+
+        normal_usage = LedgerAllocation.objects.filter(
+            transaction__identifier=obj,
+            transaction__created_by=user,
+            ledger__period=open_period,
+            ledger__is_active=True,
+            ledger__is_capacity_reserve=False,
+        ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+
+        reserve_granted = IdentifierCapacityAdjustment.objects.filter(
+            identifier=obj,
+            period=open_period,
+            owner=user,
+        ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+
+        reserve_used = LedgerAllocation.objects.filter(
+            transaction__identifier=obj,
+            transaction__created_by=user,
+            ledger__period=open_period,
+            ledger__is_capacity_reserve=True,
+        ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+
+        return total_limit + reserve_granted - normal_usage - reserve_used
+
+    def get_current_overflow_amount(self, obj):
+        user = self._request_user()
+        return Overflow.objects.filter(
+            transaction__identifier=obj,
+            transaction__created_by=user,
+            status='TCSO'
+        ).aggregate(total=Sum('excess_amount'))['total'] or Decimal('0.00')
+
+    def get_confirmed_overflow_amount(self, obj):
+        user = self._request_user()
+        return Overflow.objects.filter(
+            transaction__identifier=obj,
+            transaction__created_by=user,
+            status='CSO'
+        ).aggregate(total=Sum('excess_amount'))['total'] or Decimal('0.00')
+
+    def get_total_overflow_amount(self, obj):
+        user = self._request_user()
+        return Overflow.objects.filter(
+            transaction__identifier=obj,
+            transaction__created_by=user,
+        ).aggregate(total=Sum('excess_amount'))['total'] or Decimal('0.00')
 
 
 class LedgerAllocationSerializer(serializers.ModelSerializer):
@@ -344,10 +428,15 @@ class TransactionSerializer(serializers.ModelSerializer):
             is_active=True,
             period=open_period,
             is_capacity_reserve=False,
+            owner=self.context['request'].user,
         ).exists():
             raise serializers.ValidationError(
                 "No active ledgers available in the current open period."
             )
+
+        ticket = attrs.get('ticket')
+        if ticket is not None and ticket.created_by_id != self.context['request'].user.id:
+            raise serializers.ValidationError("You can only attach transactions to your own tickets.")
 
         return attrs
 
