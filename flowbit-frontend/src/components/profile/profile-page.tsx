@@ -8,7 +8,6 @@ import { ProfileDangerZoneCard } from "@/components/profile/profile-danger-zone-
 import { ProfileDetailsCard } from "@/components/profile/profile-details-card";
 import { ProfileOverviewCard } from "@/components/profile/profile-overview-card";
 import { ProfilePasswordCard } from "@/components/profile/profile-password-card";
-import { ProfileSecurityCard } from "@/components/profile/profile-security-card";
 import { ProfileSessionCard } from "@/components/profile/profile-session-card";
 import { ProfileToast } from "@/components/profile/profile-toast";
 import { fetchCurrentUser, getStoredUser, type AuthUser } from "@/lib/auth-client";
@@ -48,7 +47,6 @@ export function ProfilePage() {
             <ProfilePasswordCard onNotify={setToastMessage} />
             <ProfileSessionCard user={user} />
             <ProfileAdminActionsCard user={user} />
-            <ProfileSecurityCard />
             <ProfileDangerZoneCard user={user} />
           </div>
         </div>
