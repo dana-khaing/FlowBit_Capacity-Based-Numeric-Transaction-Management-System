@@ -93,8 +93,6 @@ export function PeriodPage() {
   const latestClosedPeriod = archivedPeriods[0] ?? null;
 
   const canManagePeriods = user?.role === "admin";
-  const requiresOverride = !canManagePeriods;
-
   async function loadPageData() {
     setIsLoading(true);
     try {
@@ -181,17 +179,16 @@ export function PeriodPage() {
         await updatePeriod(activePeriod.id, {
           end_date: activePeriodForm.end_date,
           close_time: activePeriodForm.close_time || "15:00",
-          admin_override_code: requiresOverride ? overrideCode : undefined,
         });
         setToast({ type: "success", message: "Period updated successfully." });
       } else if (pendingAction === "close" && activePeriod) {
-        await closePeriod(activePeriod.id, requiresOverride ? overrideCode : undefined);
+        await closePeriod(activePeriod.id);
         setToast({ type: "success", message: "Period closed successfully." });
       } else if (pendingAction === "reopen" && latestClosedPeriod) {
-        await reopenPeriod(latestClosedPeriod.id, requiresOverride ? overrideCode : undefined);
+        await reopenPeriod(latestClosedPeriod.id);
         setToast({ type: "success", message: "Period reopened successfully." });
       } else if (pendingAction === "delete" && latestClosedPeriod) {
-        await deletePeriod(latestClosedPeriod.id, requiresOverride ? overrideCode : undefined);
+        await deletePeriod(latestClosedPeriod.id);
         setToast({ type: "success", message: "Period deleted successfully." });
       }
 
@@ -244,7 +241,7 @@ export function PeriodPage() {
                 ? "Delete period"
                 : "Save changes"
         }
-        showCodeInput={requiresOverride}
+        showCodeInput={false}
         busy={isSaving}
         onCodeChange={setOverrideCode}
         onCancel={() => {
@@ -339,7 +336,7 @@ export function PeriodPage() {
                           {period.is_open ? "Open" : "Closed"}
                         </span>
 
-                        {!activePeriod && latestClosedPeriod?.id === period.id ? (
+                        {canManagePeriods && !activePeriod && latestClosedPeriod?.id === period.id ? (
                           <>
                             <Button variant="outline" onClick={() => openConfirm("reopen")} disabled={isSaving}>
                               <FontAwesomeIcon icon={faRotateLeft} className="h-3.5 w-3.5" />
@@ -421,14 +418,12 @@ export function PeriodPage() {
               </div>
             )}
 
-            {activePeriod ? (
+            {canManagePeriods && activePeriod ? (
               <div className="mt-6 rounded-[24px] border border-stone-900/8 bg-white px-5 py-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)]">
                 <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Active period actions</p>
                 <h3 className="mt-2 text-xl font-semibold text-stone-950">Edit end date and close time</h3>
                 <p className="mt-3 text-sm leading-6 text-stone-500">
-                  {requiresOverride
-                    ? "Use the admin override code to adjust the active period end date or close the period now."
-                    : "Update the active period end date or close the period now from this panel."}
+                  Update the active period end date or close the period now from this panel.
                 </p>
 
                 <div className="mt-5 space-y-4">
