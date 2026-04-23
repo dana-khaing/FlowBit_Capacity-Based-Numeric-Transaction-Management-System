@@ -1041,6 +1041,15 @@ class IdentifierViewSet(viewsets.ModelViewSet):
     serializer_class = IdentifierSerializer
     permission_classes = [IsAuthenticatedReadOnlyOrAdminWriteOrOverride]
 
+    @action(detail=False, methods=['get'], url_path='options')
+    def options(self, request):
+        identifiers = list(
+            self.get_queryset()
+            .order_by('number')
+            .values('id', 'number')
+        )
+        return Response(identifiers, status=status.HTTP_200_OK)
+
     def perform_create(self, serializer):
         identifier = serializer.save()
         record_audit_log(

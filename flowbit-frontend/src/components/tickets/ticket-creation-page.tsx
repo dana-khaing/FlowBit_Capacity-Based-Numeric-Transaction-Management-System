@@ -20,10 +20,10 @@ import { usePeriodState } from "@/components/period/use-period-state";
 import { fetchLedgers, type FlowBitLedger } from "@/lib/ledger-client";
 import {
   createTicket,
-  fetchIdentifiers,
+  fetchIdentifierOptions,
   previewTicketItemAllocation,
+  type FlowBitIdentifierOption,
   type TicketCreateResponse,
-  type FlowBitIdentifier,
 } from "@/lib/ticket-client";
 
 type ToastState = {
@@ -81,7 +81,7 @@ export function TicketCreationPage() {
   const [customerName, setCustomerName] = useState("");
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<TicketDraftItem[]>([createDraftItem()]);
-  const [identifiers, setIdentifiers] = useState<FlowBitIdentifier[]>([]);
+  const [identifiers, setIdentifiers] = useState<FlowBitIdentifierOption[]>([]);
   const [activeLedgers, setActiveLedgers] = useState<FlowBitLedger[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -128,7 +128,7 @@ export function TicketCreationPage() {
     let isMounted = true;
     setIsLoading(true);
 
-    Promise.all([fetchIdentifiers(), fetchLedgers({ period_id: activePeriod.id })])
+    Promise.all([fetchIdentifierOptions(), fetchLedgers({ period_id: activePeriod.id })])
       .then(([nextIdentifiers, nextLedgers]) => {
         if (!isMounted) {
           return;

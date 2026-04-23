@@ -1,14 +1,9 @@
 import { apiRequest } from "@/lib/api";
 import { getStoredToken } from "@/lib/auth-client";
 
-export type FlowBitIdentifier = {
+export type FlowBitIdentifierOption = {
   id: number;
   number: string;
-  current_utilization: string;
-  remaining_capacity: string;
-  current_overflow_amount: string;
-  confirmed_overflow_amount: string;
-  total_overflow_amount: string;
 };
 
 export type TicketManualAllocation = {
@@ -86,8 +81,8 @@ function authHeaders() {
   return { Authorization: `Token ${token}` };
 }
 
-export async function fetchIdentifiers() {
-  return apiRequest<FlowBitIdentifier[]>("/identifiers/", {
+export async function fetchIdentifierOptions() {
+  return apiRequest<FlowBitIdentifierOption[]>("/identifiers/options/", {
     method: "GET",
     headers: authHeaders(),
   });
