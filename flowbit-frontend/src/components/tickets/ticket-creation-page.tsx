@@ -17,13 +17,13 @@ import { TicketItemRow, type TicketDraftItem } from "@/components/tickets/ticket
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { usePeriodState } from "@/components/period/use-period-state";
+import { fetchLedgers, type FlowBitLedger } from "@/lib/ledger-client";
 import {
   createTicket,
   fetchIdentifiers,
   previewTicketItemAllocation,
-  type AllocationPreview,
-  type FlowBitIdentifier,
   type TicketCreateResponse,
+  type FlowBitIdentifier,
 } from "@/lib/ticket-client";
 
 type ToastState = {
@@ -37,6 +37,8 @@ function createDraftItem(partial?: Partial<TicketDraftItem>): TicketDraftItem {
     identifierNumber: "",
     amount: "",
     allowOverflow: true,
+    manualMode: false,
+    manualAllocations: {},
     preview: null,
     previewError: null,
     isPreviewing: false,
@@ -63,11 +65,24 @@ function formatAmount(value: string) {
   });
 }
 
+function buildManualAllocations(item: Pick<TicketDraftItem, "manualMode" | "manualAllocations">) {
+  if (!item.manualMode) {
+    return undefined;
+  }
+
+  const manualAllocations = Object.entries(item.manualAllocations)
+    .map(([ledgerId, amount]) => ({ ledger: Number(ledgerId), amount: amount.trim() }))
+    .filter((allocation) => allocation.amount !== "" && Number(allocation.amount) > 0);
+
+  return manualAllocations.length ? manualAllocations : undefined;
+}
+
 export function TicketCreationPage() {
   const [customerName, setCustomerName] = useState("");
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<TicketDraftItem[]>([createDraftItem()]);
   const [identifiers, setIdentifiers] = useState<FlowBitIdentifier[]>([]);
+  const [activeLedgers, setActiveLedgers] = useState<FlowBitLedger[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pageError, setPageError] = useState<string | null>(null);
@@ -98,9 +113,13 @@ export function TicketCreationPage() {
     [items],
   );
   const previewedCount = useMemo(() => items.filter((item) => item.preview !== null).length, [items]);
+  const manuallyDirectedCount = useMemo(
+    () => items.filter((item) => buildManualAllocations(item)?.length).length,
+    [items],
+  );
 
   useEffect(() => {
-    if (!hasActivePeriod) {
+    if (!hasActivePeriod || !activePeriod) {
       setIsLoading(false);
       return;
     }
@@ -108,12 +127,21 @@ export function TicketCreationPage() {
     let isMounted = true;
     setIsLoading(true);
 
-    fetchIdentifiers()
-      .then((nextIdentifiers) => {
+    Promise.all([
+      fetchIdentifiers(),
+      fetchLedgers({ period_id: activePeriod.id }),
+    ])
+      .then(([nextIdentifiers, nextLedgers]) => {
         if (!isMounted) {
           return;
         }
         setIdentifiers(nextIdentifiers);
+        setActiveLedgers(
+          nextLedgers
+            .filter((ledger) => ledger.is_active && !ledger.is_capacity_reserve)
+            .slice()
+            .sort((left, right) => left.priority - right.priority),
+        );
         setPageError(null);
       })
       .catch((error) => {
@@ -155,6 +183,28 @@ export function TicketCreationPage() {
     }));
   }
 
+  function handleManualModeChange(itemId: string, checked: boolean) {
+    setItemState(itemId, (item) => ({
+      ...item,
+      manualMode: checked,
+      manualAllocations: checked ? item.manualAllocations : {},
+      preview: null,
+      previewError: null,
+    }));
+  }
+
+  function handleManualAmountChange(itemId: string, ledgerId: number, value: string) {
+    setItemState(itemId, (item) => ({
+      ...item,
+      manualAllocations: {
+        ...item.manualAllocations,
+        [ledgerId]: value,
+      },
+      preview: null,
+      previewError: null,
+    }));
+  }
+
   function addItem(partial?: Partial<TicketDraftItem>) {
     setItems((current) => [...current, createDraftItem(partial)]);
   }
@@ -168,6 +218,8 @@ export function TicketCreationPage() {
       identifierNumber: source.identifierNumber,
       amount: source.amount,
       allowOverflow: source.allowOverflow,
+      manualMode: source.manualMode,
+      manualAllocations: { ...source.manualAllocations },
       preview: source.preview,
       previewError: source.previewError,
     });
@@ -211,6 +263,7 @@ export function TicketCreationPage() {
       const preview = await previewTicketItemAllocation({
         identifier: identifier.id,
         total_amount: amount,
+        ...(buildManualAllocations(draft) ? { manual_allocations: buildManualAllocations(draft) } : {}),
       });
       setItemState(itemId, (item) => ({
         ...item,
@@ -236,7 +289,7 @@ export function TicketCreationPage() {
   }
 
   async function handleSubmit() {
-    const payloadItems: Array<{ identifier: number; amount: string; allow_overflow: boolean }> = [];
+    const payloadItems: Array<{ identifier: number; amount: string; allow_overflow: boolean; manual_allocations?: Array<{ ledger: number; amount: string }> }> = [];
 
     for (const item of items) {
       const identifier = identifierMap.get(normalizeIdentifierNumber(item.identifierNumber));
@@ -251,10 +304,12 @@ export function TicketCreationPage() {
         return;
       }
 
+      const manualAllocations = buildManualAllocations(item);
       payloadItems.push({
         identifier: identifier.id,
         amount,
         allow_overflow: item.allowOverflow,
+        ...(manualAllocations ? { manual_allocations: manualAllocations } : {}),
       });
     }
 
@@ -392,7 +447,7 @@ export function TicketCreationPage() {
 
               {isLoading ? (
                 <div className="mt-5 rounded-[22px] border border-stone-900/8 bg-white px-4 py-5 text-sm text-stone-500">
-                  Loading identifiers for this ticket workspace.
+                  Loading identifiers and ledgers for this ticket workspace.
                 </div>
               ) : identifiers.length === 0 ? (
                 <div className="mt-5 rounded-[22px] border border-dashed border-stone-300 bg-white px-4 py-5 text-sm text-stone-500">
@@ -406,9 +461,12 @@ export function TicketCreationPage() {
                       item={item}
                       index={index}
                       identifier={item.matchedIdentifier}
+                      activeLedgers={activeLedgers}
                       canRemove={resolvedItems.length > 1}
                       onFieldChange={handleFieldChange}
                       onAllowOverflowChange={handleAllowOverflowChange}
+                      onManualModeChange={handleManualModeChange}
+                      onManualAmountChange={handleManualAmountChange}
                       onRemove={removeItem}
                       onPreview={previewItem}
                       onDuplicate={duplicateItem}
@@ -434,6 +492,10 @@ export function TicketCreationPage() {
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Previewed</p>
                   <p className="mt-2 text-3xl font-semibold text-stone-950">{previewedCount}</p>
                 </div>
+                <div className="rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Manual lines</p>
+                  <p className="mt-2 text-3xl font-semibold text-stone-950">{manuallyDirectedCount}</p>
+                </div>
                 <div className="rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4 sm:col-span-2 xl:col-span-1">
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Draft amount</p>
                   <p className="mt-2 text-3xl font-semibold text-stone-950">{formatAmount(String(totalDraftAmount))}</p>
@@ -441,7 +503,7 @@ export function TicketCreationPage() {
               </div>
 
               <div className="mt-5 rounded-[22px] border border-stone-900/8 bg-[#f7f4ee] px-4 py-4 text-sm leading-6 text-stone-600">
-                Submit uses your private ledgers only. If a line does not fit and spill over is disabled, that line will be rejected by the backend.
+                Leave manual allocation off to let FlowBit fill ledgers by priority automatically. Turn it on for any line where you want to direct specific amounts into chosen ledgers first.
               </div>
 
               <div className="mt-5 flex gap-3">
