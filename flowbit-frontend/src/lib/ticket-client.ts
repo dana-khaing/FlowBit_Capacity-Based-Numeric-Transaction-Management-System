@@ -11,6 +11,11 @@ export type FlowBitIdentifier = {
   total_overflow_amount: string;
 };
 
+export type TicketManualAllocation = {
+  ledger: number;
+  amount: string;
+};
+
 export type AllocationPreview = {
   ledger_allocations: Array<{
     ledger_id: number;
@@ -31,6 +36,7 @@ export type TicketCreateItemPayload = {
   identifier: number;
   amount: string;
   allow_overflow: boolean;
+  manual_allocations?: TicketManualAllocation[];
 };
 
 export type TicketCreatePayload = {
@@ -90,6 +96,7 @@ export async function fetchIdentifiers() {
 export async function previewTicketItemAllocation(payload: {
   identifier: number;
   total_amount: string;
+  manual_allocations?: TicketManualAllocation[];
 }) {
   return apiRequest<AllocationPreview>("/transactions/allocation-preview/", {
     method: "POST",
