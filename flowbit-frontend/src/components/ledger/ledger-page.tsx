@@ -346,12 +346,17 @@ export function LedgerPage() {
                       }}
                       className="rounded-[24px] border border-stone-900/8 bg-[#f7f4ef] px-5 py-5"
                     >
-                      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                         <div className="space-y-2">
-                          <div className="flex items-center gap-3">
-                            <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-stone-500">
-                              <FontAwesomeIcon icon={faGripVertical} className="h-4 w-4" />
-                            </span>
+                          <div className="flex items-start gap-3">
+                            <div className="flex flex-col items-center gap-2">
+                              <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-stone-900/10 bg-white text-stone-700 shadow-[0_6px_16px_rgba(28,24,20,0.06)]">
+                                <FontAwesomeIcon icon={faGripVertical} className="h-4 w-4" />
+                              </span>
+                              <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-stone-400">
+                                Drag
+                              </span>
+                            </div>
                             <div>
                               <p className="text-xl font-semibold text-stone-950">{ledger.name}</p>
                               <p className="text-sm text-stone-500">Priority {index + 1}</p>
@@ -368,7 +373,7 @@ export function LedgerPage() {
                           </div>
                         </div>
 
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                        <div className="grid gap-3 sm:grid-cols-[minmax(140px,1fr)_132px_132px] xl:min-w-[460px]">
                           <label className="block space-y-2">
                             <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-500">
                               Close time
@@ -382,16 +387,30 @@ export function LedgerPage() {
                                   [ledger.id]: event.target.value,
                                 }))
                               }
-                              className="h-11 w-28 bg-white"
+                              className="h-12 w-full bg-white"
                               disabled={isSaving}
                             />
                           </label>
-                          <Button variant="outline" onClick={() => openAction({ type: "update-time", ledger })} disabled={isSaving}>
-                            Save time
-                          </Button>
-                          <Button variant="outline" onClick={() => openAction({ type: "close", ledger })} disabled={isSaving}>
-                            Close
-                          </Button>
+                          <div className="flex flex-col justify-end">
+                            <Button
+                              variant="outline"
+                              className="h-12 w-full"
+                              onClick={() => openAction({ type: "update-time", ledger })}
+                              disabled={isSaving}
+                            >
+                              Save time
+                            </Button>
+                          </div>
+                          <div className="flex flex-col justify-end">
+                            <Button
+                              variant="outline"
+                              className="h-12 w-full"
+                              onClick={() => openAction({ type: "close", ledger })}
+                              disabled={isSaving}
+                            >
+                              Close
+                            </Button>
+                          </div>
                         </div>
                       </div>
                     </div>
