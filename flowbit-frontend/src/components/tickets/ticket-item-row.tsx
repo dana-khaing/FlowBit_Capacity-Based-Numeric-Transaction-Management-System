@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { TicketManualAllocationPanel } from "@/components/tickets/ticket-manual-allocation-panel";
 import { TicketPreviewCard } from "@/components/tickets/ticket-preview-card";
 import type { FlowBitLedger } from "@/lib/ledger-client";
-import type { AllocationPreview, FlowBitIdentifier } from "@/lib/ticket-client";
+import type { AllocationPreview, FlowBitIdentifierOption } from "@/lib/ticket-client";
 
 export type TicketDraftItem = {
   id: string;
@@ -29,7 +29,7 @@ export type TicketDraftItem = {
 type TicketItemRowProps = {
   item: TicketDraftItem;
   index: number;
-  identifier: FlowBitIdentifier | null;
+  identifier: FlowBitIdentifierOption | null;
   activeLedgers: FlowBitLedger[];
   canRemove: boolean;
   onFieldChange: (itemId: string, field: "identifierNumber" | "amount", value: string) => void;
@@ -139,9 +139,6 @@ export function TicketItemRow({
               <span className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1">
                 <FontAwesomeIcon icon={faCircleCheck} className="h-3 w-3 text-emerald-600" />
                 Identifier {identifier.number}
-              </span>
-              <span className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1">
-                Remaining {formatAmount(identifier.remaining_capacity)}
               </span>
             </>
           ) : item.identifierNumber.trim() ? (

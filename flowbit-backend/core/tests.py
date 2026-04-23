@@ -1519,6 +1519,14 @@ class PrivateWorkflowAPITests(APITestCase):
         allowed_response = self.client.get(f'/api/ledgers/{self.active_ledger.id}/export-pdf/')
         self.assertEqual(allowed_response.status_code, status.HTTP_200_OK)
 
+    def test_identifier_options_returns_lightweight_number_list(self):
+        response = self.client.get('/api/identifiers/options/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(len(response.data) >= 1)
+        first_item = response.data[0]
+        self.assertEqual(set(first_item.keys()), {'id', 'number'})
+
         self.client.force_authenticate(user=self.other_user)
         blocked_response = self.client.get(f'/api/ledgers/{self.active_ledger.id}/export-pdf/')
         self.assertEqual(blocked_response.status_code, status.HTTP_404_NOT_FOUND)
