@@ -362,18 +362,18 @@ export function LedgerPage() {
                               <p className="text-sm text-stone-500">Priority {index + 1}</p>
                             </div>
                           </div>
-                          <div className="flex flex-wrap gap-3 text-sm text-stone-500">
-                            <span className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-2">
+                          <div className="flex flex-wrap items-center gap-3 text-sm text-stone-500 lg:flex-nowrap">
+                            <span className="inline-flex items-center gap-2 whitespace-nowrap rounded-full bg-white px-3 py-2">
                               <FontAwesomeIcon icon={faClock} className="h-3.5 w-3.5" />
                               Ends {formatDateTime(ledger.end_date)}
                             </span>
-                            <span className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-2">
+                            <span className="inline-flex items-center gap-2 whitespace-nowrap rounded-full bg-white px-3 py-2">
                               Capacity {formatCurrencyLike(ledger.limit_per_identifier)}
                             </span>
                           </div>
                         </div>
 
-                        <div className="grid gap-3 sm:grid-cols-[minmax(140px,1fr)_132px_132px] xl:min-w-[460px]">
+                        <div className="grid gap-3 sm:grid-cols-[112px_128px_128px] xl:min-w-[392px]">
                           <label className="block space-y-2">
                             <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-500">
                               Close time
