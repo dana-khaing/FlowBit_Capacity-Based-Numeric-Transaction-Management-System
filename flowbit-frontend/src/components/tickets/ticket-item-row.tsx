@@ -6,7 +6,6 @@ import {
   faPlus,
   faTrashCan,
 } from "@fortawesome/free-solid-svg-icons";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { TicketManualAllocationPanel } from "@/components/tickets/ticket-manual-allocation-panel";
@@ -18,7 +17,6 @@ export type TicketDraftItem = {
   id: string;
   identifierNumber: string;
   amount: string;
-  allowOverflow: boolean;
   manualMode: boolean;
   manualAllocations: Record<number, string>;
   preview: AllocationPreview | null;
@@ -33,26 +31,13 @@ type TicketItemRowProps = {
   activeLedgers: FlowBitLedger[];
   canRemove: boolean;
   onFieldChange: (itemId: string, field: "identifierNumber" | "amount", value: string) => void;
-  onAllowOverflowChange: (itemId: string, checked: boolean) => void;
-  onManualModeChange: (itemId: string, checked: boolean) => void;
+  onAllocationModeChange: (itemId: string, mode: "default" | "manual") => void;
   onManualAmountChange: (itemId: string, ledgerId: number, value: string) => void;
   onRemove: (itemId: string) => void;
   onPreview: (itemId: string) => void;
   onDuplicate: (itemId: string) => void;
   identifierOptions: string[];
 };
-
-function formatAmount(value: string) {
-  const amount = Number(value);
-  if (Number.isNaN(amount)) {
-    return value;
-  }
-
-  return amount.toLocaleString("en-GB", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
 
 export function TicketItemRow({
   item,
@@ -61,8 +46,7 @@ export function TicketItemRow({
   activeLedgers,
   canRemove,
   onFieldChange,
-  onAllowOverflowChange,
-  onManualModeChange,
+  onAllocationModeChange,
   onManualAmountChange,
   onRemove,
   onPreview,
@@ -74,10 +58,7 @@ export function TicketItemRow({
   return (
     <div className="rounded-[26px] border border-stone-900/8 bg-white p-4 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-400">Entry {index + 1}</p>
-          <h3 className="mt-1 text-xl font-semibold text-stone-950">Ticket line</h3>
-        </div>
+        <p className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-400">Entry {index + 1}</p>
         <div className="flex items-center gap-2">
           <Button variant="outline" className="rounded-[18px]" onClick={() => onDuplicate(item.id)}>
             <FontAwesomeIcon icon={faPlus} className="h-3.5 w-3.5" />
@@ -128,19 +109,33 @@ export function TicketItemRow({
       </div>
 
       <div className="mt-4 flex flex-wrap items-center gap-3 rounded-[20px] border border-stone-900/8 bg-stone-50 px-4 py-3">
-        <label className="flex items-center gap-3 text-sm font-medium text-stone-700">
-          <Checkbox checked={item.allowOverflow} onCheckedChange={(checked) => onAllowOverflowChange(item.id, checked === true)} />
-          Allow spill over if current ledgers are full
-        </label>
+        <div className="inline-flex rounded-[18px] border border-stone-900/8 bg-white p-1">
+          <button
+            type="button"
+            onClick={() => onAllocationModeChange(item.id, "default")}
+            className={`rounded-[14px] px-4 py-2 text-sm font-medium transition ${
+              !item.manualMode ? "bg-stone-950 text-white" : "text-stone-600 hover:bg-stone-100"
+            }`}
+          >
+            Default Allocation
+          </button>
+          <button
+            type="button"
+            onClick={() => onAllocationModeChange(item.id, "manual")}
+            className={`rounded-[14px] px-4 py-2 text-sm font-medium transition ${
+              item.manualMode ? "bg-stone-950 text-white" : "text-stone-600 hover:bg-stone-100"
+            }`}
+          >
+            Manual Allocation
+          </button>
+        </div>
 
         <div className="ml-auto flex flex-wrap items-center gap-2 text-sm text-stone-500">
           {identifier ? (
-            <>
-              <span className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1">
-                <FontAwesomeIcon icon={faCircleCheck} className="h-3 w-3 text-emerald-600" />
-                Identifier {identifier.number}
-              </span>
-            </>
+            <span className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1">
+              <FontAwesomeIcon icon={faCircleCheck} className="h-3 w-3 text-emerald-600" />
+              Identifier {identifier.number}
+            </span>
           ) : item.identifierNumber.trim() ? (
             <span className="inline-flex items-center gap-2 rounded-full bg-amber-100 px-3 py-1 text-amber-800">
               <FontAwesomeIcon icon={faCircleExclamation} className="h-3 w-3" />
@@ -150,15 +145,15 @@ export function TicketItemRow({
         </div>
       </div>
 
-      <div className="mt-4">
-        <TicketManualAllocationPanel
-          enabled={item.manualMode}
-          ledgers={activeLedgers}
-          values={item.manualAllocations}
-          onToggle={(checked) => onManualModeChange(item.id, checked)}
-          onAmountChange={(ledgerId, value) => onManualAmountChange(item.id, ledgerId, value)}
-        />
-      </div>
+      {item.manualMode ? (
+        <div className="mt-4">
+          <TicketManualAllocationPanel
+            ledgers={activeLedgers}
+            values={item.manualAllocations}
+            onAmountChange={(ledgerId, value) => onManualAmountChange(item.id, ledgerId, value)}
+          />
+        </div>
+      ) : null}
 
       <div className="mt-4">
         <TicketPreviewCard preview={item.preview} loading={item.isPreviewing} error={item.previewError} />
