@@ -35,6 +35,7 @@ def noop_reverse(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
+    atomic = False
 
     dependencies = [
         ("core", "0010_identifiercapacityadjustment_owner_ledger_owner"),
