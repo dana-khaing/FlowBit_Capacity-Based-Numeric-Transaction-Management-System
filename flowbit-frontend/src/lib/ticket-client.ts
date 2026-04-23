@@ -36,7 +36,7 @@ export type TicketCreateItemPayload = {
 
 export type TicketCreatePayload = {
   customer_name: string;
-  notes: string;
+  notes?: string;
   items: TicketCreateItemPayload[];
 };
 
@@ -47,7 +47,7 @@ export type TicketCreateResponse = {
     id: number;
     ticket_number: string;
     customer_name: string;
-    notes: string;
+    notes?: string;
     created_at: string;
     total_amount: string;
     transaction_count: number;
@@ -71,6 +71,15 @@ export type TicketCreateResponse = {
   ticket_number?: string;
   total_amount?: string;
   transaction_count?: number;
+};
+
+export type FlowBitTicketListItem = {
+  id: number;
+  ticket_number: string;
+  created_at: string;
+  customer_name: string;
+  total_amount: string;
+  transaction_count: number;
 };
 
 function authHeaders() {
@@ -105,5 +114,12 @@ export async function createTicket(payload: TicketCreatePayload) {
     method: "POST",
     headers: authHeaders(),
     body: JSON.stringify(payload),
+  });
+}
+
+export async function fetchTickets() {
+  return apiRequest<FlowBitTicketListItem[]>("/tickets/", {
+    method: "GET",
+    headers: authHeaders(),
   });
 }
