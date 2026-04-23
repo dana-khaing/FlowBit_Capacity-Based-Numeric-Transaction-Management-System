@@ -67,6 +67,24 @@ class DatabaseConfigTests(SimpleTestCase):
         self.assertEqual(config['default']['OPTIONS']['sslmode'], 'require')
         self.assertTrue(config['default']['DISABLE_SERVER_SIDE_CURSORS'])
 
+    def test_build_database_config_defaults_to_non_persistent_connections_for_supabase_pooler(self):
+        config = build_database_config({
+            'DATABASE_URL': 'postgresql://postgres.project:secret@aws-0-eu-west-1.pooler.supabase.com:5432/postgres?sslmode=require',
+        })
+
+        self.assertEqual(config['default']['CONN_MAX_AGE'], 0)
+        self.assertTrue(config['default']['DISABLE_SERVER_SIDE_CURSORS'])
+
+    def test_explicit_pooler_connection_settings_override_defaults(self):
+        config = build_database_config({
+            'DATABASE_URL': 'postgresql://postgres.project:secret@aws-0-eu-west-1.pooler.supabase.com:5432/postgres?sslmode=require',
+            'DB_CONN_MAX_AGE': '120',
+            'DB_DISABLE_SERVER_SIDE_CURSORS': 'false',
+        })
+
+        self.assertEqual(config['default']['CONN_MAX_AGE'], 120)
+        self.assertFalse(config['default'].get('DISABLE_SERVER_SIDE_CURSORS', False))
+
     def test_check_database_connection_command_succeeds(self):
         out = StringIO()
 
