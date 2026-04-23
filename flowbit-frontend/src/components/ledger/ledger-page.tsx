@@ -685,12 +685,12 @@ export function LedgerPage() {
                             Closed {formatDateTime(ledger.closed_at)} · Priority {ledger.priority}
                           </p>
                         </div>
-                        <div className="flex flex-wrap gap-2">
+                        <div className="flex flex-nowrap gap-2">
                           {!ledger.is_capacity_reserve ? (
                             <>
                               <Button
                                 variant="outline"
-                                className="h-11 sm:min-w-[132px]"
+                                className="h-11 min-w-[124px] whitespace-nowrap"
                                 onClick={() => openAction({ type: "reopen", ledger })}
                                 disabled={isSaving}
                               >
@@ -698,7 +698,7 @@ export function LedgerPage() {
                               </Button>
                               <Button
                                 variant="outline"
-                                className="h-11 sm:min-w-[132px]"
+                                className="h-11 min-w-[124px] whitespace-nowrap"
                                 onClick={() => openAction({ type: "delete", ledger })}
                                 disabled={isSaving}
                               >
