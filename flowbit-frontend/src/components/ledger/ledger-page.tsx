@@ -22,6 +22,7 @@ import {
   closeLedger,
   createLedger,
   fetchLedgers,
+  reopenLedger,
   reorderLedgerPriorities,
   updateLedger,
   type FlowBitLedger,
@@ -42,6 +43,7 @@ type LedgerFormState = {
 type PendingAction =
   | { type: "create" }
   | { type: "close"; ledger: FlowBitLedger }
+  | { type: "reopen"; ledger: FlowBitLedger }
   | { type: "reorder" }
   | { type: "update-time"; ledger: FlowBitLedger }
   | null;
@@ -184,6 +186,9 @@ export function LedgerPage() {
       } else if (pendingAction.type === "close") {
         await closeLedger(pendingAction.ledger.id, requiresOverride ? overrideCode : undefined);
         setToast({ type: "success", message: "Ledger closed successfully." });
+      } else if (pendingAction.type === "reopen") {
+        await reopenLedger(pendingAction.ledger.id, requiresOverride ? overrideCode : undefined);
+        setToast({ type: "success", message: "Ledger reopened successfully." });
       } else if (pendingAction.type === "reorder") {
         await reorderLedgerPriorities(
           activeLedgers.map((ledger, index) => ({
@@ -239,6 +244,8 @@ export function LedgerPage() {
         title={
           pendingAction?.type === "close"
             ? `Close ${pendingAction.ledger.name}?`
+            : pendingAction?.type === "reopen"
+              ? `Reopen ${pendingAction.ledger.name}?`
             : pendingAction?.type === "reorder"
               ? "Save ledger priority changes?"
               : pendingAction?.type === "update-time"
@@ -250,6 +257,10 @@ export function LedgerPage() {
             ? requiresOverride
               ? "Closing a ledger stops new allocations to that ledger immediately. Enter a valid admin override code to continue."
               : "Closing a ledger stops new allocations to that ledger immediately."
+            : pendingAction?.type === "reopen"
+              ? requiresOverride
+                ? "Reopening a ledger makes it active in the current period again. Enter a valid admin override code to continue."
+                : "Reopening a ledger makes it active in the current period again."
             : pendingAction?.type === "reorder"
               ? "Reorder the active ledgers so the system uses the updated priority sequence."
               : pendingAction?.type === "update-time"
@@ -263,6 +274,8 @@ export function LedgerPage() {
         confirmLabel={
           pendingAction?.type === "close"
             ? "Close ledger"
+            : pendingAction?.type === "reopen"
+              ? "Reopen ledger"
             : pendingAction?.type === "reorder"
               ? "Save order"
               : pendingAction?.type === "update-time"
@@ -517,10 +530,22 @@ export function LedgerPage() {
                 ) : archivedLedgers.length ? (
                   archivedLedgers.map((ledger) => (
                     <div key={ledger.id} className="rounded-[22px] border border-stone-900/8 bg-[#f7f4ef] px-4 py-4">
-                      <p className="text-base font-semibold text-stone-900">{ledger.name}</p>
-                      <p className="mt-1 text-sm text-stone-500">
-                        Closed {formatDateTime(ledger.closed_at)} · Priority {ledger.priority}
-                      </p>
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="text-base font-semibold text-stone-900">{ledger.name}</p>
+                          <p className="mt-1 text-sm text-stone-500">
+                            Closed {formatDateTime(ledger.closed_at)} · Priority {ledger.priority}
+                          </p>
+                        </div>
+                        <Button
+                          variant="outline"
+                          className="h-11 sm:min-w-[132px]"
+                          onClick={() => openAction({ type: "reopen", ledger })}
+                          disabled={isSaving}
+                        >
+                          Reopen
+                        </Button>
+                      </div>
                     </div>
                   ))
                 ) : (

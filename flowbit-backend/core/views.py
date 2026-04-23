@@ -573,6 +573,41 @@ class LedgerViewSet(viewsets.ModelViewSet):
             "ledger": serializer.data
         }, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['post'], url_path='reopen')
+    def reopen_ledger(self, request, pk=None):
+        """
+        POST /api/ledgers/{id}/reopen/
+
+        Reopen a closed ledger while its period is still active.
+        """
+        ledger = self.get_object()
+
+        if ledger.is_active:
+            return Response(
+                {"detail": "Ledger is already active"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            ledger.reopen()
+        except ValidationError as exc:
+            detail = exc.message_dict if hasattr(exc, 'message_dict') else exc.messages[0]
+            return Response({"detail": detail}, status=status.HTTP_400_BAD_REQUEST)
+
+        record_audit_log(
+            request,
+            'ledger.reopened',
+            target=ledger,
+            details=f"Reopened ledger '{ledger.name}'",
+            changes={'after': snapshot_instance(ledger)},
+        )
+
+        serializer = self.get_serializer(ledger)
+        return Response({
+            "message": f"Ledger '{ledger.name}' reopened successfully",
+            "ledger": serializer.data
+        }, status=status.HTTP_200_OK)
+
     @action(detail=False, methods=['post'], url_path='auto-close-expired')
     def auto_close_expired(self, request):
         """
