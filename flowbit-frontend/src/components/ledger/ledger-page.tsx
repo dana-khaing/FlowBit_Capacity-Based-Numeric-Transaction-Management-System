@@ -395,7 +395,7 @@ export function LedgerPage() {
               <div>
                 <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Active ledgers</p>
                 <h2 className="mt-2 text-2xl font-semibold text-stone-950">{activePeriod?.name}</h2>
-                <p className="mt-2 text-sm leading-6 text-stone-500">
+                <p className="mt-2 text-sm leading-6 text-stone-500 xl:whitespace-nowrap">
                   {standardActiveLedgers.length} working ledger{standardActiveLedgers.length === 1 ? "" : "s"}
                   {hasReserveLedger ? " + reserve helper" : ""} · total capacity per identifier {formatCurrencyLike(
                     String(activeCapacityTotal),
