@@ -34,14 +34,10 @@ class LedgerAdmin(admin.ModelAdmin):
 
 @admin.register(Identifier)
 class IdentifierAdmin(admin.ModelAdmin):
-    list_display = (
-        'number',
-        'utilization_display',
-        'remaining_display',
-        'pending_overflow_display',
-        'confirmed_overflow_display',
-    )
+    list_display = ('number',)
     search_fields = ('number',)
+    ordering = ('number',)
+    list_per_page = 100
     readonly_fields = (
         'current_utilization',
         'remaining_capacity',
@@ -49,22 +45,6 @@ class IdentifierAdmin(admin.ModelAdmin):
         'confirmed_overflow_amount',
         'total_overflow_amount',
     )
-
-    def utilization_display(self, obj):
-        return f"{obj.current_utilization:,.2f}"
-    utilization_display.short_description = "Utilization (incl. overflow)"
-
-    def remaining_display(self, obj):
-        return f"{obj.remaining_capacity:,.2f}"
-    remaining_display.short_description = "Remaining Capacity"
-
-    def pending_overflow_display(self, obj):
-        return f"{obj.current_overflow_amount:,.2f}"
-    pending_overflow_display.short_description = "Pending Overflow"
-
-    def confirmed_overflow_display(self, obj):
-        return f"{obj.confirmed_overflow_amount:,.2f}"
-    confirmed_overflow_display.short_description = "Confirmed Overflow"
 
 
 @admin.register(Ticket)
