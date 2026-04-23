@@ -2491,8 +2491,10 @@ class CreateTicketWithTransactions(APIView):
             )
 
         # 2. Create the ticket
+        customer_name = (data.get('customer_name') or '').strip()[:150] or 'Walk-in Customer'
+
         ticket = Ticket.objects.create(
-            customer_name=data.get('customer_name', '').strip()[:150],
+            customer_name=customer_name,
             notes=data.get('notes', '').strip(),
             created_by=request.user if request.user.is_authenticated else None
         )

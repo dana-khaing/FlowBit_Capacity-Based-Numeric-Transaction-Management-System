@@ -1165,6 +1165,21 @@ class PrivateWorkspaceTests(APITestCase):
         self.assertEqual(allowed_response.status_code, status.HTTP_201_CREATED)
         self.assertTrue(Ticket.objects.filter(created_by=self.user_one).exists())
 
+    def test_blank_customer_name_defaults_to_walk_in_customer(self):
+        self.client.force_authenticate(user=self.user_one)
+
+        response = self.client.post('/api/tickets/create-with-items/', {
+            'customer_name': '   ',
+            'items': [
+                {'identifier': self.identifier.id, 'amount': '50.00'},
+            ],
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        ticket = Ticket.objects.get(id=response.data['ticket']['id'])
+        self.assertEqual(ticket.customer_name, 'Walk-in Customer')
+        self.assertEqual(response.data['ticket']['customer_name'], 'Walk-in Customer')
+
     def test_transactions_and_overflows_are_private_to_the_current_user(self):
         self.client.force_authenticate(user=self.user_one)
         one_ticket = Ticket.objects.create(customer_name='One Ticket', created_by=self.user_one)
