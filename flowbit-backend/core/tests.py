@@ -1052,9 +1052,11 @@ class LedgerArchiveAPITests(APITestCase):
         response = self.client.get('/api/ledgers/', {'section': 'archive'})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]['id'], self.archived_ledger.id)
-        self.assertIsNotNone(response.data[0]['closed_at'])
+        self.assertEqual(len(response.data), 2)
+        archived_ids = {item['id'] for item in response.data}
+        self.assertIn(self.archived_ledger.id, archived_ids)
+        self.assertTrue(any(item['is_capacity_reserve'] for item in response.data))
+        self.assertTrue(all(item['closed_at'] is not None for item in response.data))
 
     def test_transactions_can_be_filtered_by_archive_section(self):
         response = self.client.get('/api/transactions/', {'section': 'archive'})
@@ -1211,8 +1213,38 @@ class LedgerArchiveAPITests(APITestCase):
         response = self.client.get('/api/ledgers/', {'period_id': self.active_period.id})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
+        self.assertEqual(len(response.data), 2)
         self.assertEqual(response.data[0]['id'], self.active_ledger.id)
+        self.assertTrue(any(item['is_capacity_reserve'] for item in response.data))
+
+    def test_period_creation_creates_visible_capacity_reserve_ledger(self):
+        reserve_ledger = Ledger.objects.get(period=self.active_period, is_capacity_reserve=True)
+
+        self.assertEqual(reserve_ledger.priority, Ledger.CAPACITY_RESERVE_PRIORITY)
+        self.assertTrue(reserve_ledger.is_active)
+
+    def test_reserve_ledger_cannot_be_updated(self):
+        reserve_ledger = Ledger.objects.get(period=self.active_period, is_capacity_reserve=True)
+
+        response = self.client.patch(
+            f'/api/ledgers/{reserve_ledger.id}/',
+            {'close_time': '16:00:00'},
+            format='json'
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data['detail'][0],
+            'The reserve ledger is managed automatically and cannot be edited here.'
+        )
+
+    def test_reserve_ledger_cannot_be_deleted(self):
+        reserve_ledger = Ledger.objects.get(period=self.active_period, is_capacity_reserve=True)
+
+        response = self.client.delete(f'/api/ledgers/{reserve_ledger.id}/')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data[0], 'The reserve ledger is managed automatically and cannot be edited here.')
 
     def test_tickets_can_be_filtered_by_period(self):
         response = self.client.get('/api/tickets/', {

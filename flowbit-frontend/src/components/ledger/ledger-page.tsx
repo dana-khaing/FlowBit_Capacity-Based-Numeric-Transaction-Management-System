@@ -10,6 +10,7 @@ import {
   faLayerGroup,
   faLock,
   faPlus,
+  faTrashCan,
 } from "@fortawesome/free-solid-svg-icons";
 import { AdminConfirmModal } from "@/components/admin/admin-confirm-modal";
 import { AdminActionToast } from "@/components/admin/admin-action-toast";
@@ -21,6 +22,7 @@ import { fetchCurrentUser, getStoredUser, type AuthUser } from "@/lib/auth-clien
 import {
   closeLedger,
   createLedger,
+  deleteLedger,
   fetchLedgers,
   reopenLedger,
   reorderLedgerPriorities,
@@ -43,6 +45,7 @@ type LedgerFormState = {
 type PendingAction =
   | { type: "create" }
   | { type: "close"; ledger: FlowBitLedger }
+  | { type: "delete"; ledger: FlowBitLedger }
   | { type: "reopen"; ledger: FlowBitLedger }
   | { type: "reorder" }
   | { type: "update-time"; ledger: FlowBitLedger }
@@ -94,11 +97,42 @@ function formatTimeValue(value: string) {
   return `${String(parsed.getHours()).padStart(2, "0")}:${String(parsed.getMinutes()).padStart(2, "0")}`;
 }
 
+function filterLedgers(
+  ledgers: FlowBitLedger[],
+  searchQuery: string,
+  ledgerFilter: "all" | "standard" | "reserve",
+) {
+  const query = searchQuery.trim().toLowerCase();
+
+  return ledgers.filter((ledger) => {
+    if (ledgerFilter === "standard" && ledger.is_capacity_reserve) {
+      return false;
+    }
+    if (ledgerFilter === "reserve" && !ledger.is_capacity_reserve) {
+      return false;
+    }
+
+    if (!query) {
+      return true;
+    }
+
+    return (
+      ledger.name.toLowerCase().includes(query) ||
+      (ledger.period_name || "").toLowerCase().includes(query) ||
+      String(ledger.priority).includes(query) ||
+      (ledger.is_capacity_reserve ? "reserve helper".includes(query) : false)
+    );
+  });
+}
+
 export function LedgerPage() {
   const [user, setUser] = useState<AuthUser | null>(getStoredUser());
   const [activeLedgers, setActiveLedgers] = useState<FlowBitLedger[]>([]);
   const [archivedLedgers, setArchivedLedgers] = useState<FlowBitLedger[]>([]);
   const [closeTimeDrafts, setCloseTimeDrafts] = useState<Record<number, string>>({});
+  const [searchQuery, setSearchQuery] = useState("");
+  const [ledgerFilter, setLedgerFilter] = useState<"all" | "standard" | "reserve">("all");
+  const [pageError, setPageError] = useState<string | null>(null);
   const [form, setForm] = useState<LedgerFormState>(defaultLedgerForm);
   const [toast, setToast] = useState<ToastState>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -119,12 +153,30 @@ export function LedgerPage() {
       }, 0),
     [activeLedgers],
   );
+  const standardActiveLedgers = useMemo(
+    () => activeLedgers.filter((ledger) => !ledger.is_capacity_reserve),
+    [activeLedgers],
+  );
+  const hasReserveLedger = useMemo(
+    () => activeLedgers.some((ledger) => ledger.is_capacity_reserve),
+    [activeLedgers],
+  );
+
+  const filteredActiveLedgers = useMemo(
+    () => filterLedgers(activeLedgers, searchQuery, ledgerFilter),
+    [activeLedgers, searchQuery, ledgerFilter],
+  );
+  const filteredArchivedLedgers = useMemo(
+    () => filterLedgers(archivedLedgers, searchQuery, ledgerFilter),
+    [archivedLedgers, searchQuery, ledgerFilter],
+  );
 
   async function loadPageData() {
     if (!activePeriod) {
       setActiveLedgers([]);
       setArchivedLedgers([]);
       setCloseTimeDrafts({});
+      setPageError(null);
       setIsLoading(false);
       return;
     }
@@ -140,16 +192,34 @@ export function LedgerPage() {
       const sortedActiveLedgers = nextActiveLedgers
         .filter((ledger) => ledger.is_active)
         .slice()
-        .sort((left, right) => left.priority - right.priority);
+        .sort((left, right) => {
+          if (left.is_capacity_reserve !== right.is_capacity_reserve) {
+            return left.is_capacity_reserve ? 1 : -1;
+          }
+          return left.priority - right.priority;
+        });
       setActiveLedgers(sortedActiveLedgers);
-      setArchivedLedgers(nextArchivedLedgers.filter((ledger) => !ledger.is_active));
+      setArchivedLedgers(
+        nextArchivedLedgers
+          .filter((ledger) => !ledger.is_active)
+          .slice()
+          .sort((left, right) => {
+            if (left.is_capacity_reserve !== right.is_capacity_reserve) {
+              return left.is_capacity_reserve ? 1 : -1;
+            }
+            return left.priority - right.priority;
+          }),
+      );
       setCloseTimeDrafts(
         Object.fromEntries(sortedActiveLedgers.map((ledger) => [ledger.id, formatTimeValue(ledger.end_date)])),
       );
+      setPageError(null);
     } catch (loadError) {
+      const message = loadError instanceof Error ? loadError.message : "Request failed.";
+      setPageError(message);
       setToast({
         type: "error",
-        message: loadError instanceof Error ? loadError.message : "Request failed.",
+        message,
       });
     } finally {
       setIsLoading(false);
@@ -186,15 +256,20 @@ export function LedgerPage() {
       } else if (pendingAction.type === "close") {
         await closeLedger(pendingAction.ledger.id, requiresOverride ? overrideCode : undefined);
         setToast({ type: "success", message: "Ledger closed successfully." });
+      } else if (pendingAction.type === "delete") {
+        await deleteLedger(pendingAction.ledger.id, requiresOverride ? overrideCode : undefined);
+        setToast({ type: "success", message: "Ledger deleted successfully." });
       } else if (pendingAction.type === "reopen") {
         await reopenLedger(pendingAction.ledger.id, requiresOverride ? overrideCode : undefined);
         setToast({ type: "success", message: "Ledger reopened successfully." });
       } else if (pendingAction.type === "reorder") {
         await reorderLedgerPriorities(
-          activeLedgers.map((ledger, index) => ({
+          activeLedgers
+            .filter((ledger) => !ledger.is_capacity_reserve)
+            .map((ledger, index) => ({
             id: ledger.id,
             priority: index + 1,
-          })),
+            })),
           requiresOverride ? overrideCode : undefined,
         );
         setToast({ type: "success", message: "Ledger priorities updated successfully." });
@@ -244,6 +319,8 @@ export function LedgerPage() {
         title={
           pendingAction?.type === "close"
             ? `Close ${pendingAction.ledger.name}?`
+            : pendingAction?.type === "delete"
+              ? `Delete ${pendingAction.ledger.name}?`
             : pendingAction?.type === "reopen"
               ? `Reopen ${pendingAction.ledger.name}?`
             : pendingAction?.type === "reorder"
@@ -257,6 +334,10 @@ export function LedgerPage() {
             ? requiresOverride
               ? "Closing a ledger stops new allocations to that ledger immediately. Enter a valid admin override code to continue."
               : "Closing a ledger stops new allocations to that ledger immediately."
+            : pendingAction?.type === "delete"
+              ? requiresOverride
+                ? "Deleting a ledger removes it from this period. Enter a valid admin override code to continue."
+                : "Deleting a ledger removes it from this period."
             : pendingAction?.type === "reopen"
               ? requiresOverride
                 ? "Reopening a ledger makes it active in the current period again. Enter a valid admin override code to continue."
@@ -274,6 +355,8 @@ export function LedgerPage() {
         confirmLabel={
           pendingAction?.type === "close"
             ? "Close ledger"
+            : pendingAction?.type === "delete"
+              ? "Delete ledger"
             : pendingAction?.type === "reopen"
               ? "Reopen ledger"
             : pendingAction?.type === "reorder"
@@ -313,7 +396,8 @@ export function LedgerPage() {
                 <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Active ledgers</p>
                 <h2 className="mt-2 text-2xl font-semibold text-stone-950">{activePeriod?.name}</h2>
                 <p className="mt-2 text-sm leading-6 text-stone-500">
-                  {activeLedgers.length} active ledger{activeLedgers.length === 1 ? "" : "s"} · total capacity per identifier {formatCurrencyLike(
+                  {standardActiveLedgers.length} working ledger{standardActiveLedgers.length === 1 ? "" : "s"}
+                  {hasReserveLedger ? " + reserve helper" : ""} · total capacity per identifier {formatCurrencyLike(
                     String(activeCapacityTotal),
                   )}
                 </p>
@@ -330,20 +414,58 @@ export function LedgerPage() {
               </div>
             </div>
 
+            <div className="mt-6 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <Input
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search ledgers"
+                className="max-w-md bg-white"
+                disabled={isSaving}
+              />
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { key: "all", label: "All" },
+                  { key: "standard", label: "Standard" },
+                  { key: "reserve", label: "Reserve" },
+                ].map((option) => (
+                  <Button
+                    key={option.key}
+                    variant={ledgerFilter === option.key ? "default" : "outline"}
+                    className="h-11 px-4"
+                    onClick={() => setLedgerFilter(option.key as "all" | "standard" | "reserve")}
+                    disabled={isSaving}
+                  >
+                    {option.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            {pageError ? (
+              <div className="mt-4 rounded-[22px] border border-red-200 bg-red-50 px-4 py-4 text-sm leading-6 text-red-700">
+                {pageError}
+              </div>
+            ) : null}
+
             <div className="mt-6 space-y-4">
               {isLoading ? (
                 <p className="text-sm text-stone-500">Loading ledgers...</p>
-            ) : activeLedgers.length ? (
-              activeLedgers
+            ) : filteredActiveLedgers.length ? (
+              filteredActiveLedgers
                   .map((ledger, index) => (
                     <div
                       key={ledger.id}
-                      draggable
-                      onDragStart={() => setDraggedLedgerId(ledger.id)}
+                      draggable={!ledger.is_capacity_reserve}
+                      onDragStart={() => {
+                        if (ledger.is_capacity_reserve) {
+                          return;
+                        }
+                        setDraggedLedgerId(ledger.id);
+                      }}
                       onDragEnd={() => setDraggedLedgerId(null)}
                       onDragOver={(event) => event.preventDefault()}
                       onDrop={() => {
-                        if (draggedLedgerId === null || draggedLedgerId === ledger.id) {
+                        if (ledger.is_capacity_reserve || draggedLedgerId === null || draggedLedgerId === ledger.id) {
                           return;
                         }
 
@@ -368,15 +490,17 @@ export function LedgerPage() {
                           <div className="flex items-start gap-3">
                             <div className="flex flex-col items-center gap-2">
                               <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-stone-900/10 bg-white text-stone-700 shadow-[0_6px_16px_rgba(28,24,20,0.06)]">
-                                <FontAwesomeIcon icon={faGripVertical} className="h-4 w-4" />
+                                <FontAwesomeIcon icon={ledger.is_capacity_reserve ? faLock : faGripVertical} className="h-4 w-4" />
                               </span>
                               <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-stone-400">
-                                Drag
+                                {ledger.is_capacity_reserve ? "Fixed" : "Drag"}
                               </span>
                             </div>
                             <div>
                               <p className="text-xl font-semibold text-stone-950">{ledger.name}</p>
-                              <p className="text-sm text-stone-500">Priority {index + 1}</p>
+                              <p className="text-sm text-stone-500">
+                                {ledger.is_capacity_reserve ? "Reserve helper · Fixed last priority" : `Priority ${ledger.priority}`}
+                              </p>
                             </div>
                           </div>
                           <div className="flex flex-wrap items-center gap-3 text-sm text-stone-500 xl:flex-nowrap">
@@ -387,59 +511,83 @@ export function LedgerPage() {
                             <span className="inline-flex items-center gap-2 whitespace-nowrap rounded-full bg-white px-3 py-2">
                               Capacity {formatCurrencyLike(ledger.limit_per_identifier)}
                             </span>
+                            {ledger.is_capacity_reserve ? (
+                              <span className="inline-flex items-center gap-2 whitespace-nowrap rounded-full bg-white px-3 py-2">
+                                <FontAwesomeIcon icon={faLock} className="h-3.5 w-3.5" />
+                                Managed automatically
+                              </span>
+                            ) : (
+                              <Button
+                                variant="outline"
+                                className="h-10 px-4"
+                                onClick={() => openAction({ type: "delete", ledger })}
+                                disabled={isSaving}
+                              >
+                                <FontAwesomeIcon icon={faTrashCan} className="h-3.5 w-3.5" />
+                                Delete
+                              </Button>
+                            )}
                           </div>
                         </div>
 
-                        <div className="grid gap-3 sm:grid-cols-[100px_1fr_1fr]">
-                          <label className="block space-y-2">
-                            <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-500">
-                              Close time
-                            </span>
-                            <Input
-                              type="time"
-                              value={closeTimeDrafts[ledger.id] ?? formatTimeValue(ledger.end_date)}
-                              onChange={(event) =>
-                                setCloseTimeDrafts((current) => ({
-                                  ...current,
-                                  [ledger.id]: event.target.value,
-                                }))
-                              }
-                              className="h-12 w-full bg-white px-3 text-center"
-                              disabled={isSaving}
-                            />
-                          </label>
-                          <div className="flex flex-col justify-end">
-                            <Button
-                              variant="outline"
-                              className="h-12 w-full px-4"
-                              onClick={() => openAction({ type: "update-time", ledger })}
-                              disabled={isSaving}
-                            >
-                              Save
-                            </Button>
+                        {ledger.is_capacity_reserve ? (
+                          <div className="rounded-[22px] border border-stone-900/8 bg-white px-4 py-4 text-sm leading-6 text-stone-500">
+                            Reserve ledgers stay visible to show helper capacity. Their time, priority, and structure are managed automatically.
                           </div>
-                          <div className="flex flex-col justify-end">
-                            <Button
-                              variant="outline"
-                              className="h-12 w-full px-4"
-                              onClick={() => openAction({ type: "close", ledger })}
-                              disabled={isSaving}
-                            >
-                              Close
-                            </Button>
+                        ) : (
+                          <div className="grid gap-3 sm:grid-cols-[100px_1fr_1fr]">
+                            <label className="block space-y-2">
+                              <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-500">
+                                Close time
+                              </span>
+                              <Input
+                                type="time"
+                                value={closeTimeDrafts[ledger.id] ?? formatTimeValue(ledger.end_date)}
+                                onChange={(event) =>
+                                  setCloseTimeDrafts((current) => ({
+                                    ...current,
+                                    [ledger.id]: event.target.value,
+                                  }))
+                                }
+                                className="h-12 w-full bg-white px-3 text-center"
+                                disabled={isSaving}
+                              />
+                            </label>
+                            <div className="flex flex-col justify-end">
+                              <Button
+                                variant="outline"
+                                className="h-12 w-full px-4"
+                                onClick={() => openAction({ type: "update-time", ledger })}
+                                disabled={isSaving}
+                              >
+                                Save
+                              </Button>
+                            </div>
+                            <div className="flex flex-col justify-end">
+                              <Button
+                                variant="outline"
+                                className="h-12 w-full px-4"
+                                onClick={() => openAction({ type: "close", ledger })}
+                                disabled={isSaving}
+                              >
+                                Close
+                              </Button>
+                            </div>
                           </div>
-                        </div>
+                        )}
                       </div>
                     </div>
                   ))
               ) : (
                 <div className="rounded-[24px] border border-dashed border-stone-900/12 bg-[#f7f4ef] px-5 py-6 text-sm leading-6 text-stone-500">
-                  No ledgers in the active period yet. Create the first ledger from the setup panel.
+                  {activeLedgers.length
+                    ? `No active ledgers matched "${searchQuery || "the current filter"}".`
+                    : "No ledgers in the active period yet. Create the first ledger from the setup panel."}
                 </div>
               )}
             </div>
 
-            {activeLedgers.length ? (
+            {standardActiveLedgers.length > 1 ? (
               <div className="mt-6 flex justify-end">
                 <Button variant="outline" onClick={() => openAction({ type: "reorder" })} disabled={isSaving}>
                   <FontAwesomeIcon icon={faArrowDownWideShort} className="h-4 w-4" />
@@ -528,7 +676,7 @@ export function LedgerPage() {
                 {isLoading ? (
                   <p className="text-sm text-stone-500">Loading archive...</p>
                 ) : archivedLedgers.length ? (
-                  archivedLedgers.map((ledger) => (
+                  filteredArchivedLedgers.map((ledger) => (
                     <div key={ledger.id} className="rounded-[22px] border border-stone-900/8 bg-[#f7f4ef] px-4 py-4">
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
@@ -537,19 +685,43 @@ export function LedgerPage() {
                             Closed {formatDateTime(ledger.closed_at)} · Priority {ledger.priority}
                           </p>
                         </div>
-                        <Button
-                          variant="outline"
-                          className="h-11 sm:min-w-[132px]"
-                          onClick={() => openAction({ type: "reopen", ledger })}
-                          disabled={isSaving}
-                        >
-                          Reopen
-                        </Button>
+                        <div className="flex flex-wrap gap-2">
+                          {!ledger.is_capacity_reserve ? (
+                            <>
+                              <Button
+                                variant="outline"
+                                className="h-11 sm:min-w-[132px]"
+                                onClick={() => openAction({ type: "reopen", ledger })}
+                                disabled={isSaving}
+                              >
+                                Reopen
+                              </Button>
+                              <Button
+                                variant="outline"
+                                className="h-11 sm:min-w-[132px]"
+                                onClick={() => openAction({ type: "delete", ledger })}
+                                disabled={isSaving}
+                              >
+                                <FontAwesomeIcon icon={faTrashCan} className="h-3.5 w-3.5" />
+                                Delete
+                              </Button>
+                            </>
+                          ) : (
+                            <span className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-2 text-sm text-stone-500">
+                              <FontAwesomeIcon icon={faLock} className="h-3.5 w-3.5" />
+                              Managed automatically
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))
                 ) : (
-                  <p className="text-sm text-stone-500">No closed ledgers in this period yet.</p>
+                  <p className="text-sm text-stone-500">
+                    {archivedLedgers.length
+                      ? `No closed ledgers matched "${searchQuery || "the current filter"}".`
+                      : "No closed ledgers in this period yet."}
+                  </p>
                 )}
               </div>
             </div>

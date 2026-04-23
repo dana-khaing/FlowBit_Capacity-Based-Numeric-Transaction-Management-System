@@ -44,6 +44,30 @@ class Period(models.Model):
     def save(self, *args, **kwargs):
         self.full_clean()
         super().save(*args, **kwargs)
+        reserve = Ledger.get_capacity_reserve(self, create=True)
+        if reserve is None:
+            return
+
+        update_fields = []
+        if reserve.end_date != self.end_date:
+            reserve.end_date = self.end_date
+            update_fields.append('end_date')
+        if reserve.is_active != self.is_open:
+            reserve.is_active = self.is_open
+            update_fields.append('is_active')
+        expected_closed_at = None if self.is_open else self.closed_at
+        if reserve.closed_at != expected_closed_at:
+            reserve.closed_at = expected_closed_at
+            update_fields.append('closed_at')
+        if reserve.priority != Ledger.CAPACITY_RESERVE_PRIORITY:
+            reserve.priority = Ledger.CAPACITY_RESERVE_PRIORITY
+            update_fields.append('priority')
+        if reserve.name != f"{self.name} Capacity Reserve":
+            reserve.name = f"{self.name} Capacity Reserve"
+            update_fields.append('name')
+
+        if update_fields:
+            reserve.save(update_fields=update_fields)
 
     def close(self, closed_at=None, save=True, helper_name=DEFAULT_HELPER_NAME):
         if closed_at is None:
@@ -179,6 +203,15 @@ class Ledger(models.Model):
 
         return self
 
+    def can_modify(self):
+        if self.is_capacity_reserve:
+            raise ValidationError("The reserve ledger is managed automatically and cannot be edited here.")
+
+    def can_delete(self):
+        self.can_modify()
+        if self.allocations.exists():
+            raise ValidationError("This ledger cannot be deleted because it already has ticket activity.")
+
     def can_reopen(self):
         if self.is_active:
             raise ValidationError("Ledger is already active.")
@@ -186,8 +219,7 @@ class Ledger(models.Model):
         if self.period is None or not self.period.is_open:
             raise ValidationError("Only ledgers in the active period can be reopened.")
 
-        if self.is_capacity_reserve:
-            raise ValidationError("Capacity reserve ledgers cannot be reopened manually.")
+        self.can_modify()
 
     def reopen(self, save=True):
         self.can_reopen()

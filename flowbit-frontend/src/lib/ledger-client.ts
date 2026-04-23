@@ -10,6 +10,7 @@ export type FlowBitLedger = {
   limit_per_identifier: string;
   priority: number;
   is_active: boolean;
+  is_capacity_reserve: boolean;
   closed_at: string | null;
   created_at: string;
 };
@@ -49,6 +50,14 @@ export async function createLedger(payload: {
     method: "POST",
     headers: authHeaders(),
     body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteLedger(ledgerId: number, adminOverrideCode?: string) {
+  return apiRequest<void>(`/ledgers/${ledgerId}/`, {
+    method: "DELETE",
+    headers: authHeaders(),
+    body: JSON.stringify(adminOverrideCode ? { admin_override_code: adminOverrideCode } : {}),
   });
 }
 

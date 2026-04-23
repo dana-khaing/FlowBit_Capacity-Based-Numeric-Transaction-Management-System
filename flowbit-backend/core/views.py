@@ -503,7 +503,7 @@ class PeriodViewSet(viewsets.ModelViewSet):
 
 
 class LedgerViewSet(viewsets.ModelViewSet):
-    queryset = Ledger.objects.filter(is_capacity_reserve=False)
+    queryset = Ledger.objects.all()
     serializer_class = LedgerSerializer
     permission_classes = [IsAuthenticatedReadOnlyOrAdminWriteOrOverride]
 
@@ -529,6 +529,12 @@ class LedgerViewSet(viewsets.ModelViewSet):
         )
 
     def perform_destroy(self, instance):
+        try:
+            instance.can_delete()
+        except ValidationError as exc:
+            detail = exc.message_dict if hasattr(exc, 'message_dict') else exc.messages[0]
+            raise DRFValidationError(detail)
+
         before = snapshot_instance(instance)
         ledger_name = instance.name
         super().perform_destroy(instance)
@@ -557,6 +563,12 @@ class LedgerViewSet(viewsets.ModelViewSet):
                 {"detail": "Ledger is already closed"},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+        try:
+            ledger.can_modify()
+        except ValidationError as exc:
+            detail = exc.message_dict if hasattr(exc, 'message_dict') else exc.messages[0]
+            return Response({"detail": detail}, status=status.HTTP_400_BAD_REQUEST)
 
         ledger.close()
         record_audit_log(
@@ -714,7 +726,8 @@ class LedgerViewSet(viewsets.ModelViewSet):
                 
                 # Update ledger
                 try:
-                    ledger = Ledger.objects.get(id=ledger_id, is_capacity_reserve=False)
+                    ledger = Ledger.objects.get(id=ledger_id)
+                    ledger.can_modify()
                     ledger.priority = new_priority
                     ledger.save()
                     
@@ -728,6 +741,9 @@ class LedgerViewSet(viewsets.ModelViewSet):
                         {"detail": f"Ledger with id {ledger_id} not found"},
                         status=status.HTTP_404_NOT_FOUND
                     )
+                except ValidationError as exc:
+                    detail = exc.message_dict if hasattr(exc, 'message_dict') else exc.messages[0]
+                    return Response({"detail": detail}, status=status.HTTP_400_BAD_REQUEST)
         
         # Sort by priority for response
         updated_ledgers.sort(key=lambda x: x['priority'])

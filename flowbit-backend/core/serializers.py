@@ -113,6 +113,7 @@ class LedgerSerializer(serializers.ModelSerializer):
     period_name = serializers.CharField(source='period.name', read_only=True, allow_null=True)
     end_date = FlexibleDateTimeField(default_time=_serializer_close_time, required=False)
     close_time = serializers.TimeField(write_only=True, required=False)
+    is_capacity_reserve = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = Ledger
@@ -125,6 +126,7 @@ class LedgerSerializer(serializers.ModelSerializer):
             'limit_per_identifier',
             'priority',
             'is_active',
+            'is_capacity_reserve',
             'closed_at',
             'created_at',
             'close_time',
@@ -137,6 +139,11 @@ class LedgerSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
+
+        if self.instance and self.instance.is_capacity_reserve:
+            raise serializers.ValidationError({
+                'detail': 'The reserve ledger is managed automatically and cannot be edited here.',
+            })
 
         period = attrs.get('period', getattr(self.instance, 'period', None))
         priority = attrs.get('priority', getattr(self.instance, 'priority', None))
