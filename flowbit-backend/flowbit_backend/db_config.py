@@ -38,6 +38,11 @@ def _build_from_database_url(database_url):
     return config
 
 
+def _uses_supabase_pooler(config):
+    host = str(config.get("HOST", "")).strip().lower()
+    return host.endswith("pooler.supabase.com")
+
+
 def build_database_config(env):
     database_url = env.get("DATABASE_URL", "").strip()
     if database_url:
@@ -64,11 +69,16 @@ def build_database_config(env):
     if options:
         config["OPTIONS"] = options
 
-    conn_max_age = _env_int(env.get("DB_CONN_MAX_AGE"), default=600)
+    default_conn_max_age = 0 if _uses_supabase_pooler(config) else 600
+    conn_max_age = _env_int(env.get("DB_CONN_MAX_AGE"), default=default_conn_max_age)
     if conn_max_age is not None:
         config["CONN_MAX_AGE"] = conn_max_age
 
-    if _env_bool(env.get("DB_DISABLE_SERVER_SIDE_CURSORS"), default=False):
+    disable_server_side_cursors = _env_bool(
+        env.get("DB_DISABLE_SERVER_SIDE_CURSORS"),
+        default=_uses_supabase_pooler(config),
+    )
+    if disable_server_side_cursors:
         config["DISABLE_SERVER_SIDE_CURSORS"] = True
 
     return {"default": config}
