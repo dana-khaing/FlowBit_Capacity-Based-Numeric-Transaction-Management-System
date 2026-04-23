@@ -247,11 +247,15 @@ export function LedgerPage() {
         }
         description={
           pendingAction?.type === "close"
-            ? "Closing a ledger stops new allocations to that ledger immediately."
+            ? requiresOverride
+              ? "Closing a ledger stops new allocations to that ledger immediately. Enter a valid admin override code to continue."
+              : "Closing a ledger stops new allocations to that ledger immediately."
             : pendingAction?.type === "reorder"
               ? "Reorder the active ledgers so the system uses the updated priority sequence."
               : pendingAction?.type === "update-time"
-                ? "Update the closing time for this ledger in the active period."
+                ? requiresOverride
+                  ? "Update the closing time for this ledger in the active period. Enter a valid admin override code to continue."
+                  : "Update the closing time for this ledger in the active period."
               : "Create a new ledger in the active period using the details entered in the setup form."
         }
         codeValue={overrideCode}
@@ -262,7 +266,7 @@ export function LedgerPage() {
             : pendingAction?.type === "reorder"
               ? "Save order"
               : pendingAction?.type === "update-time"
-                ? "Save time"
+                ? "Save"
               : "Create ledger"
         }
         showCodeInput={requiresOverride}
@@ -346,7 +350,7 @@ export function LedgerPage() {
                       }}
                       className="rounded-[24px] border border-stone-900/8 bg-[#f7f4ef] px-5 py-5"
                     >
-                      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-start">
                         <div className="space-y-2">
                           <div className="flex items-start gap-3">
                             <div className="flex flex-col items-center gap-2">
@@ -362,7 +366,7 @@ export function LedgerPage() {
                               <p className="text-sm text-stone-500">Priority {index + 1}</p>
                             </div>
                           </div>
-                          <div className="flex flex-wrap items-center gap-3 text-sm text-stone-500 lg:flex-nowrap">
+                          <div className="flex flex-wrap items-center gap-3 text-sm text-stone-500 xl:flex-nowrap">
                             <span className="inline-flex items-center gap-2 whitespace-nowrap rounded-full bg-white px-3 py-2">
                               <FontAwesomeIcon icon={faClock} className="h-3.5 w-3.5" />
                               Ends {formatDateTime(ledger.end_date)}
@@ -373,7 +377,7 @@ export function LedgerPage() {
                           </div>
                         </div>
 
-                        <div className="grid gap-3 sm:grid-cols-[112px_128px_128px] xl:min-w-[392px]">
+                        <div className="grid gap-3 sm:grid-cols-[100px_1fr_1fr]">
                           <label className="block space-y-2">
                             <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-500">
                               Close time
@@ -387,24 +391,24 @@ export function LedgerPage() {
                                   [ledger.id]: event.target.value,
                                 }))
                               }
-                              className="h-12 w-full bg-white"
+                              className="h-12 w-full bg-white px-3 text-center"
                               disabled={isSaving}
                             />
                           </label>
                           <div className="flex flex-col justify-end">
                             <Button
                               variant="outline"
-                              className="h-12 w-full"
+                              className="h-12 w-full px-4"
                               onClick={() => openAction({ type: "update-time", ledger })}
                               disabled={isSaving}
                             >
-                              Save time
+                              Save
                             </Button>
                           </div>
                           <div className="flex flex-col justify-end">
                             <Button
                               variant="outline"
-                              className="h-12 w-full"
+                              className="h-12 w-full px-4"
                               onClick={() => openAction({ type: "close", ledger })}
                               disabled={isSaving}
                             >
