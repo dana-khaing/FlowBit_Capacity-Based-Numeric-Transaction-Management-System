@@ -2501,18 +2501,9 @@ class CreateTicketWithTransactions(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # 2. Create the ticket
-        ticket = Ticket.objects.create(
-            customer_name=(data.get('customer_name') or '').strip()[:150] or None,
-            notes=data.get('notes', '').strip(),
-            created_by=request.user if request.user.is_authenticated else None
-        )
-        if not ticket.customer_name:
-            ticket.customer_name = f"Walk-in {ticket.ticket_number}"
-            ticket.save(update_fields=['customer_name'])
-
         created_items = []
         errors = []
+        prepared_items = []
 
         # 3. Process each item
         for idx, item in enumerate(items, 1):
@@ -2571,25 +2562,14 @@ class CreateTicketWithTransactions(APIView):
                     )
                     continue
 
-                tx = Transaction.objects.create(
-                    ticket=ticket,
-                    identifier=identifier,
-                    total_amount=amount,
-                    created_by=request.user if request.user.is_authenticated else None
+                prepared_items.append(
+                    {
+                        'identifier': identifier,
+                        'amount': amount,
+                        'parsed_allocations': parsed_allocations,
+                        'preview': preview,
+                    }
                 )
-                if parsed_allocations:
-                    tx._manual_allocations = parsed_allocations
-                    tx.allocations.all().delete()
-                    tx.overflows.all().delete()
-                    tx._allocate_to_ledgers()
-
-                created_items.append({
-                    "order_number": tx.order_number,
-                    "identifier": identifier.number,
-                    "amount": str(tx.total_amount),
-                    "id": tx.id,
-                    "allocation_preview": serialize_allocation_preview(preview),
-                })
 
             except Exception as e:
                 if isinstance(e, ValidationError):
@@ -2597,7 +2577,47 @@ class CreateTicketWithTransactions(APIView):
                     continue
                 errors.append(f"Item {idx}: unexpected error – {str(e)}")
 
-        # 4. If there were errors → rollback is automatic thanks to @transaction.atomic
+        if not prepared_items:
+            return Response(
+                {
+                    "detail": "At least one valid ticket entry is required.",
+                    "errors": errors or ["No valid ticket entries were provided."],
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # 4. Create the ticket only after at least one valid entry is ready.
+        ticket = Ticket.objects.create(
+            customer_name=(data.get('customer_name') or '').strip()[:150] or None,
+            notes=data.get('notes', '').strip(),
+            created_by=request.user if request.user.is_authenticated else None
+        )
+        if not ticket.customer_name:
+            ticket.customer_name = f"Walk-in {ticket.ticket_number}"
+            ticket.save(update_fields=['customer_name'])
+
+        for prepared_item in prepared_items:
+            tx = Transaction.objects.create(
+                ticket=ticket,
+                identifier=prepared_item['identifier'],
+                total_amount=prepared_item['amount'],
+                created_by=request.user if request.user.is_authenticated else None
+            )
+            if prepared_item['parsed_allocations']:
+                tx._manual_allocations = prepared_item['parsed_allocations']
+                tx.allocations.all().delete()
+                tx.overflows.all().delete()
+                tx._allocate_to_ledgers()
+
+            created_items.append({
+                "order_number": tx.order_number,
+                "identifier": prepared_item['identifier'].number,
+                "amount": str(tx.total_amount),
+                "id": tx.id,
+                "allocation_preview": serialize_allocation_preview(prepared_item['preview']),
+            })
+
+        # 5. If there were errors → rollback is automatic thanks to @transaction.atomic
         if errors:
             record_audit_log(
                 request,
@@ -2620,7 +2640,7 @@ class CreateTicketWithTransactions(APIView):
                 status=status.HTTP_207_MULTI_STATUS
             )
 
-        # 5. Success
+        # 6. Success
         record_audit_log(
             request,
             'ticket.created',

@@ -1232,6 +1232,34 @@ class PrivateWorkspaceTests(APITestCase):
         self.assertEqual(ticket.customer_name, expected_name)
         self.assertEqual(response.data['ticket']['customer_name'], expected_name)
 
+    def test_ticket_creation_rejects_empty_items_without_creating_ticket(self):
+        self.client.force_authenticate(user=self.user_one)
+
+        response = self.client.post('/api/tickets/create-with-items/', {
+            'customer_name': 'Empty Draft',
+            'items': [
+                {'identifier': self.identifier.id, 'amount': '0.00'},
+            ],
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['detail'], 'At least one valid ticket entry is required.')
+        self.assertFalse(Ticket.objects.filter(customer_name='Empty Draft').exists())
+
+    def test_ticket_creation_rejects_blank_entry_without_creating_ticket(self):
+        self.client.force_authenticate(user=self.user_one)
+
+        response = self.client.post('/api/tickets/create-with-items/', {
+            'customer_name': 'Blank Draft',
+            'items': [
+                {'identifier': self.identifier.id, 'amount': ''},
+            ],
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['detail'], 'At least one valid ticket entry is required.')
+        self.assertFalse(Ticket.objects.filter(customer_name='Blank Draft').exists())
+
     def test_transactions_and_overflows_are_private_to_the_current_user(self):
         self.client.force_authenticate(user=self.user_one)
         one_ticket = Ticket.objects.create(customer_name='One Ticket', created_by=self.user_one)
