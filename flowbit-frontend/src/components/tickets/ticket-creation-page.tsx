@@ -35,6 +35,19 @@ type ToastState = {
   message: string;
 } | null;
 
+type TicketSubmissionItem = {
+  identifier: number;
+  amount: string;
+  allow_overflow: boolean;
+  manual_allocations?: Array<{ ledger: number; amount: string }>;
+};
+
+type PendingOverflowSubmission = {
+  items: TicketSubmissionItem[];
+  overflowEntryCount: number;
+  overflowAmount: number;
+};
+
 function createDraftItem(partial?: Partial<TicketDraftItem>): TicketDraftItem {
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -98,6 +111,8 @@ export function TicketCreationPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pageError, setPageError] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastState>(null);
+  const [pendingOverflowSubmission, setPendingOverflowSubmission] =
+    useState<PendingOverflowSubmission | null>(null);
 
   const {
     activePeriod,
@@ -134,6 +149,10 @@ export function TicketCreationPage() {
     [items],
   );
   const hasWorkingLedgers = activeLedgers.length > 0;
+
+  function formatEntryCount(count: number) {
+    return `${count} ${count === 1 ? "entry" : "entries"}`;
+  }
 
   async function loadRecentTickets() {
     setIsRecentTicketsLoading(true);
@@ -360,21 +379,22 @@ export function TicketCreationPage() {
     }
   }
 
-  async function handleSubmit() {
+  async function prepareTicketSubmission() {
     if (!hasWorkingLedgers) {
       setToast({
         type: "error",
         message: "Create at least one working ledger before creating tickets.",
       });
-      return;
+      return null;
     }
 
-    const payloadItems: Array<{
-      identifier: number;
-      amount: string;
-      allow_overflow: boolean;
-      manual_allocations?: Array<{ ledger: number; amount: string }>;
-    }> = [];
+    const payloadItems: TicketSubmissionItem[] = [];
+    const nextPreviewState = new Map<
+      string,
+      { preview: TicketDraftItem["preview"]; previewError: string | null }
+    >();
+    let overflowEntryCount = 0;
+    let overflowAmount = 0;
 
     for (const item of items) {
       const identifier = identifierMap.get(
@@ -385,7 +405,7 @@ export function TicketCreationPage() {
           type: "error",
           message: "Every ticket line needs a valid identifier.",
         });
-        return;
+        return null;
       }
 
       const amount = item.amount.trim();
@@ -394,10 +414,42 @@ export function TicketCreationPage() {
           type: "error",
           message: "Every ticket line needs an amount greater than zero.",
         });
-        return;
+        return null;
       }
 
       const manualAllocations = buildManualAllocations(item);
+      try {
+        const preview = await previewTicketItemAllocation({
+          identifier: identifier.id,
+          total_amount: amount,
+          ...(manualAllocations ? { manual_allocations: manualAllocations } : {}),
+        });
+        nextPreviewState.set(item.id, { preview, previewError: null });
+        if (preview.has_overflow) {
+          overflowEntryCount += 1;
+          overflowAmount += Number(preview.overflow_amount) || 0;
+        }
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Request failed.";
+        nextPreviewState.set(item.id, { preview: null, previewError: message });
+        setItems((current) =>
+          current.map((currentItem) => {
+            const nextState = nextPreviewState.get(currentItem.id);
+            return nextState
+              ? {
+                  ...currentItem,
+                  preview: nextState.preview,
+                  previewError: nextState.previewError,
+                  isPreviewing: false,
+                }
+              : currentItem;
+          }),
+        );
+        setToast({ type: "error", message });
+        return null;
+      }
+
       payloadItems.push({
         identifier: identifier.id,
         amount,
@@ -406,6 +458,24 @@ export function TicketCreationPage() {
       });
     }
 
+    setItems((current) =>
+      current.map((item) => {
+        const nextState = nextPreviewState.get(item.id);
+        return nextState
+          ? {
+              ...item,
+              preview: nextState.preview,
+              previewError: nextState.previewError,
+              isPreviewing: false,
+            }
+          : item;
+      }),
+    );
+
+    return { items: payloadItems, overflowEntryCount, overflowAmount };
+  }
+
+  async function executeTicketCreate(payloadItems: TicketSubmissionItem[]) {
     setIsSubmitting(true);
     try {
       const response = await createTicket({
@@ -433,6 +503,30 @@ export function TicketCreationPage() {
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  async function handleSubmit() {
+    const submissionDraft = await prepareTicketSubmission();
+    if (!submissionDraft) {
+      return;
+    }
+
+    if (submissionDraft.overflowEntryCount > 0) {
+      setPendingOverflowSubmission(submissionDraft);
+      return;
+    }
+
+    await executeTicketCreate(submissionDraft.items);
+  }
+
+  async function confirmOverflowSubmission() {
+    if (!pendingOverflowSubmission) {
+      return;
+    }
+
+    const payloadItems = pendingOverflowSubmission.items;
+    setPendingOverflowSubmission(null);
+    await executeTicketCreate(payloadItems);
   }
 
   if (isPeriodLoading) {
@@ -482,6 +576,25 @@ export function TicketCreationPage() {
             onClose={() => setToast(null)}
           />
         ) : null}
+        <AdminConfirmModal
+          open={Boolean(pendingOverflowSubmission)}
+          title="Spill over will be created"
+          description={
+            pendingOverflowSubmission
+              ? `${formatEntryCount(
+                  pendingOverflowSubmission.overflowEntryCount,
+                )} will create spill over totaling ${formatAmount(
+                  String(pendingOverflowSubmission.overflowAmount),
+                )}.`
+              : ""
+          }
+          confirmLabel="Create ticket"
+          showCodeInput={false}
+          busy={isSubmitting}
+          onCodeChange={() => {}}
+          onCancel={() => setPendingOverflowSubmission(null)}
+          onConfirm={confirmOverflowSubmission}
+        />
 
         <section className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(340px,0.85fr)]">
           <div className="space-y-5">
@@ -659,8 +772,7 @@ export function TicketCreationPage() {
                         </div>
                         <span className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">
                           <FontAwesomeIcon icon={faTicket} className="h-3 w-3" />
-                          {ticket.transaction_count} entry
-                          {ticket.transaction_count === 1 ? "" : "ies"}
+                          {formatEntryCount(ticket.transaction_count)}
                         </span>
                       </div>
                       <p className="mt-3 text-sm font-medium text-stone-700">
