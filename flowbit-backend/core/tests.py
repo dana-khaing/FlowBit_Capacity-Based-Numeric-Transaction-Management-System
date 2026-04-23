@@ -95,6 +95,72 @@ class DatabaseConfigTests(SimpleTestCase):
         self.assertIn('Database connection succeeded.', output)
 
 
+class OperationalDataPurgeCommandTests(APITestCase):
+    def test_purge_operational_data_keeps_users_and_profiles(self):
+        admin_user = User.objects.create_user(username='purge_admin', password='password123')
+        admin_user.profile.role = 'admin'
+        admin_user.profile.save(update_fields=['role', 'updated_at'])
+        regular_user = User.objects.create_user(username='purge_user', password='password123')
+
+        identifier = Identifier.objects.create(number='101')
+        period = Period.objects.create(
+            name='Purge Period',
+            start_date=timezone.make_aware(datetime(2027, 1, 1, 0, 0, 0)),
+            end_date=timezone.make_aware(datetime(2027, 1, 31, 23, 59, 59)),
+            is_open=True,
+        )
+        ledger = Ledger.objects.create(
+            owner=admin_user,
+            period=period,
+            name='Purge Ledger',
+            end_date=period.end_date,
+            limit_per_identifier=Decimal('100.00'),
+            priority=1,
+            is_active=True,
+        )
+        Ledger.get_capacity_reserve(period, admin_user, create=True)
+        ticket = Ticket.objects.create(customer_name='Purge Ticket', created_by=admin_user)
+        transaction_obj = Transaction.objects.create(
+            ticket=ticket,
+            identifier=identifier,
+            total_amount=Decimal('150.00'),
+            created_by=admin_user,
+        )
+        overflow = Overflow.objects.get(transaction=transaction_obj)
+        OverflowNotification.objects.create(
+            overflow=overflow,
+            period=period,
+            message='Test notification',
+        )
+        PasswordResetToken.issue_for_user(regular_user, expiry_hours=1)
+        Collaborator.objects.create(
+            owner=admin_user,
+            username='purge_helper',
+            full_name='Purge Helper',
+            email='purge-helper@example.com',
+            phone_number='555555',
+        )
+        AuditLog.objects.create(action='test.audit', user=admin_user)
+
+        out = StringIO()
+        call_command('purge_operational_data', stdout=out)
+
+        self.assertEqual(User.objects.count(), 2)
+        self.assertEqual(Profile.objects.count(), 2)
+        self.assertFalse(Period.objects.exists())
+        self.assertFalse(Ledger.objects.exists())
+        self.assertFalse(Ticket.objects.exists())
+        self.assertFalse(Transaction.objects.exists())
+        self.assertFalse(Overflow.objects.exists())
+        self.assertFalse(OverflowNotification.objects.exists())
+        self.assertFalse(IdentifierCapacityAdjustment.objects.exists())
+        self.assertFalse(Collaborator.objects.exists())
+        self.assertFalse(PasswordResetToken.objects.exists())
+        self.assertFalse(AuditLog.objects.exists())
+        self.assertFalse(Identifier.objects.exists())
+        self.assertIn('Deleted', out.getvalue())
+
+
 class ApiDocumentationTests(APITestCase):
     def setUp(self):
         self.admin_user = User.objects.create_user(username='docs_admin', password='password123')
