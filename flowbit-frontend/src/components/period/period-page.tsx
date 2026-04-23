@@ -5,6 +5,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCalendarDays, faCircleDot, faClock, faLock, faRotateLeft, faTrashCan } from "@fortawesome/free-solid-svg-icons";
 import { AdminConfirmModal } from "@/components/admin/admin-confirm-modal";
 import { WorkspaceShell } from "@/components/app/workspace-shell";
+import { ActionLoadingModal } from "@/components/app/action-loading-modal";
 import { AdminActionToast } from "@/components/admin/admin-action-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,7 +32,7 @@ const defaultFormState: PeriodFormState = {
   close_time: "15:00",
 };
 
-type PeriodAction = "update" | "close" | "reopen" | "delete" | null;
+type PeriodAction = "create" | "update" | "close" | "reopen" | "delete" | null;
 
 function formatPeriodDate(value: string) {
   const parsed = new Date(value);
@@ -133,6 +134,7 @@ export function PeriodPage() {
       return;
     }
 
+    setPendingAction("create");
     setIsSaving(true);
     try {
       await createPeriod({
@@ -153,6 +155,7 @@ export function PeriodPage() {
       });
     } finally {
       setIsSaving(false);
+      setPendingAction(null);
     }
   }
 
@@ -204,12 +207,18 @@ export function PeriodPage() {
       });
     } finally {
       setIsSaving(false);
+      setPendingAction(null);
     }
   }
 
   return (
     <WorkspaceShell>
       {toast ? <AdminActionToast message={toast.message} type={toast.type} onClose={() => setToast(null)} /> : null}
+      <ActionLoadingModal
+        open={isSaving && pendingAction === "create"}
+        title="Creating period"
+        description="FlowBit is saving the new period and opening the reserve helper for your account before showing success."
+      />
       <AdminConfirmModal
         open={showActionConfirm}
         title={
