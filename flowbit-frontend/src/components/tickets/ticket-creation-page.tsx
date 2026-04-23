@@ -148,6 +148,15 @@ export function TicketCreationPage() {
       }, 0),
     [items],
   );
+  const hasAtLeastOneFilledEntry = useMemo(
+    () =>
+      items.some((item) => {
+        const normalizedIdentifier = normalizeIdentifierNumber(item.identifierNumber);
+        const amount = Number(item.amount);
+        return Boolean(identifierMap.get(normalizedIdentifier)) && amount > 0;
+      }),
+    [identifierMap, items],
+  );
   const hasWorkingLedgers = activeLedgers.length > 0;
 
   function formatEntryCount(count: number) {
@@ -384,6 +393,14 @@ export function TicketCreationPage() {
       setToast({
         type: "error",
         message: "Create at least one working ledger before creating tickets.",
+      });
+      return null;
+    }
+
+    if (!hasAtLeastOneFilledEntry) {
+      setToast({
+        type: "error",
+        message: "Add at least one valid ticket entry before creating the ticket.",
       });
       return null;
     }
@@ -722,7 +739,8 @@ export function TicketCreationPage() {
                     isSubmitting ||
                     isLoading ||
                     !hasWorkingLedgers ||
-                    identifiers.length === 0
+                    identifiers.length === 0 ||
+                    !hasAtLeastOneFilledEntry
                   }
                 >
                   {isSubmitting ? (
