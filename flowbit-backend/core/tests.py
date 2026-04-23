@@ -1017,6 +1017,27 @@ class PrivateWorkspaceTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
+    def test_regular_user_cannot_update_or_close_period(self):
+        self.client.force_authenticate(user=self.user_one)
+
+        update_response = self.client.patch(
+            f'/api/periods/{self.period.id}/',
+            {'end_date': '2028-01-31'},
+            format='json',
+        )
+        close_response = self.client.post(f'/api/periods/{self.period.id}/close/', {}, format='json')
+
+        self.assertEqual(update_response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(close_response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_regular_user_cannot_reopen_closed_period(self):
+        self.period.close(closed_at=timezone.now())
+        self.client.force_authenticate(user=self.user_one)
+
+        response = self.client.post(f'/api/periods/{self.period.id}/reopen/', {}, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
     def test_ledger_list_only_returns_current_users_ledgers_and_reserve(self):
         Ledger.objects.create(
             owner=self.user_two,
