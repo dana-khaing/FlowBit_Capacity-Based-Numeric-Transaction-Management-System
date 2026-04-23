@@ -15,6 +15,7 @@ import {
 import { AdminConfirmModal } from "@/components/admin/admin-confirm-modal";
 import { AdminActionToast } from "@/components/admin/admin-action-toast";
 import { WorkspaceShell } from "@/components/app/workspace-shell";
+import { ActionLoadingModal } from "@/components/app/action-loading-modal";
 import { usePeriodState } from "@/components/period/use-period-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -298,6 +299,11 @@ export function LedgerPage() {
     return (
       <WorkspaceShell>
         {toast ? <AdminActionToast message={toast.message} type={toast.type} onClose={() => setToast(null)} /> : null}
+        <ActionLoadingModal
+          open={isSaving && pendingAction?.type === "create"}
+          title="Creating ledger"
+          description="FlowBit is saving the ledger and making sure identifier capacity is ready before showing success."
+        />
         <div className="mx-auto w-full max-w-[1800px] px-4 py-5 sm:px-6 lg:px-8 lg:py-8">
           <section className="rounded-[28px] border border-stone-900/8 bg-white px-5 py-6 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:px-8 sm:py-8">
             <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Ledgers</p>
