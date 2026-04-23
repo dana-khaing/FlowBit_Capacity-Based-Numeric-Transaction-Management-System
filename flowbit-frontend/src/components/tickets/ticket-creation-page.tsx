@@ -8,9 +8,9 @@ import {
   faFileInvoiceDollar,
   faLayerGroup,
   faPlus,
-  faReceipt,
   faTicket,
 } from "@fortawesome/free-solid-svg-icons";
+import { AdminConfirmModal } from "@/components/admin/admin-confirm-modal";
 import { AdminActionToast } from "@/components/admin/admin-action-toast";
 import { WorkspaceShell } from "@/components/app/workspace-shell";
 import {
@@ -23,10 +23,11 @@ import { usePeriodState } from "@/components/period/use-period-state";
 import { fetchLedgers, type FlowBitLedger } from "@/lib/ledger-client";
 import {
   createTicket,
+  fetchTickets,
   fetchIdentifierOptions,
+  type FlowBitTicketListItem,
   previewTicketItemAllocation,
   type FlowBitIdentifierOption,
-  type TicketCreateResponse,
 } from "@/lib/ticket-client";
 
 type ToastState = {
@@ -91,13 +92,12 @@ export function TicketCreationPage() {
   const [items, setItems] = useState<TicketDraftItem[]>([createDraftItem()]);
   const [identifiers, setIdentifiers] = useState<FlowBitIdentifierOption[]>([]);
   const [activeLedgers, setActiveLedgers] = useState<FlowBitLedger[]>([]);
+  const [recentTickets, setRecentTickets] = useState<FlowBitTicketListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRecentTicketsLoading, setIsRecentTicketsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pageError, setPageError] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastState>(null);
-  const [submission, setSubmission] = useState<TicketCreateResponse | null>(
-    null,
-  );
 
   const {
     activePeriod,
@@ -135,9 +135,24 @@ export function TicketCreationPage() {
   );
   const hasWorkingLedgers = activeLedgers.length > 0;
 
+  async function loadRecentTickets() {
+    setIsRecentTicketsLoading(true);
+    try {
+      const tickets = await fetchTickets();
+      setRecentTickets(tickets.slice(0, 5));
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Request failed.";
+      setToast({ type: "error", message });
+    } finally {
+      setIsRecentTicketsLoading(false);
+    }
+  }
+
   useEffect(() => {
     if (!hasActivePeriod || !activePeriod) {
       setIsLoading(false);
+      setIsRecentTicketsLoading(false);
       return;
     }
 
@@ -147,8 +162,9 @@ export function TicketCreationPage() {
     Promise.all([
       fetchIdentifierOptions(),
       fetchLedgers({ period_id: activePeriod.id }),
+      fetchTickets(),
     ])
-      .then(([nextIdentifiers, nextLedgers]) => {
+      .then(([nextIdentifiers, nextLedgers, tickets]) => {
         if (!isMounted) {
           return;
         }
@@ -159,6 +175,7 @@ export function TicketCreationPage() {
             .slice()
             .sort((left, right) => left.priority - right.priority),
         );
+        setRecentTickets(tickets.slice(0, 5));
         setPageError(null);
       })
       .catch((error) => {
@@ -173,6 +190,7 @@ export function TicketCreationPage() {
       .finally(() => {
         if (isMounted) {
           setIsLoading(false);
+          setIsRecentTicketsLoading(false);
         }
       });
 
@@ -394,7 +412,7 @@ export function TicketCreationPage() {
         customer_name: customerName.trim(),
         items: payloadItems,
       });
-      setSubmission(response);
+      await loadRecentTickets();
       if (response.errors?.length) {
         setToast({
           type: "error",
@@ -467,44 +485,12 @@ export function TicketCreationPage() {
 
         <section className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(340px,0.85fr)]">
           <div className="space-y-5">
-            <article className="rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6">
-              <div className="flex items-center gap-3">
-                <span className="inline-flex h-12 w-12 items-center justify-center rounded-[18px] bg-stone-100 text-stone-700">
-                  <FontAwesomeIcon icon={faReceipt} className="h-5 w-5" />
-                </span>
-                <div>
-                  <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">
-                    Ticket details
-                  </p>
-                  {/* <h2 className="mt-1 text-2xl font-semibold text-stone-950">
-                    Ticket header
-                  </h2> */}
-                </div>
-              </div>
-
-              <div className="mt-5 grid gap-4 md:grid-cols-2">
-                <label className="space-y-2 md:col-span-1">
-                  <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
-                    Customer name
-                  </span>
-                  <Input
-                    value={customerName}
-                    onChange={(event) => setCustomerName(event.target.value)}
-                    placeholder="Customer or reference name"
-                  />
-                </label>
-              </div>
-            </article>
-
             <article className="rounded-[28px] border border-stone-900/8 bg-[#f7f4ee] p-5 shadow-[0_8px_24px_rgba(28,24,20,0.03)] sm:p-6">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">
-                    Ticket lines
+                    Ticket detail
                   </p>
-                  <h2 className="mt-1 text-2xl font-semibold text-stone-950">
-                    Amounts and identifiers
-                  </h2>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <Button
@@ -585,9 +571,16 @@ export function TicketCreationPage() {
               <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">
                 Ready to submit
               </p>
-              <h2 className="mt-1 text-2xl font-semibold text-stone-950">
-                Ticket summary
-              </h2>
+              <div className="mt-4 space-y-2">
+                <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+                  Customer name
+                </span>
+                <Input
+                  value={customerName}
+                  onChange={(event) => setCustomerName(event.target.value)}
+                  placeholder="Customer or reference name"
+                />
+              </div>
 
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 <div className="rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4">
@@ -598,9 +591,9 @@ export function TicketCreationPage() {
                     {items.length}
                   </p>
                 </div>
-                <div className="rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4 sm:col-span-2">
+                <div className="rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">
-                    Total amount
+                    Amount
                   </p>
                   <p className="mt-2 text-3xl font-semibold text-stone-950">
                     {formatAmount(String(totalDraftAmount))}
@@ -644,45 +637,52 @@ export function TicketCreationPage() {
               <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">
                 Latest result
               </p>
-              <h2 className="mt-1 text-2xl font-semibold text-stone-950">
-                Submission status
-              </h2>
-
-              {submission ? (
-                <div className="mt-5 space-y-4 text-sm text-stone-600">
-                  <div className="rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">
-                      Ticket
-                    </p>
-                    <p className="mt-2 text-lg font-semibold text-stone-950">
-                      {submission.ticket?.ticket_number ||
-                        submission.ticket_number ||
-                        "Pending"}
-                    </p>
-                    <p className="mt-2 leading-6 text-stone-500">
-                      {submission.errors?.length
-                        ? `${submission.created?.length || 0} lines saved, ${submission.errors.length} line issues returned.`
-                        : `${submission.ticket?.transaction_count || submission.transaction_count || 0} lines saved successfully.`}
-                    </p>
-                  </div>
-
-                  {submission.errors?.length ? (
-                    <div className="rounded-[22px] border border-amber-200 bg-amber-50 px-4 py-4">
-                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-700">
-                        Item issues
+              {isRecentTicketsLoading ? (
+                <div className="mt-5 rounded-[22px] border border-dashed border-stone-300 bg-stone-50 px-4 py-4 text-sm text-stone-500">
+                  Loading the latest tickets for this account.
+                </div>
+              ) : recentTickets.length ? (
+                <div className="mt-5 space-y-3">
+                  {recentTickets.map((ticket) => (
+                    <div
+                      key={ticket.id}
+                      className="rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">
+                            Ticket
+                          </p>
+                          <p className="mt-2 text-lg font-semibold text-stone-950">
+                            {ticket.ticket_number}
+                          </p>
+                        </div>
+                        <span className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">
+                          <FontAwesomeIcon icon={faTicket} className="h-3 w-3" />
+                          {ticket.transaction_count} entry
+                          {ticket.transaction_count === 1 ? "" : "ies"}
+                        </span>
+                      </div>
+                      <p className="mt-3 text-sm font-medium text-stone-700">
+                        {ticket.customer_name || "Walk-in Customer"}
                       </p>
-                      <ul className="mt-3 space-y-2 leading-6 text-amber-800">
-                        {submission.errors.map((error) => (
-                          <li key={error}>{error}</li>
-                        ))}
-                      </ul>
+                      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-stone-500">
+                        <span>{formatAmount(ticket.total_amount)}</span>
+                        <span>
+                          {new Date(ticket.created_at).toLocaleString("en-GB", {
+                            day: "2-digit",
+                            month: "short",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </span>
+                      </div>
                     </div>
-                  ) : null}
+                  ))}
                 </div>
               ) : (
                 <div className="mt-5 rounded-[22px] border border-dashed border-stone-300 bg-stone-50 px-4 py-4 text-sm text-stone-500">
-                  Once you submit a ticket, the saved ticket number and any line
-                  issues will appear here.
+                  No recent tickets yet for this account.
                 </div>
               )}
             </article>
