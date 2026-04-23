@@ -117,6 +117,7 @@ export function TicketCreationPage() {
     () => items.filter((item) => buildManualAllocations(item)?.length).length,
     [items],
   );
+  const hasWorkingLedgers = activeLedgers.length > 0;
 
   useEffect(() => {
     if (!hasActivePeriod || !activePeriod) {
@@ -127,10 +128,7 @@ export function TicketCreationPage() {
     let isMounted = true;
     setIsLoading(true);
 
-    Promise.all([
-      fetchIdentifiers(),
-      fetchLedgers({ period_id: activePeriod.id }),
-    ])
+    Promise.all([fetchIdentifiers(), fetchLedgers({ period_id: activePeriod.id })])
       .then(([nextIdentifiers, nextLedgers]) => {
         if (!isMounted) {
           return;
@@ -230,6 +228,11 @@ export function TicketCreationPage() {
   }
 
   async function previewItem(itemId: string) {
+    if (!hasWorkingLedgers) {
+      setToast({ type: "error", message: "Create at least one working ledger before previewing ticket lines." });
+      return;
+    }
+
     const draft = items.find((item) => item.id === itemId);
     if (!draft) {
       return;
@@ -283,13 +286,28 @@ export function TicketCreationPage() {
   }
 
   async function previewAllItems() {
+    if (!hasWorkingLedgers) {
+      setToast({ type: "error", message: "Create at least one working ledger before previewing ticket lines." });
+      return;
+    }
+
     for (const item of items) {
       await previewItem(item.id);
     }
   }
 
   async function handleSubmit() {
-    const payloadItems: Array<{ identifier: number; amount: string; allow_overflow: boolean; manual_allocations?: Array<{ ledger: number; amount: string }> }> = [];
+    if (!hasWorkingLedgers) {
+      setToast({ type: "error", message: "Create at least one working ledger before creating tickets." });
+      return;
+    }
+
+    const payloadItems: Array<{
+      identifier: number;
+      amount: string;
+      allow_overflow: boolean;
+      manual_allocations?: Array<{ ledger: number; amount: string }>;
+    }> = [];
 
     for (const item of items) {
       const identifier = identifierMap.get(normalizeIdentifierNumber(item.identifierNumber));
@@ -430,7 +448,12 @@ export function TicketCreationPage() {
                   <h2 className="mt-1 text-2xl font-semibold text-stone-950">Amounts and identifiers</h2>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <Button variant="outline" className="rounded-[18px]" onClick={previewAllItems} disabled={isLoading || items.some((item) => item.isPreviewing)}>
+                  <Button
+                    variant="outline"
+                    className="rounded-[18px]"
+                    onClick={previewAllItems}
+                    disabled={!hasWorkingLedgers || isLoading || items.some((item) => item.isPreviewing)}
+                  >
                     <FontAwesomeIcon icon={faLayerGroup} className="h-3.5 w-3.5" />
                     Preview all
                   </Button>
@@ -448,6 +471,10 @@ export function TicketCreationPage() {
               {isLoading ? (
                 <div className="mt-5 rounded-[22px] border border-stone-900/8 bg-white px-4 py-5 text-sm text-stone-500">
                   Loading identifiers and ledgers for this ticket workspace.
+                </div>
+              ) : !hasWorkingLedgers ? (
+                <div className="mt-5 rounded-[22px] border border-dashed border-amber-300 bg-amber-50 px-4 py-5 text-sm text-amber-800">
+                  No working ledgers are open for this account yet. The reserve helper does not unlock ticket entry on its own. Create at least one standard ledger first.
                 </div>
               ) : identifiers.length === 0 ? (
                 <div className="mt-5 rounded-[22px] border border-dashed border-stone-300 bg-white px-4 py-5 text-sm text-stone-500">
@@ -503,11 +530,17 @@ export function TicketCreationPage() {
               </div>
 
               <div className="mt-5 rounded-[22px] border border-stone-900/8 bg-[#f7f4ee] px-4 py-4 text-sm leading-6 text-stone-600">
-                Leave manual allocation off to let FlowBit fill ledgers by priority automatically. Turn it on for any line where you want to direct specific amounts into chosen ledgers first.
+                {!hasWorkingLedgers
+                  ? "Ticket creation stays locked until this account has at least one working ledger. The reserve helper does not count as a working ledger."
+                  : "Leave manual allocation off to let FlowBit fill ledgers by priority automatically. Turn it on for any line where you want to direct specific amounts into chosen ledgers first."}
               </div>
 
               <div className="mt-5 flex gap-3">
-                <Button className="flex-1 rounded-[18px]" onClick={handleSubmit} disabled={isSubmitting || isLoading || identifiers.length === 0}>
+                <Button
+                  className="flex-1 rounded-[18px]"
+                  onClick={handleSubmit}
+                  disabled={isSubmitting || isLoading || !hasWorkingLedgers || identifiers.length === 0}
+                >
                   {isSubmitting ? (
                     <>
                       <FontAwesomeIcon icon={faCircleNotch} className="h-4 w-4 animate-spin" />
