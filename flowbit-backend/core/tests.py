@@ -621,6 +621,23 @@ class RolePermissionTests(APITestCase):
         self.ledger.refresh_from_db()
         self.assertFalse(self.ledger.is_active)
 
+    def test_regular_user_can_reopen_closed_ledger_with_admin_override_code(self):
+        self.admin_user.profile.set_master_override_password('override-123')
+        self.admin_user.profile.save(update_fields=['master_override_password', 'updated_at'])
+        self.ledger.close()
+        self.client.force_authenticate(user=self.regular_user)
+
+        response = self.client.post(
+            f'/api/ledgers/{self.ledger.id}/reopen/',
+            {'admin_override_code': 'override-123'},
+            format='json'
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.ledger.refresh_from_db()
+        self.assertTrue(self.ledger.is_active)
+        self.assertIsNone(self.ledger.closed_at)
+
     def test_regular_user_can_create_ticket_with_transactions(self):
         self.client.force_authenticate(user=self.regular_user)
 
@@ -646,6 +663,16 @@ class RolePermissionTests(APITestCase):
         response = self.client.post(f'/api/ledgers/{self.ledger.id}/close/')
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_closed_ledger_cannot_reopen_if_period_is_closed(self):
+        self.client.force_authenticate(user=self.admin_user)
+        self.ledger.close()
+        self.period.close()
+
+        response = self.client.post(f'/api/ledgers/{self.ledger.id}/reopen/')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['detail'], 'Only ledgers in the active period can be reopened.')
 
     def test_admin_can_list_users(self):
         self.client.force_authenticate(user=self.admin_user)

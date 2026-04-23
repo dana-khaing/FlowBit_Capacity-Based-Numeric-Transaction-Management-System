@@ -179,6 +179,27 @@ class Ledger(models.Model):
 
         return self
 
+    def can_reopen(self):
+        if self.is_active:
+            raise ValidationError("Ledger is already active.")
+
+        if self.period is None or not self.period.is_open:
+            raise ValidationError("Only ledgers in the active period can be reopened.")
+
+        if self.is_capacity_reserve:
+            raise ValidationError("Capacity reserve ledgers cannot be reopened manually.")
+
+    def reopen(self, save=True):
+        self.can_reopen()
+
+        self.is_active = True
+        self.closed_at = None
+
+        if save:
+            self.save(update_fields=['is_active', 'closed_at'])
+
+        return self
+
 
 class Identifier(models.Model):
     number = models.CharField(max_length=3, unique=True)  # '000' to '999'
