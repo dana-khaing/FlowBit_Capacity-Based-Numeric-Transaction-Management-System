@@ -145,6 +145,13 @@ class Ledger(models.Model):
 
     class Meta:
         ordering = ['priority', '-end_date']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['period', 'owner'],
+                condition=Q(is_capacity_reserve=True),
+                name='unique_capacity_reserve_per_owner_period',
+            ),
+        ]
 
     def __str__(self):
         owner_label = self.owner.username if self.owner_id else 'unowned'
