@@ -584,8 +584,8 @@ export function TicketCreationPage() {
   }
 
   return (
-    <WorkspaceShell>
-      <div className="mx-auto w-full max-w-[1800px] px-4 py-5 sm:px-6 lg:px-8 lg:py-8">
+      <WorkspaceShell>
+      <div className="mx-auto w-full max-w-[1800px] px-4 pb-5 pt-3 sm:px-6 lg:px-8 lg:pb-8 lg:pt-4">
         {toast ? (
           <AdminActionToast
             message={toast.message}
@@ -613,7 +613,7 @@ export function TicketCreationPage() {
           onConfirm={confirmOverflowSubmission}
         />
 
-        <section className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(340px,0.85fr)]">
+        <section className="mt-3 grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(340px,0.85fr)]">
           <div className="space-y-5">
             <article className="rounded-[28px] border border-stone-900/8 bg-[#f7f4ee] p-5 shadow-[0_8px_24px_rgba(28,24,20,0.03)] sm:p-6">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
