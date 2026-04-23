@@ -7,24 +7,28 @@ from .models import Ledger, Identifier, Profile
 @receiver(post_save, sender=Ledger)
 def create_identifiers_on_first_ledger(sender, instance, created, **kwargs):
     """
-    When the VERY FIRST Ledger is created, populate all 000–999 identifiers.
+    Populate all 000–999 identifiers when the first standard ledger is created.
+
+    Reserve ledgers are created automatically as helpers and should not control
+    whether the shared identifier pool exists.
     """
     if not created:
         return  # only on create, not on update
 
-    # Check if this is the first ledger ever
-    if Ledger.objects.count() == 1:  # just created one, so total is 1
-        print("First Ledger detected → Creating all 000–999 identifiers...")
+    if instance.is_capacity_reserve or Identifier.objects.exists():
+        return
 
-        identifiers_to_create = []
-        for i in range(1000):  # 0 to 999
-            num_str = f"{i:03d}"  # '000', '001', ..., '999'
-            identifiers_to_create.append(Identifier(number=num_str))
+    print("First standard ledger detected → Creating all 000–999 identifiers...")
 
-        # Bulk create for performance (much faster than 1000 individual saves)
-        Identifier.objects.bulk_create(identifiers_to_create, ignore_conflicts=True)
+    identifiers_to_create = []
+    for i in range(1000):  # 0 to 999
+        num_str = f"{i:03d}"  # '000', '001', ..., '999'
+        identifiers_to_create.append(Identifier(number=num_str))
 
-        print(f"Created {len(identifiers_to_create)} identifiers (000–999)")
+    # Bulk create for performance (much faster than 1000 individual saves)
+    Identifier.objects.bulk_create(identifiers_to_create, ignore_conflicts=True)
+
+    print(f"Created {len(identifiers_to_create)} identifiers (000–999)")
 
 
 @receiver(post_save, sender=User)

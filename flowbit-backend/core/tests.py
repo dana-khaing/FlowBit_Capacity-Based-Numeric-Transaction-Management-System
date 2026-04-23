@@ -161,6 +161,36 @@ class OperationalDataPurgeCommandTests(APITestCase):
         self.assertIn('Deleted', out.getvalue())
 
 
+class IdentifierBootstrapTests(APITestCase):
+    def test_first_standard_ledger_creates_identifiers_even_if_reserve_exists(self):
+        owner = User.objects.create_user(username='ledger_owner', password='password123')
+        period = Period.objects.create(
+            name='Bootstrap Period',
+            start_date=timezone.make_aware(datetime(2027, 2, 1, 0, 0, 0)),
+            end_date=timezone.make_aware(datetime(2027, 2, 28, 23, 59, 59)),
+            is_open=True,
+        )
+
+        reserve = Ledger.get_capacity_reserve(period, owner, create=True)
+
+        self.assertTrue(reserve.is_capacity_reserve)
+        self.assertEqual(Identifier.objects.count(), 0)
+
+        Ledger.objects.create(
+            owner=owner,
+            period=period,
+            name='Primary Ledger',
+            end_date=period.end_date,
+            limit_per_identifier=Decimal('100.00'),
+            priority=1,
+            is_active=True,
+        )
+
+        self.assertEqual(Identifier.objects.count(), 1000)
+        self.assertTrue(Identifier.objects.filter(number='000').exists())
+        self.assertTrue(Identifier.objects.filter(number='999').exists())
+
+
 class ApiDocumentationTests(APITestCase):
     def setUp(self):
         self.admin_user = User.objects.create_user(username='docs_admin', password='password123')
