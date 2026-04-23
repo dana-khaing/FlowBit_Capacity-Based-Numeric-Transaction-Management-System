@@ -1109,6 +1109,59 @@ class PrivateWorkspaceTests(APITestCase):
         self.assertTrue(Overflow.objects.filter(transaction=one_transaction).exists())
         self.assertNotIn(Overflow.objects.get(transaction=one_transaction).id, returned_overflow_ids)
 
+    def test_period_summary_and_reports_are_scoped_to_the_current_user(self):
+        Ticket.objects.create(customer_name='User One Ticket', created_by=self.user_one)
+        user_one_ticket = Ticket.objects.get(customer_name='User One Ticket')
+        Transaction.objects.create(
+            ticket=user_one_ticket,
+            identifier=self.identifier,
+            total_amount=Decimal('60.00'),
+            created_by=self.user_one,
+        )
+
+        Ledger.objects.create(
+            owner=self.user_two,
+            period=self.period,
+            name='User Two Ledger',
+            end_date=self.period.end_date,
+            limit_per_identifier=Decimal('80.00'),
+            priority=1,
+            is_active=True,
+        )
+        user_two_ticket = Ticket.objects.create(customer_name='User Two Ticket', created_by=self.user_two)
+        Transaction.objects.create(
+            ticket=user_two_ticket,
+            identifier=self.identifier,
+            total_amount=Decimal('30.00'),
+            created_by=self.user_two,
+        )
+
+        self.client.force_authenticate(user=self.user_one)
+        summary_response = self.client.get(f'/api/periods/{self.period.id}/summary/')
+        dashboard_response = self.client.get('/api/reports/dashboard/', {'period_id': self.period.id})
+        identifier_report_response = self.client.get('/api/reports/identifiers/capacity/', {'period_id': self.period.id})
+
+        self.assertEqual(summary_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(summary_response.data['ledger_count'], 1)
+        self.assertEqual(summary_response.data['ticket_count'], 1)
+        self.assertEqual(summary_response.data['transaction_count'], 1)
+        self.assertEqual(summary_response.data['total_transaction_amount'], '60')
+
+        self.assertEqual(dashboard_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(dashboard_response.data['ledger_count'], 1)
+        self.assertEqual(dashboard_response.data['ticket_count'], 1)
+        self.assertEqual(dashboard_response.data['transaction_count'], 1)
+        self.assertEqual(dashboard_response.data['total_transaction_amount'], '60')
+
+        self.assertEqual(identifier_report_response.status_code, status.HTTP_200_OK)
+        row = next(
+            item
+            for item in identifier_report_response.data['results']
+            if item['number'] == self.identifier.number
+        )
+        self.assertEqual(row['total_capacity'], '100')
+        self.assertEqual(row['normal_usage'], '60')
+
 
 class LedgerArchiveAPITests(APITestCase):
     def setUp(self):
