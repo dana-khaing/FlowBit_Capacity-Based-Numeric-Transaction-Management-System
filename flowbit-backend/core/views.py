@@ -50,6 +50,7 @@ from .models import (
 from .audit import record_audit_log, serialize_audit_value, snapshot_instance
 from .permissions import (
     IsAdminRole,
+    IsAuthenticatedReadOnlyOrAdminWrite,
     IsAuthenticatedReadOnlyOrAdminWriteOrOverride,
     get_request_admin_override_code,
     get_request_admin_override_profile,
@@ -110,11 +111,15 @@ def selected_period_from_request(request):
     return Period.get_open_period()
 
 
-def period_transaction_queryset(period):
-    if period is None:
-        return Transaction.objects.all().distinct()
+def period_transaction_queryset(period, user=None):
+    queryset = Transaction.objects.all()
+    if user is not None:
+        queryset = queryset.filter(created_by=user)
 
-    return Transaction.objects.filter(
+    if period is None:
+        return queryset.distinct()
+
+    return queryset.filter(
         Q(allocations__ledger__period=period) |
         Q(
             allocations__isnull=True,
@@ -124,8 +129,10 @@ def period_transaction_queryset(period):
     ).distinct()
 
 
-def period_overflow_rows(period, identifier=None):
+def period_overflow_rows(period, identifier=None, user=None):
     overflow_queryset = Overflow.objects.all()
+    if user is not None:
+        overflow_queryset = overflow_queryset.filter(transaction__created_by=user)
     if identifier is not None:
         overflow_queryset = overflow_queryset.filter(transaction__identifier=identifier)
 
@@ -279,6 +286,7 @@ def parse_manual_allocations_input(identifier, period, manual_allocations):
                 period=period,
                 is_active=True,
                 is_capacity_reserve=False,
+                owner=getattr(identifier, '_allocation_owner', None),
             )
         except Ledger.DoesNotExist:
             raise ValidationError(f"Ledger {ledger_id} is not an active ledger in the current period.")
@@ -323,7 +331,7 @@ def serialize_allocation_preview(preview):
 class PeriodViewSet(viewsets.ModelViewSet):
     queryset = Period.objects.all()
     serializer_class = PeriodSerializer
-    permission_classes = [IsAuthenticatedReadOnlyOrAdminWriteOrOverride]
+    permission_classes = [IsAuthenticatedReadOnlyOrAdminWrite]
 
     def perform_create(self, serializer):
         period = serializer.save()
@@ -459,12 +467,19 @@ class PeriodViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'], url_path='summary')
     def summary(self, request, pk=None):
         period = self.get_object()
-        transactions = Transaction.objects.filter(allocations__ledger__period=period).distinct()
-        overflows = Overflow.objects.filter(transaction__allocations__ledger__period=period).distinct()
+        transactions = Transaction.objects.filter(
+            created_by=request.user,
+            allocations__ledger__period=period,
+        ).distinct()
+        overflows = Overflow.objects.filter(
+            transaction__created_by=request.user,
+            transaction__allocations__ledger__period=period,
+        ).distinct()
         total_transaction_amount = transactions.aggregate(
             total=Sum('total_amount')
         )['total'] or Decimal('0.00')
         total_allocated_amount = LedgerAllocation.objects.filter(
+            transaction__created_by=request.user,
             ledger__period=period
         ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
         total_pending_overflow_amount = overflows.filter(status='TCSO').aggregate(
@@ -475,6 +490,7 @@ class PeriodViewSet(viewsets.ModelViewSet):
         )['total'] or Decimal('0.00')
 
         ticket_count = Ticket.objects.filter(
+            created_by=request.user,
             transactions__allocations__ledger__period=period
         ).distinct().count()
 
@@ -482,9 +498,9 @@ class PeriodViewSet(viewsets.ModelViewSet):
             'period_id': period.id,
             'period_name': period.name,
             'is_open': period.is_open,
-            'ledger_count': period.ledgers.filter(is_capacity_reserve=False).count(),
-            'active_ledger_count': period.ledgers.filter(is_active=True, is_capacity_reserve=False).count(),
-            'closed_ledger_count': period.ledgers.filter(is_active=False, is_capacity_reserve=False).count(),
+            'ledger_count': period.ledgers.filter(owner=request.user, is_capacity_reserve=False).count(),
+            'active_ledger_count': period.ledgers.filter(owner=request.user, is_active=True, is_capacity_reserve=False).count(),
+            'closed_ledger_count': period.ledgers.filter(owner=request.user, is_active=False, is_capacity_reserve=False).count(),
             'transaction_count': transactions.count(),
             'ticket_count': ticket_count,
             'overflow_count': overflows.count(),
@@ -495,6 +511,7 @@ class PeriodViewSet(viewsets.ModelViewSet):
             'total_pending_overflow_amount': str(total_pending_overflow_amount),
             'total_approved_overflow_amount': str(total_approved_overflow_amount),
             'identifier_count': Identifier.objects.filter(
+                transactions__created_by=request.user,
                 transactions__allocations__ledger__period=period
             ).distinct().count(),
         }
@@ -505,10 +522,10 @@ class PeriodViewSet(viewsets.ModelViewSet):
 class LedgerViewSet(viewsets.ModelViewSet):
     queryset = Ledger.objects.all()
     serializer_class = LedgerSerializer
-    permission_classes = [IsAuthenticatedReadOnlyOrAdminWriteOrOverride]
+    permission_classes = [IsAuthenticated]
 
     def perform_create(self, serializer):
-        ledger = serializer.save()
+        ledger = serializer.save(owner=self.request.user)
         record_audit_log(
             self.request,
             'ledger.created',
@@ -555,10 +572,11 @@ class LedgerViewSet(viewsets.ModelViewSet):
         else:
             period = Period.get_open_period()
 
-        if period is not None:
-            Ledger.get_capacity_reserve(period, create=True)
+        if period is not None and self.request.user.is_authenticated:
+            Ledger.get_capacity_reserve(period, self.request.user, create=True)
 
         queryset = super().get_queryset()
+        queryset = queryset.filter(owner=self.request.user)
         return apply_ledger_period_filters(queryset, self.request.query_params)
 
     @action(detail=True, methods=['post'], url_path='close')
@@ -1089,7 +1107,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
         )
 
     def get_queryset(self):
-        queryset = super().get_queryset()
+        queryset = super().get_queryset().filter(created_by=self.request.user)
         return apply_ledger_period_filters(
             queryset,
             self.request.query_params,
@@ -1107,6 +1125,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         identifier = serializer.validated_data['identifier']
+        identifier._allocation_owner = request.user
         total_amount = serializer.validated_data['total_amount']
         manual_allocations_input = request.data.get('manual_allocations') or []
         allow_overflow = request.data.get('allow_overflow', True)
@@ -1215,6 +1234,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
             )
 
         manual_allocations_input = request.data.get('manual_allocations') or []
+        identifier._allocation_owner = request.user
         try:
             parsed_allocations = parse_manual_allocations_input(
                 identifier=identifier,
@@ -1275,7 +1295,7 @@ class OverflowViewSet(viewsets.ModelViewSet):
         )
 
     def get_queryset(self):
-        queryset = super().get_queryset()
+        queryset = super().get_queryset().filter(transaction__created_by=self.request.user)
         return apply_ledger_period_filters(
             queryset,
             self.request.query_params,
@@ -1288,6 +1308,8 @@ class OverflowViewSet(viewsets.ModelViewSet):
         pending = Overflow.objects.filter(status='TCSO').select_related(
             'transaction__identifier',
             'transaction__ticket'
+        ).filter(
+            transaction__created_by=request.user
         ).order_by('-transaction__timestamp')
         serializer = self.get_serializer(pending, many=True)
         return Response(serializer.data)
@@ -1298,6 +1320,8 @@ class OverflowViewSet(viewsets.ModelViewSet):
         approved = Overflow.objects.filter(status=Overflow.STATUS_CSO).select_related(
             'transaction__identifier',
             'transaction__ticket'
+        ).filter(
+            transaction__created_by=request.user
         ).order_by('-approved_at')
         serializer = self.get_serializer(approved, many=True)
         return Response(serializer.data)
@@ -1355,13 +1379,14 @@ class OverflowViewSet(viewsets.ModelViewSet):
                 adjustment = IdentifierCapacityAdjustment.objects.create(
                     identifier=overflow.transaction.identifier,
                     period=target_period,
+                    owner=overflow.transaction.created_by,
                     overflow=overflow,
                     amount=extra_amount,
                     adjustment_type=IdentifierCapacityAdjustment.TYPE_APPROVAL_EXTRA,
                     helper_name=helper_name,
                 )
                 if adjustment:
-                    Ledger.get_capacity_reserve(target_period, create=True)
+                    Ledger.get_capacity_reserve(target_period, overflow.transaction.created_by, create=True)
 
         overflow.collaborators.set(collaborators)
         record_audit_log(
@@ -1580,6 +1605,7 @@ class CollaboratorViewSet(viewsets.ModelViewSet):
 
         overflows = Overflow.objects.filter(
             collaborators=collaborator,
+            transaction__created_by=request.user,
             status=Overflow.STATUS_CSO,
         ).select_related(
             'transaction__identifier',
@@ -1725,12 +1751,12 @@ class DashboardReportView(APIView):
 
     def get(self, request):
         period = selected_period_from_request(request)
-        transaction_queryset = period_transaction_queryset(period)
-        ticket_queryset = Ticket.objects.all()
-        ledger_queryset = Ledger.objects.filter(is_capacity_reserve=False)
-        adjustment_queryset = IdentifierCapacityAdjustment.objects.all()
-        allocation_queryset = LedgerAllocation.objects.all()
-        overflow_rows = period_overflow_rows(period)
+        transaction_queryset = period_transaction_queryset(period, request.user)
+        ticket_queryset = Ticket.objects.filter(created_by=request.user)
+        ledger_queryset = Ledger.objects.filter(owner=request.user, is_capacity_reserve=False)
+        adjustment_queryset = IdentifierCapacityAdjustment.objects.filter(owner=request.user)
+        allocation_queryset = LedgerAllocation.objects.filter(transaction__created_by=request.user)
+        overflow_rows = period_overflow_rows(period, user=request.user)
 
         if period is not None:
             ticket_queryset = ticket_queryset.filter(
@@ -1795,12 +1821,20 @@ class IdentifierCapacityReportView(APIView):
                 normal_usage = Decimal('0.00')
                 reserve_granted = Decimal('0.00')
                 reserve_used = Decimal('0.00')
-                pending_overflow = identifier.current_overflow_amount
-                approved_overflow = identifier.confirmed_overflow_amount
+                pending_overflow = Overflow.objects.filter(
+                    transaction__identifier=identifier,
+                    transaction__created_by=request.user,
+                    status=Overflow.STATUS_TCSO,
+                ).aggregate(total=Sum('excess_amount'))['total'] or Decimal('0.00')
+                approved_overflow = Overflow.objects.filter(
+                    transaction__identifier=identifier,
+                    transaction__created_by=request.user,
+                    status=Overflow.STATUS_CSO,
+                ).aggregate(total=Sum('excess_amount'))['total'] or Decimal('0.00')
                 refunded_overflow = sum(
                     (
                         row.excess_amount
-                        for row in period_overflow_rows(period=None, identifier=identifier)
+                        for row in period_overflow_rows(period=None, identifier=identifier, user=request.user)
                         if row.status == Overflow.STATUS_REFUNDED
                     ),
                     Decimal('0.00'),
@@ -1810,22 +1844,26 @@ class IdentifierCapacityReportView(APIView):
                     is_active=True,
                     period=period,
                     is_capacity_reserve=False,
+                    owner=request.user,
                 ).aggregate(total=Sum('limit_per_identifier'))['total'] or Decimal('0.00')
                 normal_usage = LedgerAllocation.objects.filter(
                     transaction__identifier=identifier,
+                    transaction__created_by=request.user,
                     ledger__period=period,
                     ledger__is_capacity_reserve=False,
                 ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
                 reserve_granted = IdentifierCapacityAdjustment.objects.filter(
                     identifier=identifier,
                     period=period,
+                    owner=request.user,
                 ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
                 reserve_used = LedgerAllocation.objects.filter(
                     transaction__identifier=identifier,
+                    transaction__created_by=request.user,
                     ledger__period=period,
                     ledger__is_capacity_reserve=True,
                 ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
-                overflow_rows = period_overflow_rows(period=period, identifier=identifier)
+                overflow_rows = period_overflow_rows(period=period, identifier=identifier, user=request.user)
                 pending_overflow = sum(
                     (row.excess_amount for row in overflow_rows if row.status == Overflow.STATUS_TCSO),
                     Decimal('0.00'),
@@ -2387,7 +2425,7 @@ class TicketListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        queryset = super().get_queryset()
+        queryset = super().get_queryset().filter(created_by=self.request.user)
         return apply_ledger_period_filters(
             queryset,
             self.request.query_params,
@@ -2400,6 +2438,9 @@ class TicketDetailView(generics.RetrieveAPIView):
     serializer_class = TicketSerializer
     permission_classes = [IsAuthenticated]
     lookup_field = 'ticket_number'
+
+    def get_queryset(self):
+        return super().get_queryset().filter(created_by=self.request.user)
 
 
 class CreateTicketWithTransactions(APIView):
@@ -2434,6 +2475,7 @@ class CreateTicketWithTransactions(APIView):
             is_active=True,
             period=open_period,
             is_capacity_reserve=False,
+            owner=request.user,
         ).exists():
             return Response(
                 {"detail": "No active ledgers available in the current open period."},
@@ -2490,6 +2532,7 @@ class CreateTicketWithTransactions(APIView):
 
                 # Create transaction → this triggers allocation & overflow logic
                 manual_allocations_input = item.get('manual_allocations') or []
+                identifier._allocation_owner = request.user
                 allow_overflow = item.get('allow_overflow', True)
                 if isinstance(allow_overflow, str):
                     allow_overflow = allow_overflow.strip().lower() not in {'false', '0', 'no'}
