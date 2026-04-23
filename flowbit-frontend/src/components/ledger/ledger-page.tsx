@@ -6,6 +6,7 @@ import {
   faArrowDownWideShort,
   faCircleDot,
   faClock,
+  faGripVertical,
   faLayerGroup,
   faLock,
   faPlus,
@@ -22,6 +23,7 @@ import {
   createLedger,
   fetchLedgers,
   reorderLedgerPriorities,
+  updateLedger,
   type FlowBitLedger,
 } from "@/lib/ledger-client";
 
@@ -41,6 +43,7 @@ type PendingAction =
   | { type: "create" }
   | { type: "close"; ledger: FlowBitLedger }
   | { type: "reorder" }
+  | { type: "update-time"; ledger: FlowBitLedger }
   | null;
 
 const defaultLedgerForm: LedgerFormState = {
@@ -80,17 +83,27 @@ function formatCurrencyLike(value: string) {
   });
 }
 
+function formatTimeValue(value: string) {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "15:00";
+  }
+
+  return `${String(parsed.getHours()).padStart(2, "0")}:${String(parsed.getMinutes()).padStart(2, "0")}`;
+}
+
 export function LedgerPage() {
   const [user, setUser] = useState<AuthUser | null>(getStoredUser());
   const [activeLedgers, setActiveLedgers] = useState<FlowBitLedger[]>([]);
   const [archivedLedgers, setArchivedLedgers] = useState<FlowBitLedger[]>([]);
-  const [priorityDrafts, setPriorityDrafts] = useState<Record<number, string>>({});
+  const [closeTimeDrafts, setCloseTimeDrafts] = useState<Record<number, string>>({});
   const [form, setForm] = useState<LedgerFormState>(defaultLedgerForm);
   const [toast, setToast] = useState<ToastState>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [overrideCode, setOverrideCode] = useState("");
+  const [draggedLedgerId, setDraggedLedgerId] = useState<number | null>(null);
 
   const { activePeriod, hasActivePeriod, error: periodError } = usePeriodState();
   const canManageLedgers = user?.role === "admin";
@@ -109,7 +122,7 @@ export function LedgerPage() {
     if (!activePeriod) {
       setActiveLedgers([]);
       setArchivedLedgers([]);
-      setPriorityDrafts({});
+      setCloseTimeDrafts({});
       setIsLoading(false);
       return;
     }
@@ -122,10 +135,14 @@ export function LedgerPage() {
         fetchLedgers({ period_id: activePeriod.id, section: "archive" }),
       ]);
       setUser(nextUser);
-      setActiveLedgers(nextActiveLedgers.filter((ledger) => ledger.is_active));
+      const sortedActiveLedgers = nextActiveLedgers
+        .filter((ledger) => ledger.is_active)
+        .slice()
+        .sort((left, right) => left.priority - right.priority);
+      setActiveLedgers(sortedActiveLedgers);
       setArchivedLedgers(nextArchivedLedgers.filter((ledger) => !ledger.is_active));
-      setPriorityDrafts(
-        Object.fromEntries(nextActiveLedgers.filter((ledger) => ledger.is_active).map((ledger) => [ledger.id, String(ledger.priority)])),
+      setCloseTimeDrafts(
+        Object.fromEntries(sortedActiveLedgers.map((ledger) => [ledger.id, formatTimeValue(ledger.end_date)])),
       );
     } catch (loadError) {
       setToast({
@@ -169,13 +186,19 @@ export function LedgerPage() {
         setToast({ type: "success", message: "Ledger closed successfully." });
       } else if (pendingAction.type === "reorder") {
         await reorderLedgerPriorities(
-          activeLedgers.map((ledger) => ({
+          activeLedgers.map((ledger, index) => ({
             id: ledger.id,
-            priority: Number(priorityDrafts[ledger.id] || ledger.priority),
+            priority: index + 1,
           })),
           requiresOverride ? overrideCode : undefined,
         );
         setToast({ type: "success", message: "Ledger priorities updated successfully." });
+      } else if (pendingAction.type === "update-time") {
+        await updateLedger(pendingAction.ledger.id, {
+          close_time: closeTimeDrafts[pendingAction.ledger.id] || formatTimeValue(pendingAction.ledger.end_date),
+          admin_override_code: requiresOverride ? overrideCode : undefined,
+        });
+        setToast({ type: "success", message: "Ledger close time updated successfully." });
       }
 
       setPendingAction(null);
@@ -218,6 +241,8 @@ export function LedgerPage() {
             ? `Close ${pendingAction.ledger.name}?`
             : pendingAction?.type === "reorder"
               ? "Save ledger priority changes?"
+              : pendingAction?.type === "update-time"
+                ? `Save ${pendingAction.ledger.name} closing time?`
               : "Create ledger?"
         }
         description={
@@ -225,6 +250,8 @@ export function LedgerPage() {
             ? "Closing a ledger stops new allocations to that ledger immediately."
             : pendingAction?.type === "reorder"
               ? "Reorder the active ledgers so the system uses the updated priority sequence."
+              : pendingAction?.type === "update-time"
+                ? "Update the closing time for this ledger in the active period."
               : "Create a new ledger in the active period using the details entered in the setup form."
         }
         codeValue={overrideCode}
@@ -234,6 +261,8 @@ export function LedgerPage() {
             ? "Close ledger"
             : pendingAction?.type === "reorder"
               ? "Save order"
+              : pendingAction?.type === "update-time"
+                ? "Save time"
               : "Create ledger"
         }
         showCodeInput={requiresOverride}
@@ -245,6 +274,11 @@ export function LedgerPage() {
         }}
         onConfirm={handleConfirmAction}
       />
+
+      {/*
+        Drag-and-drop reorders active ledgers locally first.
+        Persisted priorities are written only after explicit confirmation.
+      */}
 
       <div className="mx-auto w-full max-w-[1800px] px-4 py-5 sm:px-6 lg:px-8 lg:py-8">
         <section className="rounded-[28px] border border-stone-900/8 bg-white px-5 py-6 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:px-8 sm:py-8">
@@ -282,18 +316,47 @@ export function LedgerPage() {
             <div className="mt-6 space-y-4">
               {isLoading ? (
                 <p className="text-sm text-stone-500">Loading ledgers...</p>
-              ) : activeLedgers.length ? (
-                activeLedgers
-                  .slice()
-                  .sort((left, right) => left.priority - right.priority)
-                  .map((ledger) => (
+            ) : activeLedgers.length ? (
+              activeLedgers
+                  .map((ledger, index) => (
                     <div
                       key={ledger.id}
+                      draggable
+                      onDragStart={() => setDraggedLedgerId(ledger.id)}
+                      onDragEnd={() => setDraggedLedgerId(null)}
+                      onDragOver={(event) => event.preventDefault()}
+                      onDrop={() => {
+                        if (draggedLedgerId === null || draggedLedgerId === ledger.id) {
+                          return;
+                        }
+
+                        setActiveLedgers((current) => {
+                          const draggedIndex = current.findIndex((item) => item.id === draggedLedgerId);
+                          const targetIndex = current.findIndex((item) => item.id === ledger.id);
+                          if (draggedIndex < 0 || targetIndex < 0) {
+                            return current;
+                          }
+
+                          const next = [...current];
+                          const [draggedLedger] = next.splice(draggedIndex, 1);
+                          next.splice(targetIndex, 0, draggedLedger);
+                          return next;
+                        });
+                        setDraggedLedgerId(null);
+                      }}
                       className="rounded-[24px] border border-stone-900/8 bg-[#f7f4ef] px-5 py-5"
                     >
                       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                         <div className="space-y-2">
-                          <p className="text-xl font-semibold text-stone-950">{ledger.name}</p>
+                          <div className="flex items-center gap-3">
+                            <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-stone-500">
+                              <FontAwesomeIcon icon={faGripVertical} className="h-4 w-4" />
+                            </span>
+                            <div>
+                              <p className="text-xl font-semibold text-stone-950">{ledger.name}</p>
+                              <p className="text-sm text-stone-500">Priority {index + 1}</p>
+                            </div>
+                          </div>
                           <div className="flex flex-wrap gap-3 text-sm text-stone-500">
                             <span className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-2">
                               <FontAwesomeIcon icon={faClock} className="h-3.5 w-3.5" />
@@ -308,14 +371,13 @@ export function LedgerPage() {
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                           <label className="block space-y-2">
                             <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-500">
-                              Priority
+                              Close time
                             </span>
                             <Input
-                              type="number"
-                              min="1"
-                              value={priorityDrafts[ledger.id] ?? String(ledger.priority)}
+                              type="time"
+                              value={closeTimeDrafts[ledger.id] ?? formatTimeValue(ledger.end_date)}
                               onChange={(event) =>
-                                setPriorityDrafts((current) => ({
+                                setCloseTimeDrafts((current) => ({
                                   ...current,
                                   [ledger.id]: event.target.value,
                                 }))
@@ -324,6 +386,9 @@ export function LedgerPage() {
                               disabled={isSaving}
                             />
                           </label>
+                          <Button variant="outline" onClick={() => openAction({ type: "update-time", ledger })} disabled={isSaving}>
+                            Save time
+                          </Button>
                           <Button variant="outline" onClick={() => openAction({ type: "close", ledger })} disabled={isSaving}>
                             Close
                           </Button>
