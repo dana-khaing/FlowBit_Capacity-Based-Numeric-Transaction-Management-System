@@ -60,6 +60,20 @@ export async function closeLedger(ledgerId: number, adminOverrideCode?: string) 
   });
 }
 
+export async function updateLedger(
+  ledgerId: number,
+  payload: {
+    close_time: string;
+    admin_override_code?: string;
+  },
+) {
+  return apiRequest<FlowBitLedger>(`/ledgers/${ledgerId}/`, {
+    method: "PATCH",
+    headers: authHeaders(),
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function reorderLedgerPriorities(
   ledgerPriorities: Array<{ id: number; priority: number }>,
   adminOverrideCode?: string,
