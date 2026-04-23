@@ -457,7 +457,7 @@ export function TicketCreationPage() {
                     <FontAwesomeIcon icon={faLayerGroup} className="h-3.5 w-3.5" />
                     Preview all
                   </Button>
-                  <Button className="rounded-[18px]" onClick={() => addItem()}>
+                  <Button className="rounded-[18px]" onClick={() => addItem()} disabled={!hasWorkingLedgers || isLoading}>
                     <FontAwesomeIcon icon={faPlus} className="h-3.5 w-3.5" />
                     Add identifier
                   </Button>
