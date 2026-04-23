@@ -459,7 +459,7 @@ export function TicketCreationPage() {
                   </Button>
                   <Button className="rounded-[18px]" onClick={() => addItem()}>
                     <FontAwesomeIcon icon={faPlus} className="h-3.5 w-3.5" />
-                    Add line
+                    Add identifier
                   </Button>
                 </div>
               </div>
