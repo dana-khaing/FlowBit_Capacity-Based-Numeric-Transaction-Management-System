@@ -9,7 +9,9 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { TicketManualAllocationPanel } from "@/components/tickets/ticket-manual-allocation-panel";
 import { TicketPreviewCard } from "@/components/tickets/ticket-preview-card";
+import type { FlowBitLedger } from "@/lib/ledger-client";
 import type { AllocationPreview, FlowBitIdentifier } from "@/lib/ticket-client";
 
 export type TicketDraftItem = {
@@ -17,6 +19,8 @@ export type TicketDraftItem = {
   identifierNumber: string;
   amount: string;
   allowOverflow: boolean;
+  manualMode: boolean;
+  manualAllocations: Record<number, string>;
   preview: AllocationPreview | null;
   previewError: string | null;
   isPreviewing: boolean;
@@ -26,9 +30,12 @@ type TicketItemRowProps = {
   item: TicketDraftItem;
   index: number;
   identifier: FlowBitIdentifier | null;
+  activeLedgers: FlowBitLedger[];
   canRemove: boolean;
   onFieldChange: (itemId: string, field: "identifierNumber" | "amount", value: string) => void;
   onAllowOverflowChange: (itemId: string, checked: boolean) => void;
+  onManualModeChange: (itemId: string, checked: boolean) => void;
+  onManualAmountChange: (itemId: string, ledgerId: number, value: string) => void;
   onRemove: (itemId: string) => void;
   onPreview: (itemId: string) => void;
   onDuplicate: (itemId: string) => void;
@@ -51,9 +58,12 @@ export function TicketItemRow({
   item,
   index,
   identifier,
+  activeLedgers,
   canRemove,
   onFieldChange,
   onAllowOverflowChange,
+  onManualModeChange,
+  onManualAmountChange,
   onRemove,
   onPreview,
   onDuplicate,
@@ -141,6 +151,16 @@ export function TicketItemRow({
             </span>
           ) : null}
         </div>
+      </div>
+
+      <div className="mt-4">
+        <TicketManualAllocationPanel
+          enabled={item.manualMode}
+          ledgers={activeLedgers}
+          values={item.manualAllocations}
+          onToggle={(checked) => onManualModeChange(item.id, checked)}
+          onAmountChange={(ledgerId, value) => onManualAmountChange(item.id, ledgerId, value)}
+        />
       </div>
 
       <div className="mt-4">
