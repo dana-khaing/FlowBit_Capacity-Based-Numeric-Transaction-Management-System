@@ -391,7 +391,7 @@ export function LedgerPage() {
 
         <section className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.3fr)_minmax(360px,0.9fr)]">
           <article className="rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="flex flex-col gap-4 xl:grid xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start">
               <div>
                 <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Active ledgers</p>
                 <h2 className="mt-2 text-2xl font-semibold text-stone-950">{activePeriod?.name}</h2>
@@ -402,7 +402,7 @@ export function LedgerPage() {
                   )}
                 </p>
               </div>
-              <div className="flex flex-wrap gap-3 text-sm text-stone-500">
+              <div className="flex flex-wrap gap-3 text-sm text-stone-500 xl:justify-end">
                 <span className="inline-flex items-center gap-2 rounded-full bg-stone-50 px-3 py-2">
                   <FontAwesomeIcon icon={faCircleDot} className="h-3.5 w-3.5 text-emerald-600" />
                   Period active
