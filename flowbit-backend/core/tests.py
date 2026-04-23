@@ -1134,6 +1134,27 @@ class PrivateWorkspaceTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
+    def test_admin_period_create_also_creates_creators_reserve_ledger(self):
+        self.client.force_authenticate(user=self.approver)
+
+        response = self.client.post('/api/periods/', {
+            'name': 'Creator Reserve Period',
+            'start_date': '2028-01-01',
+            'end_date': '2028-01-31',
+            'close_time': '15:00',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        period = Period.objects.get(id=response.data['id'])
+        self.assertTrue(
+            Ledger.objects.filter(
+                period=period,
+                owner=self.approver,
+                is_capacity_reserve=True,
+                is_active=True,
+            ).exists()
+        )
+
     def test_ledger_list_only_returns_current_users_ledgers_and_reserve(self):
         Ledger.objects.create(
             owner=self.user_two,
