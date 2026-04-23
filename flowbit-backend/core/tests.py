@@ -1232,6 +1232,26 @@ class LedgerArchiveAPITests(APITestCase):
         self.assertTrue(Ledger.objects.filter(period=self.active_period, is_capacity_reserve=True).exists())
         self.assertTrue(any(item['is_capacity_reserve'] for item in response.data))
 
+    def test_ledger_list_collapses_duplicate_reserve_ledgers_for_period(self):
+        existing_reserve = Ledger.objects.get(period=self.active_period, is_capacity_reserve=True)
+        Ledger.objects.create(
+            period=self.active_period,
+            name='Duplicate Capacity Reserve',
+            end_date=self.active_period.end_date,
+            limit_per_identifier=Decimal('0.00'),
+            priority=Ledger.CAPACITY_RESERVE_PRIORITY,
+            is_active=True,
+            is_capacity_reserve=True,
+        )
+
+        response = self.client.get('/api/ledgers/', {'period_id': self.active_period.id})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        reserves = Ledger.objects.filter(period=self.active_period, is_capacity_reserve=True)
+        self.assertEqual(reserves.count(), 1)
+        self.assertEqual(reserves.first().id, existing_reserve.id)
+        self.assertEqual(sum(1 for item in response.data if item['is_capacity_reserve']), 1)
+
     def test_reserve_ledger_cannot_be_updated(self):
         reserve_ledger = Ledger.objects.get(period=self.active_period, is_capacity_reserve=True)
 

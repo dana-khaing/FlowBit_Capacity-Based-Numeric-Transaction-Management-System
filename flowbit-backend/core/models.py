@@ -168,10 +168,20 @@ class Ledger(models.Model):
 
     @classmethod
     def get_capacity_reserve(cls, period, create=False):
-        reserve = cls.objects.filter(
-            period=period,
-            is_capacity_reserve=True,
-        ).order_by('id').first()
+        reserves = list(
+            cls.objects.filter(
+                period=period,
+                is_capacity_reserve=True,
+            ).order_by('id')
+        )
+        reserve = reserves[0] if reserves else None
+
+        if reserve and len(reserves) > 1:
+            with transaction.atomic():
+                for duplicate in reserves[1:]:
+                    LedgerAllocation.objects.filter(ledger=duplicate).update(ledger=reserve)
+                    duplicate.delete()
+
         if reserve or not create or period is None:
             return reserve
 
