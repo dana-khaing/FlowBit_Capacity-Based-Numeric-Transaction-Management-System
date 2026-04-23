@@ -1223,6 +1223,15 @@ class LedgerArchiveAPITests(APITestCase):
         self.assertEqual(reserve_ledger.priority, Ledger.CAPACITY_RESERVE_PRIORITY)
         self.assertTrue(reserve_ledger.is_active)
 
+    def test_ledger_list_recreates_missing_reserve_ledger_for_period(self):
+        Ledger.objects.filter(period=self.active_period, is_capacity_reserve=True).delete()
+
+        response = self.client.get('/api/ledgers/', {'period_id': self.active_period.id})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(Ledger.objects.filter(period=self.active_period, is_capacity_reserve=True).exists())
+        self.assertTrue(any(item['is_capacity_reserve'] for item in response.data))
+
     def test_reserve_ledger_cannot_be_updated(self):
         reserve_ledger = Ledger.objects.get(period=self.active_period, is_capacity_reserve=True)
 

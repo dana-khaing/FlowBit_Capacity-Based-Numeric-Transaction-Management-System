@@ -546,6 +546,18 @@ class LedgerViewSet(viewsets.ModelViewSet):
         )
 
     def get_queryset(self):
+        period_id = self.request.query_params.get('period_id')
+        if period_id:
+            try:
+                period = Period.objects.get(id=period_id)
+            except (Period.DoesNotExist, ValueError, TypeError):
+                period = None
+        else:
+            period = Period.get_open_period()
+
+        if period is not None:
+            Ledger.get_capacity_reserve(period, create=True)
+
         queryset = super().get_queryset()
         return apply_ledger_period_filters(queryset, self.request.query_params)
 
