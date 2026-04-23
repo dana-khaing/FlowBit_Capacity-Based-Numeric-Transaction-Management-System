@@ -508,9 +508,11 @@ export function LedgerPage() {
                               <FontAwesomeIcon icon={faClock} className="h-3.5 w-3.5" />
                               Ends {formatDateTime(ledger.end_date)}
                             </span>
-                            <span className="inline-flex items-center gap-2 whitespace-nowrap rounded-full bg-white px-3 py-2">
-                              Capacity {formatCurrencyLike(ledger.limit_per_identifier)}
-                            </span>
+                            {!ledger.is_capacity_reserve ? (
+                              <span className="inline-flex items-center gap-2 whitespace-nowrap rounded-full bg-white px-3 py-2">
+                                Capacity {formatCurrencyLike(ledger.limit_per_identifier)}
+                              </span>
+                            ) : null}
                             {ledger.is_capacity_reserve ? (
                               <span className="inline-flex items-center gap-2 whitespace-nowrap rounded-full bg-white px-3 py-2">
                                 <FontAwesomeIcon icon={faLock} className="h-3.5 w-3.5" />
