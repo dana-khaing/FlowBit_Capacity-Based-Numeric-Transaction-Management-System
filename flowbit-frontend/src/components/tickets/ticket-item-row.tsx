@@ -111,19 +111,8 @@ export function TicketItemRow({
 
       <div className="mt-5 grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] xl:grid-cols-[minmax(0,0.95fr)_minmax(0,0.8fr)_auto]">
         <label className="space-y-2">
-          <span className="flex items-center justify-between gap-3 text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
-            <span>Identifier</span>
-            {permutationCount > 1 ? (
-              <Button
-                type="button"
-                variant="outline"
-                className={`h-8 rounded-[14px] px-3 text-xs ${permutationsSelected ? "border-stone-950 bg-stone-950 text-white hover:bg-stone-900 hover:text-white" : ""}`}
-                onClick={() => onTogglePermutations(item.id)}
-              >
-                <FontAwesomeIcon icon={faGrip} className="h-3 w-3" />
-                x{permutationCount}
-              </Button>
-            ) : null}
+          <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+            Identifier
           </span>
           <Input
             ref={identifierInputRef}
@@ -216,6 +205,20 @@ export function TicketItemRow({
         </div>
 
         <div className="ml-auto flex flex-wrap items-center gap-2 text-sm text-stone-500">
+          {permutationCount > 1 ? (
+            <button
+              type="button"
+              onClick={() => onTogglePermutations(item.id)}
+              className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] transition ${
+                permutationsSelected
+                  ? "bg-stone-950 text-white hover:bg-stone-900"
+                  : "bg-white text-stone-600 hover:bg-stone-100"
+              }`}
+            >
+              <FontAwesomeIcon icon={faGrip} className="h-3 w-3" />
+              x{permutationCount}
+            </button>
+          ) : null}
           {permutationsSelected ? (
             <span className="inline-flex items-center gap-2 rounded-full bg-stone-950 px-3 py-1 text-white">
               <FontAwesomeIcon icon={faGrip} className="h-3 w-3" />
