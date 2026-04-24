@@ -1,5 +1,5 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faArrowDownWideShort, faSliders, faXmark } from "@fortawesome/free-solid-svg-icons";
+import { faArrowDownWideShort, faCircleExclamation, faSliders, faXmark } from "@fortawesome/free-solid-svg-icons";
 import { Input } from "@/components/ui/input";
 import type { FlowBitLedger } from "@/lib/ledger-client";
 
@@ -17,12 +17,14 @@ function formatAmount(value: string) {
 
 type TicketManualAllocationPanelProps = {
   ledgers: FlowBitLedger[];
+  lineAmount: string;
   values: Record<number, string>;
   onAmountChange: (ledgerId: number, value: string) => void;
 };
 
 export function TicketManualAllocationPanel({
   ledgers,
+  lineAmount,
   values,
   onAmountChange,
 }: TicketManualAllocationPanelProps) {
@@ -30,6 +32,9 @@ export function TicketManualAllocationPanel({
     const amount = Number(value);
     return sum + (Number.isNaN(amount) ? 0 : amount);
   }, 0);
+  const lineAmountValue = Number(lineAmount);
+  const exceedsLineAmount =
+    !Number.isNaN(lineAmountValue) && lineAmountValue > 0 && manualTotal > lineAmountValue;
 
   return (
     <div className="space-y-3">
@@ -37,6 +42,14 @@ export function TicketManualAllocationPanel({
         <span>Manual total</span>
         <span className="font-semibold text-stone-900">{formatAmount(String(manualTotal))}</span>
       </div>
+      {exceedsLineAmount ? (
+        <div className="flex items-start gap-2 rounded-[18px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <FontAwesomeIcon icon={faCircleExclamation} className="mt-0.5 h-4 w-4 flex-none" />
+          <span>
+            Manual amounts are greater than the entry amount. The extra portion will not fit this entry as typed.
+          </span>
+        </div>
+      ) : null}
       {ledgers.map((ledger) => (
         <div
           key={ledger.id}
