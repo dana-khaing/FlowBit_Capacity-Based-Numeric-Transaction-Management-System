@@ -109,7 +109,7 @@ export function TicketItemRow({
         </div>
       </div>
 
-      <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,0.8fr)_auto]">
+      <div className="mt-5 grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] xl:grid-cols-[minmax(0,0.95fr)_minmax(0,0.8fr)_auto]">
         <label className="space-y-2">
           <span className="flex items-center justify-between gap-3 text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
             <span>Identifier</span>
@@ -184,7 +184,7 @@ export function TicketItemRow({
           ) : null}
         </div>
 
-        <div className="space-y-2">
+        <div className="space-y-2 md:col-span-2 xl:col-span-1">
           <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Preview</span>
           <Button className="h-12 rounded-[18px]" variant="outline" onClick={() => onPreview(item.id)} disabled={item.isPreviewing}>
             <FontAwesomeIcon icon={faArrowRotateRight} className={`h-3.5 w-3.5 ${item.isPreviewing ? "animate-spin" : ""}`} />
