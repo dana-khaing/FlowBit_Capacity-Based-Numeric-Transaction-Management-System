@@ -22,6 +22,7 @@ export type TicketDraftItem = {
   preview: AllocationPreview | null;
   previewError: string | null;
   isPreviewing: boolean;
+  isTakingAll: boolean;
 };
 
 type TicketItemRowProps = {
@@ -35,6 +36,7 @@ type TicketItemRowProps = {
   onFieldChange: (itemId: string, field: "identifierNumber" | "amount", value: string) => void;
   onAllocationModeChange: (itemId: string, mode: "default" | "manual") => void;
   onManualAmountChange: (itemId: string, ledgerId: number, value: string) => void;
+  onTakeAll: (itemId: string) => void;
   onRemove: (itemId: string) => void;
   onPreview: (itemId: string) => void;
   onDuplicate: (itemId: string) => void;
@@ -52,6 +54,7 @@ export function TicketItemRow({
   onFieldChange,
   onAllocationModeChange,
   onManualAmountChange,
+  onTakeAll,
   onRemove,
   onPreview,
   onDuplicate,
@@ -99,20 +102,31 @@ export function TicketItemRow({
           ) : null}
         </label>
 
-        <label className="space-y-2">
+        <div className="space-y-2">
           <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Amount</span>
-          <Input
-            inputMode="decimal"
-            pattern="[0-9]*[.]?[0-9]*"
-            value={item.amount}
-            onChange={(event) => onFieldChange(item.id, "amount", event.target.value)}
-            placeholder="0.00"
-            className={amountError ? "border-rose-300 bg-rose-50 focus:border-rose-500" : undefined}
-          />
+          <div className="flex gap-2">
+            <Input
+              inputMode="decimal"
+              pattern="[0-9]*[.]?[0-9]*"
+              value={item.amount}
+              onChange={(event) => onFieldChange(item.id, "amount", event.target.value)}
+              placeholder="0.00"
+              className={amountError ? "border-rose-300 bg-rose-50 focus:border-rose-500" : undefined}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              className="h-12 rounded-[18px] whitespace-nowrap"
+              onClick={() => onTakeAll(item.id)}
+              disabled={!identifier || item.isTakingAll}
+            >
+              {item.isTakingAll ? "Taking" : "Take all"}
+            </Button>
+          </div>
           {amountError ? (
             <p className="text-sm text-rose-600">{amountError}</p>
           ) : null}
-        </label>
+        </div>
 
         <div className="space-y-2">
           <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Preview</span>

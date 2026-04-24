@@ -23,6 +23,7 @@ import { usePeriodState } from "@/components/period/use-period-state";
 import { fetchLedgers, type FlowBitLedger } from "@/lib/ledger-client";
 import {
   createTicket,
+  fetchIdentifierCapacity,
   fetchTickets,
   fetchIdentifierOptions,
   type FlowBitTicketListItem,
@@ -58,6 +59,7 @@ function createDraftItem(partial?: Partial<TicketDraftItem>): TicketDraftItem {
     preview: null,
     previewError: null,
     isPreviewing: false,
+    isTakingAll: false,
     ...partial,
   };
 }
@@ -79,6 +81,14 @@ function sanitizeAmountInput(value: string) {
   const [whole = "", ...decimalParts] = sanitized.split(".");
   const decimal = decimalParts.join("").slice(0, 2);
   return decimalParts.length ? `${whole}.${decimal}` : whole;
+}
+
+function toTakeAllAmount(remainingCapacity: string) {
+  const remaining = Number(remainingCapacity);
+  if (Number.isNaN(remaining) || remaining <= 0) {
+    return "0.00";
+  }
+  return (remaining / 1.25).toFixed(2);
 }
 
 function formatAmount(value: string) {
@@ -308,6 +318,57 @@ export function TicketCreationPage() {
       preview: null,
       previewError: null,
     }));
+  }
+
+  async function handleTakeAll(itemId: string) {
+    const draft = items.find((item) => item.id === itemId);
+    if (!draft) {
+      return;
+    }
+
+    const identifier = identifierMap.get(
+      normalizeIdentifierNumber(draft.identifierNumber),
+    );
+    if (!identifier) {
+      setToast({
+        type: "error",
+        message: "Choose a valid identifier before using Take all.",
+      });
+      return;
+    }
+
+    setItemState(itemId, (item) => ({
+      ...item,
+      isTakingAll: true,
+      previewError: null,
+    }));
+
+    try {
+      const capacity = await fetchIdentifierCapacity(identifier.id);
+      const nextAmount = toTakeAllAmount(capacity.remaining_capacity);
+      if (Number(nextAmount) <= 0) {
+        setToast({
+          type: "error",
+          message: `Identifier ${identifier.number} has no remaining capacity.`,
+        });
+      }
+      setItemState(itemId, (item) => ({
+        ...item,
+        amount: nextAmount,
+        preview: null,
+        previewError: null,
+        isTakingAll: false,
+      }));
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Request failed.";
+      setItemState(itemId, (item) => ({
+        ...item,
+        isTakingAll: false,
+        previewError: message,
+      }));
+      setToast({ type: "error", message });
+    }
   }
 
   function addItem(partial?: Partial<TicketDraftItem>) {
@@ -752,6 +813,7 @@ export function TicketCreationPage() {
                       onFieldChange={handleFieldChange}
                       onAllocationModeChange={handleAllocationModeChange}
                       onManualAmountChange={handleManualAmountChange}
+                      onTakeAll={handleTakeAll}
                       onRemove={removeItem}
                       onPreview={previewItem}
                       onDuplicate={duplicateItem}

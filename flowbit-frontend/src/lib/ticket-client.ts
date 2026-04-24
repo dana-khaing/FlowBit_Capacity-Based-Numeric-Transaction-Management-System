@@ -6,6 +6,12 @@ export type FlowBitIdentifierOption = {
   number: string;
 };
 
+export type FlowBitIdentifierCapacity = {
+  id: number;
+  number: string;
+  remaining_capacity: string;
+};
+
 export type TicketManualAllocation = {
   ledger: number;
   amount: string;
@@ -92,6 +98,13 @@ function authHeaders() {
 
 export async function fetchIdentifierOptions() {
   return apiRequest<FlowBitIdentifierOption[]>("/identifiers/options/", {
+    method: "GET",
+    headers: authHeaders(),
+  });
+}
+
+export async function fetchIdentifierCapacity(identifierId: number) {
+  return apiRequest<FlowBitIdentifierCapacity>(`/identifiers/${identifierId}/`, {
     method: "GET",
     headers: authHeaders(),
   });
