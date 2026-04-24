@@ -364,9 +364,12 @@ def _normalize_manual_allocations(manual_allocations):
     return normalized
 
 
-def preview_transaction_allocation(identifier, total_amount, period, manual_allocations=None):
+def _to_allocation_basis_amount(amount):
+    return (Decimal(str(amount)) * Decimal('1.25')).quantize(Decimal('0.01'))
+
+def preview_transaction_allocation(identifier, total_amount, period, manual_allocations=None, apply_multiplier=True):
     total_amount = Decimal(str(total_amount))
-    remaining = total_amount
+    remaining = _to_allocation_basis_amount(total_amount) if apply_multiplier else total_amount
     allocation_preview = []
     seen_ledgers = set()
 
@@ -431,8 +434,8 @@ def preview_transaction_allocation(identifier, total_amount, period, manual_allo
     }
 
 
-def _allocate_transaction_amount(transaction_obj, amount, period):
-    remaining = amount
+def _allocate_transaction_amount(transaction_obj, amount, period, apply_multiplier=False):
+    remaining = _to_allocation_basis_amount(amount) if apply_multiplier else amount
     active_ledgers = Ledger.objects.filter(
         is_active=True,
         period=period,
@@ -480,12 +483,13 @@ def _allocate_transaction_amount(transaction_obj, amount, period):
     return remaining
 
 
-def _allocate_manual_transaction_amount(transaction_obj, amount, period, manual_allocations):
+def _allocate_manual_transaction_amount(transaction_obj, amount, period, manual_allocations, apply_multiplier=False):
     preview = preview_transaction_allocation(
         identifier=transaction_obj.identifier,
         total_amount=amount,
         period=period,
         manual_allocations=manual_allocations,
+        apply_multiplier=apply_multiplier,
     )
 
     for item in preview['ledger_allocations']:
@@ -743,9 +747,15 @@ class Transaction(models.Model):
                 self.total_amount,
                 open_period,
                 manual_allocations,
+                apply_multiplier=True,
             )
         else:
-            remaining = _allocate_transaction_amount(self, self.total_amount, open_period)
+            remaining = _allocate_transaction_amount(
+                self,
+                self.total_amount,
+                open_period,
+                apply_multiplier=True,
+            )
 
         if remaining > 0:
             Overflow.objects.create(

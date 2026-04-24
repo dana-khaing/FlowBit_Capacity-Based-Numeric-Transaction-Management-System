@@ -6,6 +6,7 @@ from unittest.mock import patch
 from django.core.management import call_command
 from django.core import mail
 from django.contrib.auth.models import User
+from django.db.models import Sum
 from django.test import override_settings
 from django.test import SimpleTestCase
 from django.utils import timezone
@@ -1232,6 +1233,40 @@ class PrivateWorkspaceTests(APITestCase):
         self.assertEqual(ticket.customer_name, expected_name)
         self.assertEqual(response.data['ticket']['customer_name'], expected_name)
 
+    def test_allocation_preview_uses_125_percent_of_ticket_amount(self):
+        self.client.force_authenticate(user=self.user_one)
+
+        response = self.client.post('/api/transactions/allocation-preview/', {
+            'identifier': self.identifier.id,
+            'total_amount': '1000.00',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        allocated_total = sum(
+            Decimal(item['allocated_amount']) + Decimal(item['overflow_amount'])
+            for item in response.data['ledger_allocations']
+        )
+        allocated_total += Decimal(response.data['reserve_allocated'])
+        allocated_total += Decimal(response.data['overflow_amount'])
+        self.assertEqual(allocated_total, Decimal('1250.00'))
+
+    def test_ticket_creation_allocates_125_percent_to_ledgers(self):
+        self.client.force_authenticate(user=self.user_one)
+
+        response = self.client.post('/api/tickets/create-with-items/', {
+            'customer_name': 'Markup Customer',
+            'items': [
+                {'identifier': self.identifier.id, 'amount': '1000.00'},
+            ],
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        ticket = Ticket.objects.get(id=response.data['ticket']['id'])
+        transaction = ticket.transactions.get()
+        allocation_total = transaction.allocations.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+        self.assertEqual(transaction.total_amount, Decimal('1000.00'))
+        self.assertEqual(allocation_total, Decimal('1250.00'))
+
     def test_ticket_creation_rejects_empty_items_without_creating_ticket(self):
         self.client.force_authenticate(user=self.user_one)
 
@@ -1546,7 +1581,7 @@ class PrivateWorkflowAPITests(APITestCase):
         }, format='json')
 
         self.assertEqual(preview_response.status_code, status.HTTP_200_OK)
-        self.assertEqual(preview_response.data['overflow_amount'], '50.00')
+        self.assertEqual(preview_response.data['overflow_amount'], '107.50')
 
         create_response = self.client.post('/api/transactions/', {
             'identifier': self.identifier.id,
@@ -1562,7 +1597,7 @@ class PrivateWorkflowAPITests(APITestCase):
         tx = Transaction.objects.get(id=create_response.data['id'])
         self.assertTrue(tx.allocations.filter(ledger=self.active_ledger, amount=Decimal('100.00')).exists())
         self.assertTrue(tx.allocations.filter(ledger=backup_ledger, amount=Decimal('80.00')).exists())
-        self.assertEqual(Overflow.objects.get(transaction=tx).excess_amount, Decimal('50.00'))
+        self.assertEqual(Overflow.objects.get(transaction=tx).excess_amount, Decimal('107.50'))
 
     def test_ledger_export_pdf_is_limited_to_owner(self):
         allowed_response = self.client.get(f'/api/ledgers/{self.active_ledger.id}/export-pdf/')
