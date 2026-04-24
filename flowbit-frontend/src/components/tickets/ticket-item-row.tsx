@@ -28,6 +28,8 @@ type TicketItemRowProps = {
   item: TicketDraftItem;
   index: number;
   identifier: FlowBitIdentifierOption | null;
+  identifierError?: string | null;
+  amountError?: string | null;
   activeLedgers: FlowBitLedger[];
   canRemove: boolean;
   onFieldChange: (itemId: string, field: "identifierNumber" | "amount", value: string) => void;
@@ -43,6 +45,8 @@ export function TicketItemRow({
   item,
   index,
   identifier,
+  identifierError,
+  amountError,
   activeLedgers,
   canRemove,
   onFieldChange,
@@ -83,12 +87,16 @@ export function TicketItemRow({
             value={item.identifierNumber}
             onChange={(event) => onFieldChange(item.id, "identifierNumber", event.target.value)}
             placeholder="Enter identifier"
+            className={identifierError ? "border-rose-300 bg-rose-50 focus:border-rose-500" : undefined}
           />
           <datalist id={datalistId}>
             {identifierOptions.map((option) => (
               <option key={option} value={option} />
             ))}
           </datalist>
+          {identifierError ? (
+            <p className="text-sm text-rose-600">{identifierError}</p>
+          ) : null}
         </label>
 
         <label className="space-y-2">
@@ -99,7 +107,11 @@ export function TicketItemRow({
             value={item.amount}
             onChange={(event) => onFieldChange(item.id, "amount", event.target.value)}
             placeholder="0.00"
+            className={amountError ? "border-rose-300 bg-rose-50 focus:border-rose-500" : undefined}
           />
+          {amountError ? (
+            <p className="text-sm text-rose-600">{amountError}</p>
+          ) : null}
         </label>
 
         <div className="space-y-2">

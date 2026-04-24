@@ -122,8 +122,15 @@ export function TicketCreationPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pageError, setPageError] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastState>(null);
+  const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
   const [pendingOverflowSubmission, setPendingOverflowSubmission] =
     useState<PendingOverflowSubmission | null>(null);
+  const [lastCreatedTicket, setLastCreatedTicket] = useState<{
+    ticketNumber: string;
+    customerName: string;
+    entryCount: number;
+    totalAmount: string;
+  } | null>(null);
 
   const {
     activePeriod,
@@ -148,8 +155,17 @@ export function TicketCreationPage() {
         matchedIdentifier:
           identifierMap.get(normalizeIdentifierNumber(item.identifierNumber)) ||
           null,
+        identifierError:
+          hasAttemptedSubmit &&
+          !identifierMap.get(normalizeIdentifierNumber(item.identifierNumber))
+            ? "Choose a valid identifier."
+            : null,
+        amountError:
+          hasAttemptedSubmit && (!(item.amount.trim()) || Number(item.amount) <= 0)
+            ? "Enter an amount greater than zero."
+            : null,
       })),
-    [identifierMap, items],
+    [hasAttemptedSubmit, identifierMap, items],
   );
   const totalDraftAmount = useMemo(
     () =>
@@ -263,6 +279,9 @@ export function TicketCreationPage() {
       preview: null,
       previewError: null,
     }));
+    if (hasAttemptedSubmit) {
+      setHasAttemptedSubmit(false);
+    }
   }
 
   function handleAllocationModeChange(itemId: string, mode: "default" | "manual") {
@@ -405,6 +424,8 @@ export function TicketCreationPage() {
   }
 
   async function prepareTicketSubmission() {
+    setHasAttemptedSubmit(true);
+
     if (!hasWorkingLedgers) {
       setToast({
         type: "error",
@@ -526,8 +547,22 @@ export function TicketCreationPage() {
           type: "success",
           message: `Ticket ${response.ticket?.ticket_number || response.ticket_number} created.`,
         });
+        setLastCreatedTicket({
+          ticketNumber: response.ticket?.ticket_number || response.ticket_number || "Pending",
+          customerName:
+            response.ticket?.customer_name || customerName.trim() || "Walk-in Customer",
+          entryCount:
+            response.ticket?.transaction_count ||
+            response.transaction_count ||
+            payloadItems.length,
+          totalAmount:
+            response.ticket?.total_amount ||
+            response.total_amount ||
+            formatAmount(String(totalDraftAmount)),
+        });
         setCustomerName("");
         setItems([createDraftItem()]);
+        setHasAttemptedSubmit(false);
       }
     } catch (error) {
       const message =
@@ -673,8 +708,22 @@ export function TicketCreationPage() {
               ) : null}
 
               {isLoading ? (
-                <div className="mt-5 rounded-[22px] border border-stone-900/8 bg-white px-4 py-5 text-sm text-stone-500">
-                  Loading identifiers and ledgers for this ticket workspace.
+                <div className="mt-5 space-y-4">
+                  {[0, 1].map((row) => (
+                    <div
+                      key={row}
+                      className="animate-pulse rounded-[26px] border border-stone-900/8 bg-white p-5"
+                    >
+                      <div className="h-3 w-20 rounded-full bg-stone-200" />
+                      <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,0.8fr)_auto]">
+                        <div className="h-12 rounded-[18px] bg-stone-100" />
+                        <div className="h-12 rounded-[18px] bg-stone-100" />
+                        <div className="h-12 rounded-[18px] bg-stone-100" />
+                      </div>
+                      <div className="mt-4 h-14 rounded-[20px] bg-stone-100" />
+                      <div className="mt-4 h-20 rounded-[22px] bg-stone-100" />
+                    </div>
+                  ))}
                 </div>
               ) : !hasWorkingLedgers ? (
                 <div className="mt-5 rounded-[22px] border border-dashed border-amber-300 bg-amber-50 px-4 py-5 text-sm text-amber-800">
@@ -696,6 +745,8 @@ export function TicketCreationPage() {
                       item={item}
                       index={index}
                       identifier={item.matchedIdentifier}
+                      identifierError={item.identifierError}
+                      amountError={item.amountError}
                       activeLedgers={activeLedgers}
                       canRemove={resolvedItems.length > 1}
                       onFieldChange={handleFieldChange}
@@ -747,6 +798,22 @@ export function TicketCreationPage() {
                 </div>
               </div>
 
+              {lastCreatedTicket ? (
+                <div className="mt-4 rounded-[22px] border border-emerald-200 bg-emerald-50 px-4 py-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">
+                    Last created ticket
+                  </p>
+                  <div className="mt-3 space-y-2 text-sm text-emerald-900">
+                    <p className="text-lg font-semibold">{lastCreatedTicket.ticketNumber}</p>
+                    <p>{lastCreatedTicket.customerName}</p>
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-emerald-800">
+                      <span>{formatEntryCount(lastCreatedTicket.entryCount)}</span>
+                      <span>{lastCreatedTicket.totalAmount}</span>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
               <div className="mt-4 flex gap-3">
                 <Button
                   className="flex-1 rounded-[18px]"
@@ -785,8 +852,17 @@ export function TicketCreationPage() {
                 Latest result
               </p>
               {isRecentTicketsLoading ? (
-                <div className="mt-5 rounded-[22px] border border-dashed border-stone-300 bg-stone-50 px-4 py-4 text-sm text-stone-500">
-                  Loading the latest tickets for this account.
+                <div className="mt-5 space-y-3">
+                  {[0, 1, 2].map((row) => (
+                    <div
+                      key={row}
+                      className="animate-pulse rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4"
+                    >
+                      <div className="h-3 w-20 rounded-full bg-stone-200" />
+                      <div className="mt-3 h-5 w-40 rounded-full bg-stone-200" />
+                      <div className="mt-3 h-3 w-28 rounded-full bg-stone-200" />
+                    </div>
+                  ))}
                 </div>
               ) : recentTickets.length ? (
                 <div className="mt-5 space-y-3">
