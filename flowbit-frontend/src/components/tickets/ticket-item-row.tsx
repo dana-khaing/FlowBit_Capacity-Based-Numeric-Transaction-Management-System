@@ -19,6 +19,7 @@ export type TicketDraftItem = {
   id: string;
   identifierNumber: string;
   amount: string;
+  permutationIdentifiers: string[] | null;
   manualMode: boolean;
   manualAllocations: Record<number, string>;
   preview: AllocationPreview | null;
@@ -40,7 +41,7 @@ type TicketItemRowProps = {
   onAllocationModeChange: (itemId: string, mode: "default" | "manual") => void;
   onManualAmountChange: (itemId: string, ledgerId: number, value: string) => void;
   onAutoFocusHandled: () => void;
-  onExpandPermutations: (itemId: string) => void;
+  onTogglePermutations: (itemId: string) => void;
   onTakeAll: (itemId: string) => void;
   onRequestNextRow: (itemId: string) => void;
   onRemove: (itemId: string) => void;
@@ -62,7 +63,7 @@ export function TicketItemRow({
   onAllocationModeChange,
   onManualAmountChange,
   onAutoFocusHandled,
-  onExpandPermutations,
+  onTogglePermutations,
   onTakeAll,
   onRequestNextRow,
   onRemove,
@@ -74,6 +75,7 @@ export function TicketItemRow({
   const identifierInputRef = useRef<HTMLInputElement | null>(null);
   const amountInputRef = useRef<HTMLInputElement | null>(null);
   const permutationCount = getPermutationCount(item.identifierNumber);
+  const permutationsSelected = Boolean(item.permutationIdentifiers?.length);
 
   useEffect(() => {
     if (!autoFocusField) {
@@ -115,8 +117,8 @@ export function TicketItemRow({
               <Button
                 type="button"
                 variant="outline"
-                className="h-8 rounded-[14px] px-3 text-xs"
-                onClick={() => onExpandPermutations(item.id)}
+                className={`h-8 rounded-[14px] px-3 text-xs ${permutationsSelected ? "border-stone-950 bg-stone-950 text-white hover:bg-stone-900 hover:text-white" : ""}`}
+                onClick={() => onTogglePermutations(item.id)}
               >
                 <FontAwesomeIcon icon={faGrip} className="h-3 w-3" />
                 x{permutationCount}
@@ -214,6 +216,12 @@ export function TicketItemRow({
         </div>
 
         <div className="ml-auto flex flex-wrap items-center gap-2 text-sm text-stone-500">
+          {permutationsSelected ? (
+            <span className="inline-flex items-center gap-2 rounded-full bg-stone-950 px-3 py-1 text-white">
+              <FontAwesomeIcon icon={faGrip} className="h-3 w-3" />
+              x{item.permutationIdentifiers?.length} selected
+            </span>
+          ) : null}
           {identifier ? (
             <span className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1">
               <FontAwesomeIcon icon={faCircleCheck} className="h-3 w-3 text-emerald-600" />
