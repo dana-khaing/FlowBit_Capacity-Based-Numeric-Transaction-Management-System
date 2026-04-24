@@ -59,6 +59,7 @@ function createDraftItem(partial?: Partial<TicketDraftItem>): TicketDraftItem {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     identifierNumber: "",
     amount: "",
+    permutationIdentifiers: null,
     manualMode: false,
     manualAllocations: {},
     preview: null,
@@ -221,7 +222,8 @@ export function TicketCreationPage() {
     () =>
       items.reduce((sum, item) => {
         const amount = Number(item.amount);
-        return sum + (Number.isNaN(amount) ? 0 : amount);
+        const multiplier = item.permutationIdentifiers?.length || 1;
+        return sum + (Number.isNaN(amount) ? 0 : amount * multiplier);
       }, 0),
     [items],
   );
@@ -428,6 +430,7 @@ export function TicketCreationPage() {
     addItem({
       identifierNumber: source.identifierNumber,
       amount: source.amount,
+      permutationIdentifiers: source.permutationIdentifiers ? [...source.permutationIdentifiers] : null,
       manualMode: source.manualMode,
       manualAllocations: { ...source.manualAllocations },
       preview: source.preview,
@@ -435,44 +438,19 @@ export function TicketCreationPage() {
     });
   }
 
-  function expandIdentifierPermutations(itemId: string) {
-    const source = items.find((item) => item.id === itemId);
-    if (!source) {
-      return;
-    }
-
-    const permutations = buildIdentifierPermutations(source.identifierNumber);
-    if (permutations.length <= 1) {
-      return;
-    }
-
-    setItems((current) => {
-      const sourceIndex = current.findIndex((item) => item.id === itemId);
-      if (sourceIndex === -1) {
-        return current;
+  function toggleIdentifierPermutations(itemId: string) {
+    setItemState(itemId, (item) => {
+      const permutations = buildIdentifierPermutations(item.identifierNumber);
+      if (permutations.length <= 1) {
+        return item;
       }
 
-      const replacementItems = permutations.map((identifierNumber, index) =>
-        index === 0
-          ? {
-              ...current[sourceIndex],
-              identifierNumber,
-              preview: null,
-              previewError: null,
-            }
-          : createDraftItem({
-              identifierNumber,
-              amount: source.amount,
-              manualMode: source.manualMode,
-              manualAllocations: { ...source.manualAllocations },
-            }),
-      );
-
-      return [
-        ...current.slice(0, sourceIndex),
-        ...replacementItems,
-        ...current.slice(sourceIndex + 1),
-      ];
+      return {
+        ...item,
+        permutationIdentifiers: item.permutationIdentifiers ? null : permutations,
+        preview: null,
+        previewError: null,
+      };
     });
   }
 
@@ -634,17 +612,43 @@ export function TicketCreationPage() {
       }
 
       const manualAllocations = buildManualAllocations(item);
+      const targetIdentifierNumbers =
+        item.permutationIdentifiers && item.permutationIdentifiers.length
+          ? item.permutationIdentifiers
+          : [normalizeIdentifierNumber(item.identifierNumber)];
       try {
-        const preview = await previewTicketItemAllocation({
-          identifier: identifier.id,
-          total_amount: amount,
-          ...(manualAllocations ? { manual_allocations: manualAllocations } : {}),
-        });
-        nextPreviewState.set(item.id, { preview, previewError: null });
-        if (preview.has_overflow) {
-          overflowEntryCount += 1;
-          overflowAmount += Number(preview.overflow_amount) || 0;
+        let primaryPreview: TicketDraftItem["preview"] = null;
+
+        for (const targetIdentifierNumber of targetIdentifierNumbers) {
+          const targetIdentifier = identifierMap.get(targetIdentifierNumber);
+          if (!targetIdentifier) {
+            throw new Error(`Identifier ${targetIdentifierNumber} is not available.`);
+          }
+
+          const preview = await previewTicketItemAllocation({
+            identifier: targetIdentifier.id,
+            total_amount: amount,
+            ...(manualAllocations ? { manual_allocations: manualAllocations } : {}),
+          });
+
+          if (!primaryPreview) {
+            primaryPreview = preview;
+          }
+
+          if (preview.has_overflow) {
+            overflowEntryCount += 1;
+            overflowAmount += Number(preview.overflow_amount) || 0;
+          }
+
+          payloadItems.push({
+            identifier: targetIdentifier.id,
+            amount,
+            allow_overflow: true,
+            ...(manualAllocations ? { manual_allocations: manualAllocations } : {}),
+          });
         }
+
+        nextPreviewState.set(item.id, { preview: primaryPreview, previewError: null });
       } catch (error) {
         const message =
           error instanceof Error ? error.message : "Request failed.";
@@ -666,12 +670,6 @@ export function TicketCreationPage() {
         return null;
       }
 
-      payloadItems.push({
-        identifier: identifier.id,
-        amount,
-        allow_overflow: true,
-        ...(manualAllocations ? { manual_allocations: manualAllocations } : {}),
-      });
     }
 
     setItems((current) =>
@@ -918,7 +916,7 @@ export function TicketCreationPage() {
                       onAllocationModeChange={handleAllocationModeChange}
                       onManualAmountChange={handleManualAmountChange}
                       onAutoFocusHandled={() => setPendingFocus(null)}
-                      onExpandPermutations={expandIdentifierPermutations}
+                      onTogglePermutations={toggleIdentifierPermutations}
                       onTakeAll={handleTakeAll}
                       onRequestNextRow={handleRequestNextRow}
                       onRemove={removeItem}
