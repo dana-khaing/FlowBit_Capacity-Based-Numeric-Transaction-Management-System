@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faArrowRotateRight,
@@ -32,11 +33,14 @@ type TicketItemRowProps = {
   identifierError?: string | null;
   amountError?: string | null;
   activeLedgers: FlowBitLedger[];
+  autoFocusField?: "identifier" | "amount" | null;
   canRemove: boolean;
   onFieldChange: (itemId: string, field: "identifierNumber" | "amount", value: string) => void;
   onAllocationModeChange: (itemId: string, mode: "default" | "manual") => void;
   onManualAmountChange: (itemId: string, ledgerId: number, value: string) => void;
+  onAutoFocusHandled: () => void;
   onTakeAll: (itemId: string) => void;
+  onRequestNextRow: (itemId: string) => void;
   onRemove: (itemId: string) => void;
   onPreview: (itemId: string) => void;
   onDuplicate: (itemId: string) => void;
@@ -50,17 +54,36 @@ export function TicketItemRow({
   identifierError,
   amountError,
   activeLedgers,
+  autoFocusField,
   canRemove,
   onFieldChange,
   onAllocationModeChange,
   onManualAmountChange,
+  onAutoFocusHandled,
   onTakeAll,
+  onRequestNextRow,
   onRemove,
   onPreview,
   onDuplicate,
   identifierOptions,
 }: TicketItemRowProps) {
   const datalistId = `ticket-identifiers-${item.id}`;
+  const identifierInputRef = useRef<HTMLInputElement | null>(null);
+  const amountInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (!autoFocusField) {
+      return;
+    }
+
+    if (autoFocusField === "identifier") {
+      identifierInputRef.current?.focus();
+    } else {
+      amountInputRef.current?.focus();
+    }
+
+    onAutoFocusHandled();
+  }, [autoFocusField, onAutoFocusHandled]);
 
   return (
     <div className="rounded-[26px] border border-stone-900/8 bg-white p-4 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-5">
@@ -84,11 +107,18 @@ export function TicketItemRow({
         <label className="space-y-2">
           <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Identifier</span>
           <Input
+            ref={identifierInputRef}
             list={datalistId}
             inputMode="numeric"
             pattern="[0-9]*"
             value={item.identifierNumber}
             onChange={(event) => onFieldChange(item.id, "identifierNumber", event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                amountInputRef.current?.focus();
+              }
+            }}
             placeholder="Enter identifier"
             className={identifierError ? "border-rose-300 bg-rose-50 focus:border-rose-500" : undefined}
           />
@@ -106,10 +136,17 @@ export function TicketItemRow({
           <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Amount</span>
           <div className="flex gap-2">
             <Input
+              ref={amountInputRef}
               inputMode="decimal"
               pattern="[0-9]*[.]?[0-9]*"
               value={item.amount}
               onChange={(event) => onFieldChange(item.id, "amount", event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  onRequestNextRow(item.id);
+                }
+              }}
               placeholder="0.00"
               className={amountError ? "border-rose-300 bg-rose-50 focus:border-rose-500" : undefined}
             />
@@ -178,6 +215,7 @@ export function TicketItemRow({
         <div className="mt-4">
           <TicketManualAllocationPanel
             ledgers={activeLedgers}
+            lineAmount={item.amount}
             values={item.manualAllocations}
             onAmountChange={(ledgerId, value) => onManualAmountChange(item.id, ledgerId, value)}
           />

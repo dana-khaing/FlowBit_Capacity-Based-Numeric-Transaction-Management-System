@@ -49,6 +49,11 @@ type PendingOverflowSubmission = {
   overflowAmount: number;
 };
 
+type PendingFocusState = {
+  itemId: string;
+  field: "identifier" | "amount";
+} | null;
+
 function createDraftItem(partial?: Partial<TicketDraftItem>): TicketDraftItem {
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -133,6 +138,7 @@ export function TicketCreationPage() {
   const [pageError, setPageError] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastState>(null);
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
+  const [pendingFocus, setPendingFocus] = useState<PendingFocusState>(null);
   const [pendingOverflowSubmission, setPendingOverflowSubmission] =
     useState<PendingOverflowSubmission | null>(null);
   const [lastCreatedTicket, setLastCreatedTicket] = useState<{
@@ -371,8 +377,13 @@ export function TicketCreationPage() {
     }
   }
 
-  function addItem(partial?: Partial<TicketDraftItem>) {
-    setItems((current) => [...current, createDraftItem(partial)]);
+  function addItem(
+    partial?: Partial<TicketDraftItem>,
+    focusField: "identifier" | "amount" = "identifier",
+  ) {
+    const nextItem = createDraftItem(partial);
+    setItems((current) => [...current, nextItem]);
+    setPendingFocus({ itemId: nextItem.id, field: focusField });
   }
 
   function duplicateItem(itemId: string) {
@@ -396,6 +407,21 @@ export function TicketCreationPage() {
         ? current
         : current.filter((item) => item.id !== itemId),
     );
+  }
+
+  function handleRequestNextRow(itemId: string) {
+    const currentIndex = items.findIndex((item) => item.id === itemId);
+    if (currentIndex === -1) {
+      return;
+    }
+
+    const nextItem = items[currentIndex + 1];
+    if (nextItem) {
+      setPendingFocus({ itemId: nextItem.id, field: "identifier" });
+      return;
+    }
+
+    addItem(undefined, "identifier");
   }
 
   async function previewItem(itemId: string) {
@@ -809,11 +835,16 @@ export function TicketCreationPage() {
                       identifierError={item.identifierError}
                       amountError={item.amountError}
                       activeLedgers={activeLedgers}
+                      autoFocusField={
+                        pendingFocus?.itemId === item.id ? pendingFocus.field : null
+                      }
                       canRemove={resolvedItems.length > 1}
                       onFieldChange={handleFieldChange}
                       onAllocationModeChange={handleAllocationModeChange}
                       onManualAmountChange={handleManualAmountChange}
+                      onAutoFocusHandled={() => setPendingFocus(null)}
                       onTakeAll={handleTakeAll}
+                      onRequestNextRow={handleRequestNextRow}
                       onRemove={removeItem}
                       onPreview={previewItem}
                       onDuplicate={duplicateItem}
