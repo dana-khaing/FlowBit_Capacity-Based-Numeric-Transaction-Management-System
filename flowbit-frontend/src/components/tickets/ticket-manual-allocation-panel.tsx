@@ -1,5 +1,5 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faArrowDownWideShort, faSliders } from "@fortawesome/free-solid-svg-icons";
+import { faArrowDownWideShort, faSliders, faXmark } from "@fortawesome/free-solid-svg-icons";
 import { Input } from "@/components/ui/input";
 import type { FlowBitLedger } from "@/lib/ledger-client";
 
@@ -26,8 +26,17 @@ export function TicketManualAllocationPanel({
   values,
   onAmountChange,
 }: TicketManualAllocationPanelProps) {
+  const manualTotal = Object.values(values).reduce((sum, value) => {
+    const amount = Number(value);
+    return sum + (Number.isNaN(amount) ? 0 : amount);
+  }, 0);
+
   return (
     <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-[18px] border border-dashed border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-500">
+        <span>Manual total</span>
+        <span className="font-semibold text-stone-900">{formatAmount(String(manualTotal))}</span>
+      </div>
       {ledgers.map((ledger) => (
         <div
           key={ledger.id}
@@ -53,13 +62,26 @@ export function TicketManualAllocationPanel({
 
           <label className="space-y-2 lg:justify-self-end">
             <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Amount</span>
-            <Input
-              inputMode="decimal"
-              value={values[ledger.id] || ""}
-              onChange={(event) => onAmountChange(ledger.id, event.target.value)}
-              placeholder="Leave blank"
-              className="h-11 rounded-[16px] bg-stone-50 lg:w-[180px]"
-            />
+            <div className="relative">
+              <Input
+                inputMode="decimal"
+                pattern="[0-9]*[.]?[0-9]*"
+                value={values[ledger.id] || ""}
+                onChange={(event) => onAmountChange(ledger.id, event.target.value)}
+                placeholder="Leave blank"
+                className="h-11 rounded-[16px] bg-stone-50 pr-10 lg:w-[180px]"
+              />
+              {values[ledger.id] ? (
+                <button
+                  type="button"
+                  onClick={() => onAmountChange(ledger.id, "")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 transition hover:text-stone-700"
+                  aria-label={`Clear ${ledger.name} manual amount`}
+                >
+                  <FontAwesomeIcon icon={faXmark} className="h-3.5 w-3.5" />
+                </button>
+              ) : null}
+            </div>
           </label>
         </div>
       ))}
