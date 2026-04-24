@@ -4,6 +4,7 @@ import {
   faArrowRotateRight,
   faCircleCheck,
   faCircleExclamation,
+  faGrip,
   faPlus,
   faTrashCan,
 } from "@fortawesome/free-solid-svg-icons";
@@ -39,6 +40,7 @@ type TicketItemRowProps = {
   onAllocationModeChange: (itemId: string, mode: "default" | "manual") => void;
   onManualAmountChange: (itemId: string, ledgerId: number, value: string) => void;
   onAutoFocusHandled: () => void;
+  onExpandPermutations: (itemId: string) => void;
   onTakeAll: (itemId: string) => void;
   onRequestNextRow: (itemId: string) => void;
   onRemove: (itemId: string) => void;
@@ -60,6 +62,7 @@ export function TicketItemRow({
   onAllocationModeChange,
   onManualAmountChange,
   onAutoFocusHandled,
+  onExpandPermutations,
   onTakeAll,
   onRequestNextRow,
   onRemove,
@@ -70,6 +73,7 @@ export function TicketItemRow({
   const datalistId = `ticket-identifiers-${item.id}`;
   const identifierInputRef = useRef<HTMLInputElement | null>(null);
   const amountInputRef = useRef<HTMLInputElement | null>(null);
+  const permutationCount = getPermutationCount(item.identifierNumber);
 
   useEffect(() => {
     if (!autoFocusField) {
@@ -105,7 +109,20 @@ export function TicketItemRow({
 
       <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,0.8fr)_auto]">
         <label className="space-y-2">
-          <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Identifier</span>
+          <span className="flex items-center justify-between gap-3 text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+            <span>Identifier</span>
+            {permutationCount > 1 ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="h-8 rounded-[14px] px-3 text-xs"
+                onClick={() => onExpandPermutations(item.id)}
+              >
+                <FontAwesomeIcon icon={faGrip} className="h-3 w-3" />
+                x{permutationCount}
+              </Button>
+            ) : null}
+          </span>
           <Input
             ref={identifierInputRef}
             list={datalistId}
@@ -227,4 +244,34 @@ export function TicketItemRow({
       </div>
     </div>
   );
+}
+
+function getPermutationCount(identifierNumber: string) {
+  const digits = identifierNumber.replace(/\D/g, "");
+  if (digits.length !== 3) {
+    return 0;
+  }
+
+  return buildIdentifierPermutations(digits).length;
+}
+
+function buildIdentifierPermutations(identifierNumber: string) {
+  const digits = identifierNumber.split("");
+  const permutations = new Set<string>();
+
+  for (let i = 0; i < digits.length; i += 1) {
+    for (let j = 0; j < digits.length; j += 1) {
+      if (j === i) {
+        continue;
+      }
+      for (let k = 0; k < digits.length; k += 1) {
+        if (k === i || k === j) {
+          continue;
+        }
+        permutations.add(`${digits[i]}${digits[j]}${digits[k]}`);
+      }
+    }
+  }
+
+  return Array.from(permutations);
 }

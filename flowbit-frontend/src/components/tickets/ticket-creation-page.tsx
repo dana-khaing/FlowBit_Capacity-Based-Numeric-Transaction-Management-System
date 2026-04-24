@@ -126,6 +126,40 @@ function buildManualAllocations(
   return manualAllocations.length ? manualAllocations : undefined;
 }
 
+function buildIdentifierPermutations(identifierNumber: string) {
+  const digits = identifierNumber.replace(/\D/g, "");
+  if (digits.length !== 3) {
+    return [];
+  }
+
+  const permutations = new Set<string>();
+  for (let i = 0; i < digits.length; i += 1) {
+    for (let j = 0; j < digits.length; j += 1) {
+      if (j === i) {
+        continue;
+      }
+      for (let k = 0; k < digits.length; k += 1) {
+        if (k === i || k === j) {
+          continue;
+        }
+        permutations.add(`${digits[i]}${digits[j]}${digits[k]}`);
+      }
+    }
+  }
+
+  const ordered = Array.from(permutations);
+  ordered.sort((left, right) => {
+    if (left === digits) {
+      return -1;
+    }
+    if (right === digits) {
+      return 1;
+    }
+    return left.localeCompare(right);
+  });
+  return ordered;
+}
+
 export function TicketCreationPage() {
   const [customerName, setCustomerName] = useState("");
   const [items, setItems] = useState<TicketDraftItem[]>([createDraftItem()]);
@@ -398,6 +432,47 @@ export function TicketCreationPage() {
       manualAllocations: { ...source.manualAllocations },
       preview: source.preview,
       previewError: source.previewError,
+    });
+  }
+
+  function expandIdentifierPermutations(itemId: string) {
+    const source = items.find((item) => item.id === itemId);
+    if (!source) {
+      return;
+    }
+
+    const permutations = buildIdentifierPermutations(source.identifierNumber);
+    if (permutations.length <= 1) {
+      return;
+    }
+
+    setItems((current) => {
+      const sourceIndex = current.findIndex((item) => item.id === itemId);
+      if (sourceIndex === -1) {
+        return current;
+      }
+
+      const replacementItems = permutations.map((identifierNumber, index) =>
+        index === 0
+          ? {
+              ...current[sourceIndex],
+              identifierNumber,
+              preview: null,
+              previewError: null,
+            }
+          : createDraftItem({
+              identifierNumber,
+              amount: source.amount,
+              manualMode: source.manualMode,
+              manualAllocations: { ...source.manualAllocations },
+            }),
+      );
+
+      return [
+        ...current.slice(0, sourceIndex),
+        ...replacementItems,
+        ...current.slice(sourceIndex + 1),
+      ];
     });
   }
 
@@ -843,6 +918,7 @@ export function TicketCreationPage() {
                       onAllocationModeChange={handleAllocationModeChange}
                       onManualAmountChange={handleManualAmountChange}
                       onAutoFocusHandled={() => setPendingFocus(null)}
+                      onExpandPermutations={expandIdentifierPermutations}
                       onTakeAll={handleTakeAll}
                       onRequestNextRow={handleRequestNextRow}
                       onRemove={removeItem}
