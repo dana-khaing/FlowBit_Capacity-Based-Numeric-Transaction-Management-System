@@ -78,6 +78,8 @@ export function TicketItemRow({
           <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Identifier</span>
           <Input
             list={datalistId}
+            inputMode="numeric"
+            pattern="[0-9]*"
             value={item.identifierNumber}
             onChange={(event) => onFieldChange(item.id, "identifierNumber", event.target.value)}
             placeholder="Enter identifier"
@@ -93,6 +95,7 @@ export function TicketItemRow({
           <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Amount</span>
           <Input
             inputMode="decimal"
+            pattern="[0-9]*[.]?[0-9]*"
             value={item.amount}
             onChange={(event) => onFieldChange(item.id, "amount", event.target.value)}
             placeholder="0.00"

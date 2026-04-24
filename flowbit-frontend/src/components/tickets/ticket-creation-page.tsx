@@ -70,6 +70,17 @@ function normalizeIdentifierNumber(value: string) {
   return digits.slice(-3).padStart(3, "0");
 }
 
+function sanitizeIdentifierInput(value: string) {
+  return value.replace(/\D/g, "").slice(0, 3);
+}
+
+function sanitizeAmountInput(value: string) {
+  const sanitized = value.replace(/[^0-9.]/g, "");
+  const [whole = "", ...decimalParts] = sanitized.split(".");
+  const decimal = decimalParts.join("").slice(0, 2);
+  return decimalParts.length ? `${whole}.${decimal}` : whole;
+}
+
 function formatAmount(value: string) {
   const amount = Number(value);
   if (Number.isNaN(amount)) {
@@ -241,9 +252,14 @@ export function TicketCreationPage() {
     field: "identifierNumber" | "amount",
     value: string,
   ) {
+    const nextValue =
+      field === "identifierNumber"
+        ? sanitizeIdentifierInput(value)
+        : sanitizeAmountInput(value);
+
     setItemState(itemId, (item) => ({
       ...item,
-      [field]: value,
+      [field]: nextValue,
       preview: null,
       previewError: null,
     }));
@@ -268,7 +284,7 @@ export function TicketCreationPage() {
       ...item,
       manualAllocations: {
         ...item.manualAllocations,
-        [ledgerId]: value,
+        [ledgerId]: sanitizeAmountInput(value),
       },
       preview: null,
       previewError: null,
