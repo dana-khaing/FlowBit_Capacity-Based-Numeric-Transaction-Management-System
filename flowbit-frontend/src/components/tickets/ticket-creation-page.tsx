@@ -328,6 +328,8 @@ export function TicketCreationPage() {
     setItemState(itemId, (item) => ({
       ...item,
       [field]: nextValue,
+      permutationIdentifiers:
+        field === "identifierNumber" ? null : item.permutationIdentifiers,
       preview: null,
       previewError: null,
     }));

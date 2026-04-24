@@ -219,12 +219,6 @@ export function TicketItemRow({
               x{permutationCount}
             </button>
           ) : null}
-          {permutationsSelected ? (
-            <span className="inline-flex items-center gap-2 rounded-full bg-stone-950 px-3 py-1 text-white">
-              <FontAwesomeIcon icon={faGrip} className="h-3 w-3" />
-              x{item.permutationIdentifiers?.length} selected
-            </span>
-          ) : null}
           {identifier ? (
             <span className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1">
               <FontAwesomeIcon icon={faCircleCheck} className="h-3 w-3 text-emerald-600" />
