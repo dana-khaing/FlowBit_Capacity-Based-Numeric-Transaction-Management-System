@@ -88,6 +88,42 @@ export type FlowBitTicketListItem = {
   transaction_count: number;
 };
 
+export type FlowBitTicketDetail = FlowBitTicketListItem & {
+  created_by: number | null;
+  created_by_username: string | null;
+  notes?: string | null;
+  is_refunded: boolean;
+  refunded_at: string | null;
+  transactions: Array<{
+    id: number;
+    ticket: number | null;
+    ticket_id?: number | null;
+    ticket_number: string | null;
+    identifier: number;
+    identifier_number: string;
+    total_amount: string;
+    timestamp: string;
+    order_number: string;
+    created_by: number | null;
+    is_refunded: boolean;
+    refunded_at: string | null;
+    allocations: Array<{
+      id: number;
+      ledger: number;
+      ledger_name: string;
+      amount_allocated: string;
+      allocated_at: string;
+    }>;
+    overflows: Array<{
+      id: number;
+      amount_to_approve: string;
+      approved_at: string | null;
+      status: string;
+      resolution_type?: string | null;
+    }>;
+  }>;
+};
+
 function authHeaders() {
   const token = getStoredToken();
   if (!token) {
@@ -138,6 +174,13 @@ export async function fetchTickets(filters?: { periodId?: number }) {
 
   const suffix = query.toString() ? `?${query.toString()}` : "";
   return apiRequest<FlowBitTicketListItem[]>(`/tickets/${suffix}`, {
+    method: "GET",
+    headers: authHeaders(),
+  });
+}
+
+export async function fetchTicketDetail(ticketNumber: string) {
+  return apiRequest<FlowBitTicketDetail>(`/tickets/${ticketNumber}/`, {
     method: "GET",
     headers: authHeaders(),
   });
