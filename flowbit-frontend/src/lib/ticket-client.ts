@@ -111,11 +111,12 @@ export type FlowBitTicketDetail = FlowBitTicketListItem & {
       id: number;
       ledger: number;
       ledger_name: string;
-      amount_allocated: string;
-      allocated_at: string;
+      amount?: string;
+      amount_allocated?: string;
     }>;
     overflows: Array<{
       id: number;
+      excess_amount?: string;
       amount_to_approve: string;
       approved_at: string | null;
       status: string;
