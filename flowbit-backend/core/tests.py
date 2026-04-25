@@ -1483,6 +1483,22 @@ class PrivateWorkflowAPITests(APITestCase):
         self.assertEqual(len(transaction_response.data), 1)
         self.assertEqual(transaction_response.data[0]['id'], self.archived_transaction.id)
 
+    def test_ticket_detail_returns_receipt_transactions_for_current_user(self):
+        response = self.client.get(f'/api/tickets/{self.active_ticket.ticket_number}/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['ticket_number'], self.active_ticket.ticket_number)
+        self.assertEqual(response.data['customer_name'], 'Active Customer')
+        self.assertEqual(len(response.data['transactions']), 1)
+        self.assertEqual(
+            response.data['transactions'][0]['identifier_number'],
+            self.identifier.number,
+        )
+        self.assertEqual(
+            response.data['transactions'][0]['ticket_number'],
+            self.active_ticket.ticket_number,
+        )
+
     def test_period_summary_returns_private_totals(self):
         response = self.client.get(f'/api/periods/{self.active_period.id}/summary/')
 
