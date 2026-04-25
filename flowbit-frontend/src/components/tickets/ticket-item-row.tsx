@@ -166,7 +166,7 @@ export function TicketItemRow({
               <Button
                 type="button"
                 variant={permutationsSelected ? "default" : "outline"}
-                className="h-12 w-14 rounded-[18px] px-0 whitespace-nowrap"
+                className="h-12 w-20 rounded-[18px] px-0 whitespace-nowrap"
                 onClick={() => onTogglePermutations(item.id)}
               >
                 x{permutationCount}
@@ -175,7 +175,7 @@ export function TicketItemRow({
             <Button
               type="button"
               variant={item.amountUsesAllocationBasis ? "default" : "outline"}
-              className="h-12 w-14 rounded-[18px] px-0 whitespace-nowrap"
+              className="h-12 w-20 rounded-[18px] px-0 whitespace-nowrap"
               onClick={() => onToggleAmountMode(item.id)}
             >
               %
