@@ -145,6 +145,10 @@ export function LedgerPage() {
   const { activePeriod, hasActivePeriod, error: periodError } = usePeriodState();
   const canManageLedgers = user?.role === "admin";
   const requiresOverride = !canManageLedgers;
+  const actionRequiresOverride =
+    pendingAction !== null &&
+    pendingAction.type !== "reopen" &&
+    !canManageLedgers;
 
   const activeCapacityTotal = useMemo(
     () =>
@@ -261,7 +265,7 @@ export function LedgerPage() {
         await deleteLedger(pendingAction.ledger.id, requiresOverride ? overrideCode : undefined);
         setToast({ type: "success", message: "Ledger deleted successfully." });
       } else if (pendingAction.type === "reopen") {
-        await reopenLedger(pendingAction.ledger.id, requiresOverride ? overrideCode : undefined);
+        await reopenLedger(pendingAction.ledger.id);
         setToast({ type: "success", message: "Ledger reopened successfully." });
       } else if (pendingAction.type === "reorder") {
         await reorderLedgerPriorities(
@@ -345,9 +349,7 @@ export function LedgerPage() {
                 ? "Deleting a ledger removes it from this period. Enter a valid admin override code to continue."
                 : "Deleting a ledger removes it from this period."
             : pendingAction?.type === "reopen"
-              ? requiresOverride
-                ? "Reopening a ledger makes it active in the current period again. Enter a valid admin override code to continue."
-                : "Reopening a ledger makes it active in the current period again."
+              ? "Reopening a ledger makes it active in the current period again."
             : pendingAction?.type === "reorder"
               ? "Reorder the active ledgers so the system uses the updated priority sequence."
               : pendingAction?.type === "update-time"
@@ -371,7 +373,7 @@ export function LedgerPage() {
                 ? "Save"
               : "Create ledger"
         }
-        showCodeInput={requiresOverride}
+        showCodeInput={actionRequiresOverride}
         busy={isSaving}
         onCodeChange={setOverrideCode}
         onCancel={() => {
