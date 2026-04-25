@@ -441,6 +441,14 @@ class TransactionSerializer(serializers.ModelSerializer):
         return attrs
 
 
+class TicketDetailSerializer(TicketSerializer):
+    transactions = TransactionSerializer(many=True, read_only=True)
+
+    class Meta(TicketSerializer.Meta):
+        fields = TicketSerializer.Meta.fields + ['transactions']
+        read_only_fields = TicketSerializer.Meta.read_only_fields + ['transactions']
+
+
 class ProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = Profile

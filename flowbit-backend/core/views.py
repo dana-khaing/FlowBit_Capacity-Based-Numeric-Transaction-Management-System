@@ -66,6 +66,7 @@ from .serializers import (
     CollaboratorSerializer,
     OverflowNotificationSerializer,
     TicketSerializer,
+    TicketDetailSerializer,
     AuditLogSerializer,
     LoginSerializer,
     RegisterSerializer,
@@ -2446,7 +2447,7 @@ class TicketListView(generics.ListAPIView):
 
 class TicketDetailView(generics.RetrieveAPIView):
     queryset = Ticket.objects.all()
-    serializer_class = TicketSerializer
+    serializer_class = TicketDetailSerializer
     permission_classes = [IsAuthenticated]
     lookup_field = 'ticket_number'
 
