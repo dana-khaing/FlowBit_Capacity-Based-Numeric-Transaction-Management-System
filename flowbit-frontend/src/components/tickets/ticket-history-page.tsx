@@ -49,6 +49,25 @@ function formatTicketDate(value: string) {
   });
 }
 
+function getTicketBasisAmount(transaction: FlowBitTicketDetail["transactions"][number]) {
+  const amount = Number(transaction.total_amount);
+  if (Number.isNaN(amount) || amount <= 0) {
+    return "0.00";
+  }
+
+  return (amount * 1.25).toFixed(2);
+}
+
+function getOverflowDisplayAmount(
+  overflow: FlowBitTicketDetail["transactions"][number]["overflows"][number],
+) {
+  if (overflow.status === "TCSO") {
+    return overflow.excess_amount || "0.00";
+  }
+
+  return overflow.amount_to_approve || overflow.excess_amount || "0.00";
+}
+
 export function TicketHistoryPage() {
   const [tickets, setTickets] = useState<FlowBitTicketListItem[]>([]);
   const [selectedTicketNumber, setSelectedTicketNumber] = useState<string | null>(null);
@@ -346,20 +365,20 @@ export function TicketHistoryPage() {
                   {selectedTicket.transactions.map((transaction, index) => (
                     <div key={transaction.id} className="border-b border-dashed border-stone-300 pb-4 last:border-b-0 last:pb-0">
                       <div className="space-y-2">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">
+                          Entry {index + 1}
+                        </p>
                         <div className="flex items-start justify-between gap-3">
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">
-                            Entry {index + 1}
-                          </p>
+                          <div>
+                            <span className="inline-flex min-w-[92px] items-center justify-center rounded-full bg-stone-950 px-4 py-1.5 text-lg font-semibold tracking-[0.18em] text-white">
+                              {transaction.identifier_number}
+                            </span>
+                            <p className="mt-2 text-sm text-stone-500 print:hidden">
+                              {transaction.order_number}
+                            </p>
+                          </div>
                           <p className="text-base font-semibold text-stone-950">
-                            {formatAmount(transaction.total_amount)}
-                          </p>
-                        </div>
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="inline-flex min-w-[92px] items-center justify-center rounded-full bg-stone-950 px-4 py-1.5 text-lg font-semibold tracking-[0.18em] text-white">
-                            {transaction.identifier_number}
-                          </span>
-                          <p className="text-sm text-stone-500 print:hidden">
-                            {transaction.order_number}
+                            {formatAmount(getTicketBasisAmount(transaction))}
                           </p>
                         </div>
                       </div>
@@ -374,7 +393,7 @@ export function TicketHistoryPage() {
                               <div key={allocation.id} className="flex items-center justify-between gap-3">
                                 <span>{allocation.ledger_name}</span>
                                 <span className="font-medium text-stone-900">
-                                  {formatAmount(allocation.amount_allocated)}
+                                  {formatAmount(allocation.amount ?? allocation.amount_allocated ?? "0.00")}
                                 </span>
                               </div>
                             ))}
@@ -388,14 +407,14 @@ export function TicketHistoryPage() {
                             Spill over
                           </p>
                           <div className="mt-2 space-y-2">
-                            {transaction.overflows.map((overflow) => (
-                              <div key={overflow.id} className="flex items-center justify-between gap-3">
-                                <span>{overflow.status.replaceAll("_", " ")}</span>
-                                <span className="font-medium">
-                                  {formatAmount(overflow.amount_to_approve)}
-                                </span>
-                              </div>
-                            ))}
+                              {transaction.overflows.map((overflow) => (
+                                <div key={overflow.id} className="flex items-center justify-between gap-3">
+                                  <span>{overflow.status.replaceAll("_", " ")}</span>
+                                  <span className="font-medium">
+                                    {formatAmount(getOverflowDisplayAmount(overflow))}
+                                  </span>
+                                </div>
+                              ))}
                           </div>
                         </div>
                       ) : null}
