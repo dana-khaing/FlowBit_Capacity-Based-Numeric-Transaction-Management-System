@@ -59,6 +59,7 @@ function createDraftItem(partial?: Partial<TicketDraftItem>): TicketDraftItem {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     identifierNumber: "",
     amount: "",
+    amountUsesAllocationBasis: false,
     permutationIdentifiers: null,
     manualMode: false,
     manualAllocations: {},
@@ -95,6 +96,39 @@ function toTakeAllAmount(remainingCapacity: string) {
     return "0.00";
   }
   return (remaining / 1.25).toFixed(2);
+}
+
+function formatDecimalInput(value: number) {
+  if (Number.isNaN(value) || value <= 0) {
+    return "0.00";
+  }
+  return value.toFixed(2);
+}
+
+function getEffectiveTicketAmount(
+  item: Pick<TicketDraftItem, "amount" | "amountUsesAllocationBasis">,
+) {
+  const amount = Number(item.amount);
+  if (Number.isNaN(amount) || amount <= 0) {
+    return "";
+  }
+
+  return item.amountUsesAllocationBasis
+    ? formatDecimalInput(amount / 1.25)
+    : item.amount.trim();
+}
+
+function getAllocationBasisAmount(
+  item: Pick<TicketDraftItem, "amount" | "amountUsesAllocationBasis">,
+) {
+  const amount = Number(item.amount);
+  if (Number.isNaN(amount) || amount <= 0) {
+    return "";
+  }
+
+  return item.amountUsesAllocationBasis
+    ? item.amount.trim()
+    : formatDecimalInput(amount * 1.25);
 }
 
 function formatAmount(value: string) {
@@ -212,7 +246,7 @@ export function TicketCreationPage() {
             ? "Choose a valid identifier."
             : null,
         amountError:
-          hasAttemptedSubmit && (!(item.amount.trim()) || Number(item.amount) <= 0)
+          hasAttemptedSubmit && !getEffectiveTicketAmount(item)
             ? "Enter an amount greater than zero."
             : null,
       })),
@@ -221,7 +255,7 @@ export function TicketCreationPage() {
   const totalDraftAmount = useMemo(
     () =>
       items.reduce((sum, item) => {
-        const amount = Number(item.amount);
+        const amount = Number(getEffectiveTicketAmount(item));
         const multiplier = item.permutationIdentifiers?.length || 1;
         return sum + (Number.isNaN(amount) ? 0 : amount * multiplier);
       }, 0),
@@ -231,7 +265,7 @@ export function TicketCreationPage() {
     () =>
       items.some((item) => {
         const normalizedIdentifier = normalizeIdentifierNumber(item.identifierNumber);
-        const amount = Number(item.amount);
+        const amount = Number(getEffectiveTicketAmount(item));
         return Boolean(identifierMap.get(normalizedIdentifier)) && amount > 0;
       }),
     [identifierMap, items],
@@ -348,6 +382,15 @@ export function TicketCreationPage() {
     }));
   }
 
+  function handleToggleAmountMode(itemId: string) {
+    setItemState(itemId, (item) => ({
+      ...item,
+      amountUsesAllocationBasis: !item.amountUsesAllocationBasis,
+      preview: null,
+      previewError: null,
+    }));
+  }
+
   function handleManualAmountChange(
     itemId: string,
     ledgerId: number,
@@ -389,7 +432,9 @@ export function TicketCreationPage() {
 
     try {
       const capacity = await fetchIdentifierCapacity(identifier.id);
-      const nextAmount = toTakeAllAmount(capacity.remaining_capacity);
+      const nextAmount = draft.amountUsesAllocationBasis
+        ? formatDecimalInput(Number(capacity.remaining_capacity))
+        : toTakeAllAmount(capacity.remaining_capacity);
       if (Number(nextAmount) <= 0) {
         setToast({
           type: "error",
@@ -432,6 +477,7 @@ export function TicketCreationPage() {
     addItem({
       identifierNumber: source.identifierNumber,
       amount: source.amount,
+      amountUsesAllocationBasis: source.amountUsesAllocationBasis,
       permutationIdentifiers: source.permutationIdentifiers ? [...source.permutationIdentifiers] : null,
       manualMode: source.manualMode,
       manualAllocations: { ...source.manualAllocations },
@@ -507,7 +553,7 @@ export function TicketCreationPage() {
       return;
     }
 
-    const amount = draft.amount.trim();
+    const amount = getEffectiveTicketAmount(draft);
     if (!amount) {
       setItemState(itemId, (item) => ({
         ...item,
@@ -604,7 +650,7 @@ export function TicketCreationPage() {
         return null;
       }
 
-      const amount = item.amount.trim();
+      const amount = getEffectiveTicketAmount(item);
       if (!amount || Number(amount) <= 0) {
         setToast({
           type: "error",
@@ -910,6 +956,7 @@ export function TicketCreationPage() {
                       identifierError={item.identifierError}
                       amountError={item.amountError}
                       activeLedgers={activeLedgers}
+                      allocationBasisAmount={getAllocationBasisAmount(item)}
                       autoFocusField={
                         pendingFocus?.itemId === item.id ? pendingFocus.field : null
                       }
@@ -918,6 +965,7 @@ export function TicketCreationPage() {
                       onAllocationModeChange={handleAllocationModeChange}
                       onManualAmountChange={handleManualAmountChange}
                       onAutoFocusHandled={() => setPendingFocus(null)}
+                      onToggleAmountMode={handleToggleAmountMode}
                       onTogglePermutations={toggleIdentifierPermutations}
                       onTakeAll={handleTakeAll}
                       onRequestNextRow={handleRequestNextRow}
