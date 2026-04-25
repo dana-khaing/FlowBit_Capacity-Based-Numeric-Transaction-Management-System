@@ -130,8 +130,14 @@ export async function createTicket(payload: TicketCreatePayload) {
   });
 }
 
-export async function fetchTickets() {
-  return apiRequest<FlowBitTicketListItem[]>("/tickets/", {
+export async function fetchTickets(filters?: { periodId?: number }) {
+  const query = new URLSearchParams();
+  if (filters?.periodId) {
+    query.set("period_id", String(filters.periodId));
+  }
+
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return apiRequest<FlowBitTicketListItem[]>(`/tickets/${suffix}`, {
     method: "GET",
     headers: authHeaders(),
   });
