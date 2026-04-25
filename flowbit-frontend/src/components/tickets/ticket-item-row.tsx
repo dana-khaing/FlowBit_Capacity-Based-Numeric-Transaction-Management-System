@@ -4,7 +4,6 @@ import {
   faArrowRotateRight,
   faCircleCheck,
   faCircleExclamation,
-  faGrip,
   faPlus,
   faTrashCan,
 } from "@fortawesome/free-solid-svg-icons";
@@ -19,6 +18,7 @@ export type TicketDraftItem = {
   id: string;
   identifierNumber: string;
   amount: string;
+  amountUsesAllocationBasis: boolean;
   permutationIdentifiers: string[] | null;
   manualMode: boolean;
   manualAllocations: Record<number, string>;
@@ -35,12 +35,14 @@ type TicketItemRowProps = {
   identifierError?: string | null;
   amountError?: string | null;
   activeLedgers: FlowBitLedger[];
+  allocationBasisAmount: string;
   autoFocusField?: "identifier" | "amount" | null;
   canRemove: boolean;
   onFieldChange: (itemId: string, field: "identifierNumber" | "amount", value: string) => void;
   onAllocationModeChange: (itemId: string, mode: "default" | "manual") => void;
   onManualAmountChange: (itemId: string, ledgerId: number, value: string) => void;
   onAutoFocusHandled: () => void;
+  onToggleAmountMode: (itemId: string) => void;
   onTogglePermutations: (itemId: string) => void;
   onTakeAll: (itemId: string) => void;
   onRequestNextRow: (itemId: string) => void;
@@ -57,12 +59,14 @@ export function TicketItemRow({
   identifierError,
   amountError,
   activeLedgers,
+  allocationBasisAmount,
   autoFocusField,
   canRemove,
   onFieldChange,
   onAllocationModeChange,
   onManualAmountChange,
   onAutoFocusHandled,
+  onToggleAmountMode,
   onTogglePermutations,
   onTakeAll,
   onRequestNextRow,
@@ -158,14 +162,23 @@ export function TicketItemRow({
               placeholder="0.00"
               className={amountError ? "border-rose-300 bg-rose-50 focus:border-rose-500" : undefined}
             />
+            {permutationCount > 1 ? (
+              <Button
+                type="button"
+                variant={permutationsSelected ? "default" : "outline"}
+                className="h-12 rounded-[18px] whitespace-nowrap"
+                onClick={() => onTogglePermutations(item.id)}
+              >
+                x{permutationCount}
+              </Button>
+            ) : null}
             <Button
               type="button"
-              variant="outline"
-              className="h-12 rounded-[18px] whitespace-nowrap"
-              onClick={() => onTakeAll(item.id)}
-              disabled={!identifier || item.isTakingAll}
+              variant={item.amountUsesAllocationBasis ? "default" : "outline"}
+              className="h-12 rounded-[18px] px-4 whitespace-nowrap"
+              onClick={() => onToggleAmountMode(item.id)}
             >
-              {item.isTakingAll ? "Taking" : "Take all"}
+              %
             </Button>
           </div>
           {amountError ? (
@@ -205,20 +218,18 @@ export function TicketItemRow({
         </div>
 
         <div className="ml-auto flex flex-wrap items-center gap-2 text-sm text-stone-500">
-          {permutationCount > 1 ? (
-            <button
-              type="button"
-              onClick={() => onTogglePermutations(item.id)}
-              className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] transition ${
-                permutationsSelected
-                  ? "bg-stone-950 text-white hover:bg-stone-900"
-                  : "bg-white text-stone-600 hover:bg-stone-100"
-              }`}
-            >
-              <FontAwesomeIcon icon={faGrip} className="h-3 w-3" />
-              x{permutationCount}
-            </button>
-          ) : null}
+          <button
+            type="button"
+            onClick={() => onTakeAll(item.id)}
+            disabled={!identifier || item.isTakingAll}
+            className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] transition ${
+              !identifier || item.isTakingAll
+                ? "cursor-not-allowed bg-stone-200 text-stone-400"
+                : "bg-white text-stone-600 hover:bg-stone-100"
+            }`}
+          >
+            {item.isTakingAll ? "Taking" : "Take all"}
+          </button>
           {identifier ? (
             <span className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1">
               <FontAwesomeIcon icon={faCircleCheck} className="h-3 w-3 text-emerald-600" />
@@ -237,7 +248,7 @@ export function TicketItemRow({
         <div className="mt-4">
           <TicketManualAllocationPanel
             ledgers={activeLedgers}
-            lineAmount={item.amount}
+            lineAmount={allocationBasisAmount}
             values={item.manualAllocations}
             onAmountChange={(ledgerId, value) => onManualAmountChange(item.id, ledgerId, value)}
           />
