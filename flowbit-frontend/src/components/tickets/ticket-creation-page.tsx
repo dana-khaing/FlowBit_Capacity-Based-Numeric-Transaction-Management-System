@@ -464,9 +464,17 @@ export function TicketCreationPage() {
     partial?: Partial<TicketDraftItem>,
     focusField: "identifier" | "amount" = "identifier",
   ) {
-    const nextItem = createDraftItem(partial);
-    setItems((current) => [...current, nextItem]);
-    setPendingFocus({ itemId: nextItem.id, field: focusField });
+    let nextItemId = "";
+    setItems((current) => {
+      const lastItem = current[current.length - 1];
+      const nextItem = createDraftItem({
+        amountUsesAllocationBasis: lastItem?.amountUsesAllocationBasis ?? false,
+        ...partial,
+      });
+      nextItemId = nextItem.id;
+      return [...current, nextItem];
+    });
+    setPendingFocus({ itemId: nextItemId, field: focusField });
   }
 
   function duplicateItem(itemId: string) {
