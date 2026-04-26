@@ -25,7 +25,7 @@ export function ProfilePage() {
   if (!user) {
     return (
       <WorkspaceShell>
-        <div className="mx-auto w-full max-w-[1800px] px-4 py-8 text-sm text-stone-500 sm:px-6 lg:px-8">
+        <div className="mx-auto w-full max-w-[1800px] px-4 py-4 text-sm text-stone-500 sm:px-6 lg:px-8">
           Loading your profile...
         </div>
       </WorkspaceShell>
@@ -35,7 +35,7 @@ export function ProfilePage() {
   return (
     <WorkspaceShell>
       {toastMessage ? <ProfileToast message={toastMessage} onClose={() => setToastMessage("")} /> : null}
-      <div className="mx-auto w-full max-w-[1800px] px-4 py-4 sm:px-6 lg:px-8 lg:py-8">
+      <div className="mx-auto w-full max-w-[1800px] px-4 py-2 sm:px-6 lg:px-8 lg:py-5">
         <ProfileOverviewCard user={user} />
 
         <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(320px,0.9fr)]">

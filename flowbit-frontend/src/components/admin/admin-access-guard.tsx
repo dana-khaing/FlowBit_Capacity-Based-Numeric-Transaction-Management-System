@@ -32,7 +32,7 @@ export function AdminAccessGuard({ children }: AdminAccessGuardProps) {
   if (loading || !user) {
     return (
       <WorkspaceShell>
-        <div className="mx-auto w-full max-w-[1800px] px-4 py-8 text-sm text-stone-500 sm:px-6 lg:px-8">
+        <div className="mx-auto w-full max-w-[1800px] px-4 py-4 text-sm text-stone-500 sm:px-6 lg:px-8">
           Loading admin workspace...
         </div>
       </WorkspaceShell>
