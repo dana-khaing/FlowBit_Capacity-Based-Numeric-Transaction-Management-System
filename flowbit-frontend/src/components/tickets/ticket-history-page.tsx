@@ -15,6 +15,7 @@ import { AdminActionToast } from "@/components/admin/admin-action-toast";
 import {
   formatTicketDate,
   formatTicketAmount,
+  getTicketCustomerDisplayName,
   TicketReceiptCard,
 } from "@/components/tickets/ticket-receipt-card";
 import { Button } from "@/components/ui/button";
@@ -388,7 +389,7 @@ export function TicketHistoryPage() {
                     <div className={`mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm ${isActive ? "text-stone-200" : "text-stone-600"}`}>
                       <span className="inline-flex items-center gap-2">
                         <FontAwesomeIcon icon={faUser} className={`h-3.5 w-3.5 ${isActive ? "text-stone-300" : "text-stone-400"}`} />
-                        {ticket.customer_name || "Walk-in Customer"}
+                        {getTicketCustomerDisplayName(ticket.customer_name)}
                       </span>
                       <span className="inline-flex items-center gap-2">
                         <FontAwesomeIcon icon={faReceipt} className={`h-3.5 w-3.5 ${isActive ? "text-stone-300" : "text-stone-400"}`} />
