@@ -187,6 +187,7 @@ class TicketSerializer(serializers.ModelSerializer):
     total_amount = serializers.ReadOnlyField()
     transaction_count = serializers.ReadOnlyField()
     created_by_username = serializers.CharField(source='created_by.username', read_only=True, default=None)
+    identifier_numbers = serializers.SerializerMethodField()
 
     class Meta:
         model = Ticket
@@ -202,6 +203,7 @@ class TicketSerializer(serializers.ModelSerializer):
             'refunded_at',
             'total_amount',
             'transaction_count',
+            'identifier_numbers',
         ]
         read_only_fields = [
             'ticket_number',
@@ -210,7 +212,15 @@ class TicketSerializer(serializers.ModelSerializer):
             'refunded_at',
             'total_amount',
             'transaction_count',
+            'identifier_numbers',
         ]
+
+    def get_identifier_numbers(self, obj):
+        return list(
+            obj.transactions.order_by('id')
+            .values_list('identifier__number', flat=True)
+            .distinct()
+        )
 
 
 class IdentifierSerializer(serializers.ModelSerializer):

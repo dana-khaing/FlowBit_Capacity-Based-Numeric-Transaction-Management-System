@@ -86,6 +86,7 @@ export type FlowBitTicketListItem = {
   customer_name: string;
   total_amount: string;
   transaction_count: number;
+  identifier_numbers: string[];
 };
 
 export type FlowBitTicketDetail = FlowBitTicketListItem & {
