@@ -10,8 +10,8 @@ function formatAmount(value: string) {
   }
 
   return amount.toLocaleString("en-GB", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
   });
 }
 
@@ -77,8 +77,8 @@ export function TicketManualAllocationPanel({
             <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Amount</span>
             <div className="relative">
               <Input
-                inputMode="decimal"
-                pattern="[0-9]*[.]?[0-9]*"
+                inputMode="numeric"
+                pattern="[0-9]*"
                 value={values[ledger.id] || ""}
                 onChange={(event) => onAmountChange(ledger.id, event.target.value)}
                 placeholder="Leave blank"
