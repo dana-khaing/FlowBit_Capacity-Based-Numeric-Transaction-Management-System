@@ -32,6 +32,7 @@ type TicketItemRowProps = {
   item: TicketDraftItem;
   index: number;
   identifier: FlowBitIdentifierOption | null;
+  remainingCapacity?: string | null;
   identifierError?: string | null;
   amountError?: string | null;
   activeLedgers: FlowBitLedger[];
@@ -56,6 +57,7 @@ export function TicketItemRow({
   item,
   index,
   identifier,
+  remainingCapacity,
   identifierError,
   amountError,
   activeLedgers,
@@ -233,7 +235,7 @@ export function TicketItemRow({
           {identifier ? (
             <span className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1">
               <FontAwesomeIcon icon={faCircleCheck} className="h-3 w-3 text-emerald-600" />
-              Identifier {identifier.number}
+              Left {remainingCapacity ?? "Loading..."}
             </span>
           ) : item.identifierNumber.trim() ? (
             <span className="inline-flex items-center gap-2 rounded-full bg-amber-100 px-3 py-1 text-amber-800">
