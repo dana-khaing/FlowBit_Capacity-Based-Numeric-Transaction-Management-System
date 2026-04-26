@@ -261,20 +261,12 @@ export function PeriodPage() {
         onConfirm={handleConfirmAction}
       />
 
-      <div className="mx-auto w-full max-w-[1800px] px-4 py-5 sm:px-6 lg:px-8 lg:py-8">
-        <section className="rounded-[28px] border border-stone-900/8 bg-white px-5 py-6 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:px-8 sm:py-8">
-          <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Periods</p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-[-0.02em] text-stone-950 sm:text-[2rem]">Period control</h1>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-500 sm:text-[15px]">
-            Start with an active period term. Ticket entry, ledgers, spill-over, and tickets stay locked until one is in place.
-          </p>
-        </section>
-
-        <section className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(360px,0.85fr)]">
+      <div className="mx-auto w-full max-w-[1800px] px-4 py-3 sm:px-6 lg:px-8 lg:py-5">
+        <section className="grid gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(360px,0.85fr)]">
           <article className="rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Active term</p>
+                <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Period control</p>
                 <h2 className="mt-2 text-2xl font-semibold text-stone-950">Current period</h2>
               </div>
               <span className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] ${

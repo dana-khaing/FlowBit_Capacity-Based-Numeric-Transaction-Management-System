@@ -388,20 +388,12 @@ export function LedgerPage() {
         Persisted priorities are written only after explicit confirmation.
       */}
 
-      <div className="mx-auto w-full max-w-[1800px] px-4 py-5 sm:px-6 lg:px-8 lg:py-8">
-        <section className="rounded-[28px] border border-stone-900/8 bg-white px-5 py-6 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:px-8 sm:py-8">
-          <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Ledgers</p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-[-0.02em] text-stone-950 sm:text-[2rem]">Ledger workspace</h1>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-500 sm:text-[15px]">
-            Manage active ledgers, keep priorities in order, and close ledgers when the current period needs to move forward.
-          </p>
-        </section>
-
-        <section className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.3fr)_minmax(360px,0.9fr)]">
+      <div className="mx-auto w-full max-w-[1800px] px-4 py-3 sm:px-6 lg:px-8 lg:py-5">
+        <section className="grid gap-5 xl:grid-cols-[minmax(0,1.3fr)_minmax(360px,0.9fr)]">
           <article className="rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6">
             <div className="flex flex-col gap-4 xl:grid xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start">
               <div>
-                <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Active ledgers</p>
+                <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Ledger workspace</p>
                 <h2 className="mt-2 text-2xl font-semibold text-stone-950">{activePeriod?.name}</h2>
                 <p className="mt-2 text-sm leading-6 text-stone-500 xl:whitespace-nowrap">
                   {standardActiveLedgers.length} working ledger{standardActiveLedgers.length === 1 ? "" : "s"}
