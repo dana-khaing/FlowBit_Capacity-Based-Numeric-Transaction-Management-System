@@ -151,13 +151,14 @@ function formatAmount(value: string) {
 }
 
 function buildOverflowDescription(pendingOverflowSubmission: PendingOverflowSubmission) {
+  const overflowDetails = pendingOverflowSubmission.overflowDetails || [];
   const header = `${formatEntryCount(
     pendingOverflowSubmission.overflowEntryCount,
   )} will create spill over totaling ${formatAmount(
     String(pendingOverflowSubmission.overflowAmount),
   )}.`;
 
-  const detailLines = pendingOverflowSubmission.overflowDetails
+  const detailLines = overflowDetails
     .map(
       (detail) => `${detail.identifier} spill over ${formatAmount(String(detail.amount))}`,
     )
@@ -167,8 +168,7 @@ function buildOverflowDescription(pendingOverflowSubmission: PendingOverflowSubm
     return header;
   }
 
-  const remainingCount =
-    pendingOverflowSubmission.overflowDetails.length - detailLines.length;
+  const remainingCount = overflowDetails.length - detailLines.length;
 
   return `${header}\n\n${detailLines.join("\n")}${
     remainingCount > 0 ? `\n+ ${remainingCount} more` : ""
