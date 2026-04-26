@@ -37,6 +37,8 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
   }
 
   const periodLabel = activePeriod ? activePeriod.name : "No active period";
+  const navActionClassName =
+    "inline-flex h-12 items-center justify-center gap-3 rounded-[20px] border border-stone-900/10 bg-white px-4 py-3 text-sm font-semibold text-stone-700 transition hover:bg-stone-50";
 
   return (
     <>
@@ -66,17 +68,21 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="hidden rounded-full border border-stone-900/10 bg-stone-50 px-4 py-2 text-sm text-stone-500 sm:block">
+          <div className="hidden rounded-full border border-dashed border-stone-900/12 bg-stone-50 px-4 py-2 text-sm text-stone-500 sm:block">
             Period: {periodLabel}
           </div>
           <Link
             href="/profile"
-            className="inline-flex items-center justify-center gap-3 rounded-[20px] border border-stone-900/10 bg-white px-4 py-3 text-sm font-semibold text-stone-700 transition hover:bg-stone-50"
+            className={navActionClassName}
           >
             {user ? <ProfileAvatar user={user} className="h-8 w-8 rounded-full" textClassName="text-xs font-semibold" /> : null}
             Profile
           </Link>
-          <Button variant="outline" onClick={() => setShowLogoutConfirm(true)}>
+          <Button
+            variant="outline"
+            className={navActionClassName}
+            onClick={() => setShowLogoutConfirm(true)}
+          >
             <FontAwesomeIcon icon={faArrowRightFromBracket} className="h-4 w-4" />
             Logout
           </Button>
