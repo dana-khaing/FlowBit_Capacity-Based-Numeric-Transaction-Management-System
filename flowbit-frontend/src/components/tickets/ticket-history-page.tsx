@@ -147,6 +147,7 @@ export function TicketHistoryPage() {
         ticket.ticket_number,
         ticket.customer_name || "",
         ticket.total_amount,
+        ...(ticket.identifier_numbers || []),
       ].some((value) => value.toLowerCase().includes(normalizedSearch)),
     );
   }, [deferredSearchTerm, tickets]);
