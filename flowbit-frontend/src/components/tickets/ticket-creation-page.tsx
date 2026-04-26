@@ -276,6 +276,15 @@ export function TicketCreationPage() {
     return `${count} ${count === 1 ? "entry" : "entries"}`;
   }
 
+  function getCustomerDisplayName(value: string | null | undefined) {
+    const normalized = (value ?? "").trim();
+    if (!normalized || normalized.startsWith("Walk-in ")) {
+      return "-";
+    }
+
+    return normalized;
+  }
+
   async function loadRecentTickets() {
     setIsRecentTicketsLoading(true);
     try {
@@ -765,8 +774,9 @@ export function TicketCreationPage() {
         });
         setLastCreatedTicket({
           ticketNumber: response.ticket?.ticket_number || response.ticket_number || "Pending",
-          customerName:
-            response.ticket?.customer_name || customerName.trim() || "Walk-in Customer",
+          customerName: getCustomerDisplayName(
+            response.ticket?.customer_name || customerName.trim(),
+          ),
           entryCount:
             response.ticket?.transaction_count ||
             response.transaction_count ||
@@ -1074,7 +1084,7 @@ export function TicketCreationPage() {
 
             <article className="rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6">
               <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">
-                Latest result
+                Recent Tickets
               </p>
               {isRecentTicketsLoading ? (
                 <div className="mt-5 space-y-3">
@@ -1111,7 +1121,7 @@ export function TicketCreationPage() {
                         </span>
                       </div>
                       <p className="mt-3 text-sm font-medium text-stone-700">
-                        {ticket.customer_name || "Walk-in Customer"}
+                        {getCustomerDisplayName(ticket.customer_name)}
                       </p>
                       <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-stone-500">
                         <span>{formatAmount(ticket.total_amount)}</span>
