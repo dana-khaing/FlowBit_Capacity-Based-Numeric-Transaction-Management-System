@@ -3,16 +3,19 @@
 import { useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
+  faArrowUpRightFromSquare,
   faArrowDownWideShort,
   faCircleNotch,
   faFileInvoiceDollar,
   faLayerGroup,
   faPlus,
   faTicket,
+  faXmark,
 } from "@fortawesome/free-solid-svg-icons";
 import { AdminConfirmModal } from "@/components/admin/admin-confirm-modal";
 import { AdminActionToast } from "@/components/admin/admin-action-toast";
 import { WorkspaceShell } from "@/components/app/workspace-shell";
+import { TicketReceiptCard } from "@/components/tickets/ticket-receipt-card";
 import {
   TicketItemRow,
   type TicketDraftItem,
@@ -24,8 +27,10 @@ import { fetchLedgers, type FlowBitLedger } from "@/lib/ledger-client";
 import {
   createTicket,
   fetchIdentifierCapacity,
+  fetchTicketDetail,
   fetchTickets,
   fetchIdentifierOptions,
+  type FlowBitTicketDetail,
   type FlowBitTicketListItem,
   previewTicketItemAllocation,
   type FlowBitIdentifierOption,
@@ -203,6 +208,7 @@ export function TicketCreationPage() {
   const [recentTickets, setRecentTickets] = useState<FlowBitTicketListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRecentTicketsLoading, setIsRecentTicketsLoading] = useState(true);
+  const [isRecentTicketDetailLoading, setIsRecentTicketDetailLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pageError, setPageError] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastState>(null);
@@ -210,6 +216,10 @@ export function TicketCreationPage() {
   const [pendingFocus, setPendingFocus] = useState<PendingFocusState>(null);
   const [pendingOverflowSubmission, setPendingOverflowSubmission] =
     useState<PendingOverflowSubmission | null>(null);
+  const [selectedRecentTicketNumber, setSelectedRecentTicketNumber] =
+    useState<string | null>(null);
+  const [selectedRecentTicket, setSelectedRecentTicket] =
+    useState<FlowBitTicketDetail | null>(null);
   const [lastCreatedTicket, setLastCreatedTicket] = useState<{
     ticketNumber: string;
     customerName: string;
@@ -297,6 +307,29 @@ export function TicketCreationPage() {
     } finally {
       setIsRecentTicketsLoading(false);
     }
+  }
+
+  async function openRecentTicket(ticketNumber: string) {
+    setSelectedRecentTicketNumber(ticketNumber);
+    setSelectedRecentTicket(null);
+    setIsRecentTicketDetailLoading(true);
+    try {
+      const detail = await fetchTicketDetail(ticketNumber);
+      setSelectedRecentTicket(detail);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Request failed.";
+      setToast({ type: "error", message });
+      setSelectedRecentTicketNumber(null);
+    } finally {
+      setIsRecentTicketDetailLoading(false);
+    }
+  }
+
+  function closeRecentTicket() {
+    setSelectedRecentTicketNumber(null);
+    setSelectedRecentTicket(null);
+    setIsRecentTicketDetailLoading(false);
   }
 
   useEffect(() => {
@@ -861,6 +894,7 @@ export function TicketCreationPage() {
   }
 
   return (
+    <>
       <WorkspaceShell>
       <div className="mx-auto w-full max-w-[1800px] px-4 pb-5 pt-3 sm:px-6 lg:px-8 lg:pb-8 lg:pt-4">
         {toast ? (
@@ -1087,45 +1121,52 @@ export function TicketCreationPage() {
                 Recent Tickets
               </p>
               {isRecentTicketsLoading ? (
-                <div className="mt-5 space-y-3">
+                <div className="mt-5 space-y-2.5">
                   {[0, 1, 2].map((row) => (
                     <div
                       key={row}
-                      className="animate-pulse rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4"
+                      className="animate-pulse rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-3"
                     >
                       <div className="h-3 w-20 rounded-full bg-stone-200" />
-                      <div className="mt-3 h-5 w-40 rounded-full bg-stone-200" />
-                      <div className="mt-3 h-3 w-28 rounded-full bg-stone-200" />
+                      <div className="mt-2.5 h-5 w-40 rounded-full bg-stone-200" />
+                      <div className="mt-2 h-3 w-28 rounded-full bg-stone-200" />
                     </div>
                   ))}
                 </div>
               ) : recentTickets.length ? (
-                <div className="mt-5 space-y-3">
+                <div className="mt-5 space-y-2.5">
                   {recentTickets.map((ticket) => (
-                    <div
+                    <button
+                      type="button"
                       key={ticket.id}
-                      className="rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4"
+                      className="w-full rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-3 text-left transition hover:border-stone-900/14 hover:bg-stone-100/70"
+                      onClick={() => openRecentTicket(ticket.ticket_number)}
                     >
-                      <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center justify-between gap-3">
                         <div>
                           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">
                             Ticket
                           </p>
-                          <p className="mt-2 text-lg font-semibold text-stone-950">
+                          <p className="mt-1.5 text-base font-semibold text-stone-950">
                             {ticket.ticket_number}
                           </p>
                         </div>
                         <span className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">
-                          <FontAwesomeIcon icon={faTicket} className="h-3 w-3" />
                           {formatEntryCount(ticket.transaction_count)}
                         </span>
                       </div>
-                      <p className="mt-3 text-sm font-medium text-stone-700">
-                        {getCustomerDisplayName(ticket.customer_name)}
-                      </p>
-                      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-stone-500">
+                      <div className="mt-2 flex items-center justify-between gap-3">
+                        <p className="text-sm font-medium text-stone-700">
+                          {getCustomerDisplayName(ticket.customer_name)}
+                        </p>
+                        <FontAwesomeIcon
+                          icon={faArrowUpRightFromSquare}
+                          className="h-3.5 w-3.5 text-stone-400"
+                        />
+                      </div>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-stone-500">
                         <span>{formatAmount(ticket.total_amount)}</span>
-                        <span>
+                        <span className="text-xs">
                           {new Date(ticket.created_at).toLocaleString("en-GB", {
                             day: "2-digit",
                             month: "short",
@@ -1134,7 +1175,7 @@ export function TicketCreationPage() {
                           })}
                         </span>
                       </div>
-                    </div>
+                    </button>
                   ))}
                 </div>
               ) : (
@@ -1146,6 +1187,59 @@ export function TicketCreationPage() {
           </aside>
         </section>
       </div>
-    </WorkspaceShell>
+      </WorkspaceShell>
+      {selectedRecentTicketNumber ? (
+        <div
+          className="fixed inset-0 z-50 bg-stone-950/35 px-4 py-6 backdrop-blur-[2px] sm:px-6"
+          onClick={closeRecentTicket}
+        >
+          <div className="mx-auto flex h-full max-w-3xl items-center justify-center">
+            <div
+              className="max-h-full w-full overflow-y-auto rounded-[30px] border border-stone-900/10 bg-white p-5 shadow-[0_24px_80px_rgba(28,24,20,0.22)] sm:p-6"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="mb-5 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">
+                    Ticket view
+                  </p>
+                  <p className="mt-1.5 text-lg font-semibold text-stone-950">
+                    {selectedRecentTicketNumber}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="rounded-[18px]"
+                  onClick={closeRecentTicket}
+                >
+                  <FontAwesomeIcon icon={faXmark} className="h-4 w-4" />
+                  Close
+                </Button>
+              </div>
+
+              {isRecentTicketDetailLoading ? (
+                <div className="animate-pulse space-y-3 rounded-[24px] border border-stone-900/8 bg-stone-50 p-5">
+                  <div className="h-3 w-24 rounded-full bg-stone-200" />
+                  <div className="h-7 w-40 rounded-full bg-stone-200" />
+                  <div className="h-3 w-32 rounded-full bg-stone-200" />
+                  <div className="mt-4 h-48 rounded-[22px] bg-white" />
+                </div>
+              ) : selectedRecentTicket ? (
+                <TicketReceiptCard
+                  ticket={selectedRecentTicket}
+                  periodName={activePeriod?.name}
+                  className="mx-auto max-w-[440px] rounded-[28px] border border-dashed border-stone-300 bg-stone-50 p-5 text-stone-900"
+                />
+              ) : (
+                <div className="rounded-[24px] border border-dashed border-stone-300 bg-stone-50 px-5 py-5 text-sm text-stone-500">
+                  Ticket view is not available right now.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }
