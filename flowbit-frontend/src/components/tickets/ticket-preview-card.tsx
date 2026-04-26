@@ -46,7 +46,7 @@ export function TicketPreviewCard({ preview, loading, error }: TicketPreviewCard
   if (!preview) {
     return (
       <div className="rounded-[22px] border border-dashed border-stone-300 bg-stone-50 px-4 py-4 text-sm text-stone-500">
-        Add an identifier and amount to preview how this line will fill your ledgers.
+        
       </div>
     );
   }

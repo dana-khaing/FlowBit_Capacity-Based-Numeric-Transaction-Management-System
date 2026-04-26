@@ -7,6 +7,7 @@ type AppSectionPageProps = {
   description: string;
   children?: ReactNode;
   aside?: ReactNode;
+  workspaceLabel?: string;
   headerClassName?: string;
   layoutClassName?: string;
   workspaceClassName?: string;
@@ -19,6 +20,7 @@ export function AppSectionPage({
   description,
   children,
   aside,
+  workspaceLabel,
   headerClassName,
   layoutClassName,
   workspaceClassName,
@@ -35,7 +37,7 @@ export function AppSectionPage({
 
         <section className={`mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(320px,0.9fr)] ${layoutClassName ?? ""}`}>
           <article className={`rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6 ${workspaceClassName ?? ""}`}>
-            <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Workspace</p>
+            <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">{workspaceLabel ?? "Workspace"}</p>
             <div className="mt-4">{children}</div>
           </article>
 
