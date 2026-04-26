@@ -205,6 +205,7 @@ export function TicketCreationPage() {
   const [items, setItems] = useState<TicketDraftItem[]>([createDraftItem()]);
   const [identifiers, setIdentifiers] = useState<FlowBitIdentifierOption[]>([]);
   const [activeLedgers, setActiveLedgers] = useState<FlowBitLedger[]>([]);
+  const [identifierCapacityMap, setIdentifierCapacityMap] = useState<Record<number, string>>({});
   const [recentTickets, setRecentTickets] = useState<FlowBitTicketListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRecentTicketsLoading, setIsRecentTicketsLoading] = useState(true);
@@ -381,6 +382,44 @@ export function TicketCreationPage() {
       isMounted = false;
     };
   }, [hasActivePeriod, activePeriod?.id]);
+
+  useEffect(() => {
+    const unresolvedIdentifiers = resolvedItems
+      .map((item) => item.matchedIdentifier)
+      .filter((identifier): identifier is FlowBitIdentifierOption => identifier !== null)
+      .filter((identifier) => identifierCapacityMap[identifier.id] === undefined);
+
+    if (!unresolvedIdentifiers.length) {
+      return;
+    }
+
+    let isMounted = true;
+    const uniqueIdentifiers = Array.from(
+      new Map(unresolvedIdentifiers.map((identifier) => [identifier.id, identifier])).values(),
+    );
+
+    Promise.all(
+      uniqueIdentifiers.map(async (identifier) => {
+        const capacity = await fetchIdentifierCapacity(identifier.id);
+        return [identifier.id, formatDecimalInput(Number(capacity.remaining_capacity))] as const;
+      }),
+    )
+      .then((results) => {
+        if (!isMounted) {
+          return;
+        }
+
+        setIdentifierCapacityMap((current) => ({
+          ...current,
+          ...Object.fromEntries(results),
+        }));
+      })
+      .catch(() => {});
+
+    return () => {
+      isMounted = false;
+    };
+  }, [identifierCapacityMap, resolvedItems]);
 
   function setItemState(
     itemId: string,
@@ -1005,6 +1044,11 @@ export function TicketCreationPage() {
                       item={item}
                       index={index}
                       identifier={item.matchedIdentifier}
+                      remainingCapacity={
+                        item.matchedIdentifier
+                          ? identifierCapacityMap[item.matchedIdentifier.id] ?? null
+                          : null
+                      }
                       identifierError={item.identifierError}
                       amountError={item.amountError}
                       activeLedgers={activeLedgers}
