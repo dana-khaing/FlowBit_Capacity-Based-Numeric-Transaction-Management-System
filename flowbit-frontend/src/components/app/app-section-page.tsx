@@ -15,13 +15,10 @@ type AppSectionPageProps = {
 };
 
 export function AppSectionPage({
-  eyebrow,
   title,
-  description,
   children,
   aside,
   workspaceLabel,
-  headerClassName,
   layoutClassName,
   workspaceClassName,
   asideClassName,
@@ -29,15 +26,9 @@ export function AppSectionPage({
   return (
     <WorkspaceShell>
       <div className="mx-auto w-full max-w-[1800px] px-4 py-3 sm:px-6 lg:px-8 lg:py-5">
-        <section className={`rounded-[28px] border border-stone-900/8 bg-white px-5 py-6 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:px-8 sm:py-8 ${headerClassName ?? ""}`}>
-          <p className="text-sm font-medium uppercase tracking-[0.2em] text-stone-400">{eyebrow}</p>
-          <h1 className="mt-3 text-4xl font-semibold tracking-[-0.02em] text-stone-950 sm:text-5xl">{title}</h1>
-          <p className="mt-4 max-w-3xl text-base leading-7 text-stone-500 sm:text-lg">{description}</p>
-        </section>
-
-        <section className={`mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(320px,0.9fr)] ${layoutClassName ?? ""}`}>
+        <section className={`grid gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(320px,0.9fr)] ${layoutClassName ?? ""}`}>
           <article className={`rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6 ${workspaceClassName ?? ""}`}>
-            <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">{workspaceLabel ?? "Workspace"}</p>
+            <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">{workspaceLabel ?? title}</p>
             <div className="mt-4">{children}</div>
           </article>
 
