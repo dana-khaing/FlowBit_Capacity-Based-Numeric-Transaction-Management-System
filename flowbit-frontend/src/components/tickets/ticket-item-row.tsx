@@ -151,8 +151,8 @@ export function TicketItemRow({
           <div className="flex gap-2">
             <Input
               ref={amountInputRef}
-              inputMode="decimal"
-              pattern="[0-9]*[.]?[0-9]*"
+              inputMode="numeric"
+              pattern="[0-9]*"
               value={item.amount}
               onChange={(event) => onFieldChange(item.id, "amount", event.target.value)}
               onKeyDown={(event) => {

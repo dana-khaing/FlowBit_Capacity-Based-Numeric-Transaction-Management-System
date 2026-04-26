@@ -52,6 +52,7 @@ type PendingOverflowSubmission = {
   items: TicketSubmissionItem[];
   overflowEntryCount: number;
   overflowAmount: number;
+  overflowDetails: Array<{ identifier: string; amount: number }>;
 };
 
 type PendingFocusState = {
@@ -89,18 +90,27 @@ function sanitizeIdentifierInput(value: string) {
 }
 
 function sanitizeAmountInput(value: string) {
-  const sanitized = value.replace(/[^0-9.]/g, "");
-  const [whole = "", ...decimalParts] = sanitized.split(".");
-  const decimal = decimalParts.join("").slice(0, 2);
-  return decimalParts.length ? `${whole}.${decimal}` : whole;
+  return value.replace(/\D/g, "");
 }
 
 function toTakeAllAmount(remainingCapacity: string) {
   const remaining = Number(remainingCapacity);
   if (Number.isNaN(remaining) || remaining <= 0) {
-    return "0.00";
+    return "0";
   }
-  return (remaining / 1.25).toFixed(2);
+  return String(Math.floor(remaining / 1.25));
+}
+
+function formatWholeAmount(value: string | number) {
+  const amount = Number(value);
+  if (Number.isNaN(amount)) {
+    return typeof value === "string" ? value : "0";
+  }
+
+  return amount.toLocaleString("en-GB", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  });
 }
 
 function formatDecimalInput(value: number) {
@@ -137,14 +147,32 @@ function getAllocationBasisAmount(
 }
 
 function formatAmount(value: string) {
-  const amount = Number(value);
-  if (Number.isNaN(amount)) {
-    return value;
+  return formatWholeAmount(value);
+}
+
+function buildOverflowDescription(pendingOverflowSubmission: PendingOverflowSubmission) {
+  const header = `${formatEntryCount(
+    pendingOverflowSubmission.overflowEntryCount,
+  )} will create spill over totaling ${formatAmount(
+    String(pendingOverflowSubmission.overflowAmount),
+  )}.`;
+
+  const detailLines = pendingOverflowSubmission.overflowDetails
+    .map(
+      (detail) => `${detail.identifier} spill over ${formatAmount(String(detail.amount))}`,
+    )
+    .slice(0, 6);
+
+  if (!detailLines.length) {
+    return header;
   }
-  return amount.toLocaleString("en-GB", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+
+  const remainingCount =
+    pendingOverflowSubmission.overflowDetails.length - detailLines.length;
+
+  return `${header}\n\n${detailLines.join("\n")}${
+    remainingCount > 0 ? `\n+ ${remainingCount} more` : ""
+  }`;
 }
 
 function buildManualAllocations(
@@ -198,6 +226,10 @@ function buildIdentifierPermutations(identifierNumber: string) {
     return left.localeCompare(right);
   });
   return ordered;
+}
+
+function formatEntryCount(count: number) {
+  return `${count} ${count === 1 ? "entry" : "entries"}`;
 }
 
 export function TicketCreationPage() {
@@ -282,10 +314,6 @@ export function TicketCreationPage() {
     [identifierMap, items],
   );
   const hasWorkingLedgers = activeLedgers.length > 0;
-
-  function formatEntryCount(count: number) {
-    return `${count} ${count === 1 ? "entry" : "entries"}`;
-  }
 
   function getCustomerDisplayName(value: string | null | undefined) {
     const normalized = (value ?? "").trim();
@@ -401,7 +429,7 @@ export function TicketCreationPage() {
     Promise.all(
       uniqueIdentifiers.map(async (identifier) => {
         const capacity = await fetchIdentifierCapacity(identifier.id);
-        return [identifier.id, formatDecimalInput(Number(capacity.remaining_capacity))] as const;
+        return [identifier.id, formatWholeAmount(capacity.remaining_capacity)] as const;
       }),
     )
       .then((results) => {
@@ -514,7 +542,7 @@ export function TicketCreationPage() {
     try {
       const capacity = await fetchIdentifierCapacity(identifier.id);
       const nextAmount = draft.amountUsesAllocationBasis
-        ? formatDecimalInput(Number(capacity.remaining_capacity))
+        ? String(Math.floor(Number(capacity.remaining_capacity) || 0))
         : toTakeAllAmount(capacity.remaining_capacity);
       if (Number(nextAmount) <= 0) {
         setToast({
@@ -726,6 +754,7 @@ export function TicketCreationPage() {
     >();
     let overflowEntryCount = 0;
     let overflowAmount = 0;
+    const overflowDetails: Array<{ identifier: string; amount: number }> = [];
 
     for (const item of items) {
       const identifier = identifierMap.get(
@@ -774,7 +803,12 @@ export function TicketCreationPage() {
 
           if (preview.has_overflow) {
             overflowEntryCount += 1;
-            overflowAmount += Number(preview.overflow_amount) || 0;
+            const overflowValue = Number(preview.overflow_amount) || 0;
+            overflowAmount += overflowValue;
+            overflowDetails.push({
+              identifier: targetIdentifier.number,
+              amount: overflowValue,
+            });
           }
 
           payloadItems.push({
@@ -823,7 +857,7 @@ export function TicketCreationPage() {
       }),
     );
 
-    return { items: payloadItems, overflowEntryCount, overflowAmount };
+    return { items: payloadItems, overflowEntryCount, overflowAmount, overflowDetails };
   }
 
   async function executeTicketCreate(payloadItems: TicketSubmissionItem[]) {
@@ -948,11 +982,7 @@ export function TicketCreationPage() {
           title="Spill over will be created"
           description={
             pendingOverflowSubmission
-              ? `${formatEntryCount(
-                  pendingOverflowSubmission.overflowEntryCount,
-                )} will create spill over totaling ${formatAmount(
-                  String(pendingOverflowSubmission.overflowAmount),
-                )}.`
+              ? buildOverflowDescription(pendingOverflowSubmission)
               : ""
           }
           confirmLabel="Create ticket"
