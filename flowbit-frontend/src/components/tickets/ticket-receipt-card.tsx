@@ -131,11 +131,11 @@ export function TicketReceiptCard({
               <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">
                 Entry {index + 1}
               </p>
-              <div className="flex items-end gap-3">
+              <div className="flex items-end gap-2">
                 <span className="text-lg font-semibold tracking-[0.18em] text-stone-950">
                   {transaction.identifier_number}
                 </span>
-                <span className="mb-1 flex-1 border-b border-dotted border-stone-300" />
+                <span className="mb-1 min-w-[48px] flex-1 border-b border-dotted border-stone-300" />
                 <p className="text-base font-semibold text-stone-950">
                   {formatTicketAmount(getTicketBasisAmount(transaction))}
                 </p>
