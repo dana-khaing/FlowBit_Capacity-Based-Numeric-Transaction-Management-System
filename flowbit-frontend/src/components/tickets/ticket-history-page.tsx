@@ -49,6 +49,15 @@ function formatTicketDate(value: string) {
   });
 }
 
+function getCustomerDisplayName(value: string | null | undefined) {
+  const normalized = value?.trim() || "";
+  if (!normalized) {
+    return "-";
+  }
+
+  return normalized.startsWith("Walk-in ") ? "-" : normalized;
+}
+
 function getTicketBasisAmount(transaction: FlowBitTicketDetail["transactions"][number]) {
   const amount = Number(transaction.total_amount);
   if (Number.isNaN(amount) || amount <= 0) {
@@ -276,7 +285,8 @@ export function TicketHistoryPage() {
       eyebrow="Tickets"
       title="Ticket history"
       description={`All tickets created in ${activePeriod?.name}.`}
-      headerClassName="print:hidden"
+      workspaceLabel="Ticket history"
+      headerClassName="hidden"
       layoutClassName="print:block"
       workspaceClassName="print:hidden"
       asideClassName="print:block"
@@ -329,10 +339,10 @@ export function TicketHistoryPage() {
                 <div className="grid gap-3 border-b border-dashed border-stone-300 py-4 text-sm sm:grid-cols-2">
                   <div>
                     <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">
-                      Customer
+                      Ticket No
                     </p>
                     <p className="mt-2 font-medium text-stone-950">
-                      {selectedTicket.customer_name || "Walk-in Customer"}
+                      {selectedTicket.ticket_number}
                     </p>
                   </div>
                   <div>
@@ -345,10 +355,10 @@ export function TicketHistoryPage() {
                   </div>
                   <div>
                     <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">
-                      Created by
+                      Customer name
                     </p>
                     <p className="mt-2 font-medium text-stone-950">
-                      {selectedTicket.created_by_username || "FlowBit user"}
+                      {getCustomerDisplayName(selectedTicket.customer_name)}
                     </p>
                   </div>
                   <div>
