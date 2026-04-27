@@ -29,6 +29,7 @@ import {
   fetchTicketDetail,
   fetchTickets,
   resolveOverflowAction,
+  resolveTicketRefundAction,
   type FlowBitTicketDetail,
   type FlowBitTicketListItem,
 } from "@/lib/ticket-client";
@@ -235,10 +236,20 @@ export function TicketHistoryPage() {
     URL.revokeObjectURL(url);
   }
 
-  async function runRefundAction(
+  async function refreshTicketHistoryState() {
+    if (activePeriod) {
+      const nextTickets = await fetchTickets({ periodId: activePeriod.id });
+      setTickets(nextTickets);
+    }
+    if (selectedTicketNumber) {
+      const detail = await fetchTicketDetail(selectedTicketNumber);
+      setSelectedTicket(detail);
+    }
+  }
+
+  async function runOverflowRefundAction(
     overflowId: number,
-    action: "refund_overflow_only" | "refund_transaction" | "refund_ticket",
-    kind: "ticket" | "transaction" | "overflow",
+    kind: "overflow",
   ) {
     const user = getStoredUser();
     const requireOverrideCode = user?.role !== "admin";
@@ -254,17 +265,53 @@ export function TicketHistoryPage() {
     try {
       const response = await resolveOverflowAction({
         overflowId,
-        action,
+        action: "refund_overflow_only",
         adminOverrideCode: adminOverrideCode.trim() || undefined,
       });
-      if (activePeriod) {
-        const nextTickets = await fetchTickets({ periodId: activePeriod.id });
-        setTickets(nextTickets);
-      }
-      if (selectedTicketNumber) {
-        const detail = await fetchTicketDetail(selectedTicketNumber);
-        setSelectedTicket(detail);
-      }
+      await refreshTicketHistoryState();
+      setToast({
+        type: "success",
+        message: response.message || "Refund completed.",
+      });
+      setShowRefundModal(false);
+      setAdminOverrideCode("");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Request failed.";
+      setToast({ type: "error", message });
+    } finally {
+      setBusyRefundAction(null);
+    }
+  }
+
+  async function runTicketRefundAction(
+    action: "refund_ticket" | "refund_transaction",
+    kind: "ticket" | "transaction",
+    transactionId?: number,
+  ) {
+    if (!selectedTicketNumber) {
+      return;
+    }
+
+    const user = getStoredUser();
+    const requireOverrideCode = user?.role !== "admin";
+    if (requireOverrideCode && !adminOverrideCode.trim()) {
+      setToast({
+        type: "error",
+        message: "Admin override code is required for refund actions.",
+      });
+      return;
+    }
+
+    const busyId = transactionId ?? 0;
+    setBusyRefundAction({ kind, id: busyId });
+    try {
+      const response = await resolveTicketRefundAction({
+        ticketNumber: selectedTicketNumber,
+        action,
+        transactionId,
+        adminOverrideCode: adminOverrideCode.trim() || undefined,
+      });
+      await refreshTicketHistoryState();
       setToast({
         type: "success",
         message: response.message || "Refund completed.",
@@ -492,14 +539,14 @@ export function TicketHistoryPage() {
           setShowRefundModal(false);
           setAdminOverrideCode("");
         }}
-        onRefundTicket={(overflowId) =>
-          runRefundAction(overflowId, "refund_ticket", "ticket")
+        onRefundTicket={() =>
+          runTicketRefundAction("refund_ticket", "ticket")
         }
-        onRefundTransaction={(overflowId) =>
-          runRefundAction(overflowId, "refund_transaction", "transaction")
+        onRefundTransaction={(transactionId) =>
+          runTicketRefundAction("refund_transaction", "transaction", transactionId)
         }
         onRefundOverflow={(overflowId) =>
-          runRefundAction(overflowId, "refund_overflow_only", "overflow")
+          runOverflowRefundAction(overflowId, "overflow")
         }
       />
 

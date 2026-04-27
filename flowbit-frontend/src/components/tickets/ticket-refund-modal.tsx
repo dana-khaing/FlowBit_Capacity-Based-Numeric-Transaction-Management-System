@@ -16,8 +16,8 @@ type TicketRefundModalProps = {
     | { kind: "overflow"; id: number };
   onCodeChange: (value: string) => void;
   onClose: () => void;
-  onRefundTicket: (overflowId: number) => void;
-  onRefundTransaction: (overflowId: number) => void;
+  onRefundTicket: () => void;
+  onRefundTransaction: (transactionId: number) => void;
   onRefundOverflow: (overflowId: number) => void;
 };
 
@@ -49,12 +49,10 @@ export function TicketRefundModal({
     return null;
   }
 
-  const transactionsWithOverflow = ticket.transactions.filter(
-    (transaction) =>
-      transaction.overflows.some((overflow) => overflow.status !== "RFND") &&
-      !transaction.is_refunded,
+  const refundableTransactions = ticket.transactions.filter(
+    (transaction) => !transaction.is_refunded,
   );
-  const activeOverflows = transactionsWithOverflow.flatMap((transaction) =>
+  const activeOverflows = ticket.transactions.flatMap((transaction) =>
     transaction.overflows
       .filter((overflow) => overflow.status !== "RFND")
       .map((overflow) => ({
@@ -63,7 +61,6 @@ export function TicketRefundModal({
         identifierNumber: transaction.identifier_number,
       })),
   );
-  const firstOverflowId = activeOverflows[0]?.id ?? null;
 
   return (
     <div
@@ -99,7 +96,7 @@ export function TicketRefundModal({
           </label>
         ) : null}
 
-        {firstOverflowId ? (
+        {refundableTransactions.length ? (
           <div className="mt-5 rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -111,7 +108,7 @@ export function TicketRefundModal({
               <Button
                 variant="outline"
                 className="rounded-[18px]"
-                onClick={() => onRefundTicket(firstOverflowId)}
+                onClick={onRefundTicket}
                 disabled={Boolean(busyAction)}
               >
                 {busyAction?.kind === "ticket" ? "Refunding..." : "Refund ticket"}
@@ -124,46 +121,39 @@ export function TicketRefundModal({
           </div>
         )}
 
-        {transactionsWithOverflow.length ? (
+        {refundableTransactions.length ? (
           <div className="mt-5 space-y-3">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">
               Transaction refunds
             </p>
-            {transactionsWithOverflow.map((transaction) => {
-              const overflow = transaction.overflows.find((item) => item.status !== "RFND");
-              if (!overflow) {
-                return null;
-              }
-
-              return (
-                <div
-                  key={transaction.id}
-                  className="rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-stone-900">
-                        {transaction.identifier_number} ........ {formatAmount(transaction.total_amount)}
-                      </p>
-                      <p className="mt-1 text-sm text-stone-500">
-                        {transaction.order_number}
-                      </p>
-                    </div>
-                    <Button
-                      variant="outline"
-                      className="rounded-[18px]"
-                      onClick={() => onRefundTransaction(overflow.id)}
-                      disabled={Boolean(busyAction)}
-                    >
-                      {busyAction?.kind === "transaction" &&
-                      busyAction.id === overflow.id
-                        ? "Refunding..."
-                        : "Refund transaction"}
-                    </Button>
+            {refundableTransactions.map((transaction) => (
+              <div
+                key={transaction.id}
+                className="rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-stone-900">
+                      {transaction.identifier_number} ........ {formatAmount(transaction.total_amount)}
+                    </p>
+                    <p className="mt-1 text-sm text-stone-500">
+                      {transaction.order_number}
+                    </p>
                   </div>
+                  <Button
+                    variant="outline"
+                    className="rounded-[18px]"
+                    onClick={() => onRefundTransaction(transaction.id)}
+                    disabled={Boolean(busyAction)}
+                  >
+                    {busyAction?.kind === "transaction" &&
+                    busyAction.id === transaction.id
+                      ? "Refunding..."
+                      : "Refund transaction"}
+                  </Button>
                 </div>
-              );
-            })}
+              </div>
+            ))}
           </div>
         ) : null}
 
