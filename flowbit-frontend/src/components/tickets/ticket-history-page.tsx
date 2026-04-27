@@ -6,6 +6,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faCircleNotch,
   faCopy,
+  faDownload,
   faMagnifyingGlass,
   faPrint,
   faReceipt,
@@ -193,6 +194,67 @@ export function TicketHistoryPage() {
     }
   }
 
+  function downloadSelectedTicket() {
+    if (!selectedTicket) {
+      return;
+    }
+
+    const receiptLines = selectedTicket.transactions
+      .map((transaction, index) => {
+        const allocationLines = transaction.allocations
+          .map(
+            (allocation) =>
+              `<li>${allocation.ledger_name}: ${formatTicketAmount(
+                allocation.amount ?? allocation.amount_allocated ?? "0.00",
+              )}</li>`,
+          )
+          .join("");
+
+        return `
+          <section style="margin-top:16px;padding-top:16px;border-top:1px dashed #c7c2b8;">
+            <div style="display:flex;justify-content:space-between;gap:16px;">
+              <strong>Entry ${index + 1}</strong>
+              <strong>${transaction.identifier_number} ........ ${formatTicketAmount(
+                String(Number(transaction.total_amount) * 1.25),
+              )}</strong>
+            </div>
+            ${
+              allocationLines
+                ? `<div style="margin-top:8px;"><div style="font-size:12px;color:#6b645a;">Ledger allocation</div><ul style="margin:6px 0 0 18px;padding:0;">${allocationLines}</ul></div>`
+                : ""
+            }
+          </section>
+        `;
+      })
+      .join("");
+
+    const html = `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>${selectedTicket.ticket_number}</title>
+  </head>
+  <body style="font-family: Arial, sans-serif; color:#1c1814; max-width:540px; margin:0 auto; padding:24px;">
+    <h1 style="font-size:24px; margin:0;">${selectedTicket.ticket_number}</h1>
+    <p style="margin:8px 0 0; color:#6b645a;">${formatTicketDate(selectedTicket.created_at)}</p>
+    <p style="margin:4px 0 0; color:#6b645a;">${activePeriod?.name ?? ""}</p>
+    <hr style="margin:16px 0; border:none; border-top:1px dashed #c7c2b8;" />
+    <p><strong>Entries:</strong> ${selectedTicket.transaction_count}</p>
+    <p><strong>Customer:</strong> ${getTicketCustomerDisplayName(selectedTicket.customer_name)}</p>
+    <p><strong>Total amount:</strong> ${formatTicketAmount(selectedTicket.total_amount)}</p>
+    ${receiptLines}
+  </body>
+</html>`;
+
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${selectedTicket.ticket_number}.html`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   useEffect(() => {
     if (!selectedTicketNumber) {
       setSelectedTicket(null);
@@ -341,6 +403,16 @@ export function TicketHistoryPage() {
                   Refund / review
                 </Link>
               ) : null}
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-[18px]"
+                onClick={downloadSelectedTicket}
+                disabled={!selectedTicket}
+              >
+                <FontAwesomeIcon icon={faDownload} className="h-3.5 w-3.5" />
+                Download
+              </Button>
               <Button
                 type="button"
                 variant="outline"
