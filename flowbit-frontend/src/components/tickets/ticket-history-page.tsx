@@ -35,6 +35,7 @@ type ToastState = {
 } | null;
 
 export function TicketHistoryPage() {
+  const pageSize = 12;
   const [tickets, setTickets] = useState<FlowBitTicketListItem[]>([]);
   const [selectedTicketNumber, setSelectedTicketNumber] = useState<string | null>(null);
   const [selectedTicket, setSelectedTicket] = useState<FlowBitTicketDetail | null>(null);
@@ -45,6 +46,7 @@ export function TicketHistoryPage() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [sortBy, setSortBy] = useState("newest");
+  const [currentPage, setCurrentPage] = useState(1);
   const [toast, setToast] = useState<ToastState>(null);
   const deferredSearchTerm = useDeferredValue(searchTerm);
   const deferredCustomerFilter = useDeferredValue(customerFilter);
@@ -148,17 +150,33 @@ export function TicketHistoryPage() {
     });
   }, [dateFrom, dateTo, deferredCustomerFilter, deferredSearchTerm, sortBy, tickets]);
 
+  const totalPages = Math.max(1, Math.ceil(filteredTickets.length / pageSize));
+  const paginatedTickets = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredTickets.slice(start, start + pageSize);
+  }, [currentPage, filteredTickets]);
+
   useEffect(() => {
-    if (!filteredTickets.length) {
+    setCurrentPage(1);
+  }, [deferredCustomerFilter, deferredSearchTerm, dateFrom, dateTo, sortBy]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  useEffect(() => {
+    if (!paginatedTickets.length) {
       setSelectedTicketNumber(null);
       setSelectedTicket(null);
       return;
     }
 
-    if (!selectedTicketNumber || !filteredTickets.some((ticket) => ticket.ticket_number === selectedTicketNumber)) {
-      setSelectedTicketNumber(filteredTickets[0].ticket_number);
+    if (!selectedTicketNumber || !paginatedTickets.some((ticket) => ticket.ticket_number === selectedTicketNumber)) {
+      setSelectedTicketNumber(paginatedTickets[0].ticket_number);
     }
-  }, [filteredTickets, selectedTicketNumber]);
+  }, [paginatedTickets, selectedTicketNumber]);
 
   async function copySelectedTicketNumber() {
     if (!selectedTicket) {
@@ -222,7 +240,7 @@ export function TicketHistoryPage() {
   );
 
   useEffect(() => {
-    if (!filteredTickets.length) {
+    if (!paginatedTickets.length) {
       return;
     }
 
@@ -242,21 +260,21 @@ export function TicketHistoryPage() {
       }
 
       event.preventDefault();
-      const currentIndex = filteredTickets.findIndex(
+      const currentIndex = paginatedTickets.findIndex(
         (ticket) => ticket.ticket_number === selectedTicketNumber,
       );
       const fallbackIndex = currentIndex === -1 ? 0 : currentIndex;
       const nextIndex =
         event.key === "ArrowDown"
-          ? Math.min(fallbackIndex + 1, filteredTickets.length - 1)
+          ? Math.min(fallbackIndex + 1, paginatedTickets.length - 1)
           : Math.max(fallbackIndex - 1, 0);
 
-      setSelectedTicketNumber(filteredTickets[nextIndex].ticket_number);
+      setSelectedTicketNumber(paginatedTickets[nextIndex].ticket_number);
     }
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [filteredTickets, selectedTicketNumber]);
+  }, [paginatedTickets, selectedTicketNumber]);
 
   if (isPeriodLoading) {
     return (
@@ -450,9 +468,9 @@ export function TicketHistoryPage() {
                 </div>
               ))}
             </div>
-          ) : filteredTickets.length ? (
+          ) : paginatedTickets.length ? (
             <div className="space-y-3">
-              {filteredTickets.map((ticket) => {
+              {paginatedTickets.map((ticket) => {
                 const isActive = ticket.ticket_number === selectedTicketNumber;
                 return (
                   <button
@@ -502,6 +520,34 @@ export function TicketHistoryPage() {
                 : "No tickets have been created in the active period yet."}
             </div>
           )}
+
+          {filteredTickets.length > pageSize ? (
+            <div className="flex items-center justify-between gap-3 rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-3 text-sm text-stone-600">
+              <span>
+                Page {currentPage} of {totalPages}
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="rounded-[16px]"
+                  onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                  disabled={currentPage === 1}
+                >
+                  Previous
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="rounded-[16px]"
+                  onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                  disabled={currentPage === totalPages}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
     </AppSectionPage>
