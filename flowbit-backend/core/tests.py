@@ -1499,6 +1499,33 @@ class PrivateWorkflowAPITests(APITestCase):
             self.active_ticket.ticket_number,
         )
 
+    def test_ticket_refund_can_succeed_without_spill_over(self):
+        response = self.client.post(
+            f'/api/tickets/{self.active_ticket.ticket_number}/refund/',
+            {'action': 'refund_ticket'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.active_ticket.refresh_from_db()
+        self.active_transaction.refresh_from_db()
+        self.assertTrue(self.active_ticket.is_refunded)
+        self.assertTrue(self.active_transaction.is_refunded)
+
+    def test_ticket_transaction_refund_can_succeed_without_spill_over(self):
+        response = self.client.post(
+            f'/api/tickets/{self.active_ticket.ticket_number}/refund/',
+            {
+                'action': 'refund_transaction',
+                'transaction_id': self.active_transaction.id,
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.active_transaction.refresh_from_db()
+        self.assertTrue(self.active_transaction.is_refunded)
+
     def test_period_summary_returns_private_totals(self):
         response = self.client.get(f'/api/periods/{self.active_period.id}/summary/')
 

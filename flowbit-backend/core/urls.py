@@ -23,7 +23,8 @@ from .views import (
     ForgotPasswordView,
     ResetPasswordConfirmView,
     TicketListView,
-    TicketDetailView
+    TicketDetailView,
+    TicketRefundView,
 )
 
 router = DefaultRouter()
@@ -60,4 +61,5 @@ urlpatterns = [
     # Ticket listing & detail
     path('tickets/', TicketListView.as_view(), name='ticket-list'),
     path('tickets/<str:ticket_number>/', TicketDetailView.as_view(), name='ticket-detail'),
+    path('tickets/<str:ticket_number>/refund/', TicketRefundView.as_view(), name='ticket-refund'),
 ]
