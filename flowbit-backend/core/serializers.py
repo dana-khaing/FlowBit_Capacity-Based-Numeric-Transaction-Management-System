@@ -231,6 +231,26 @@ class TicketSerializer(serializers.ModelSerializer):
         ).exists()
 
 
+class TicketRefundActionSerializer(serializers.Serializer):
+    action = serializers.ChoiceField(choices=['refund_ticket', 'refund_transaction'])
+    transaction_id = serializers.IntegerField(required=False)
+    admin_override_code = serializers.CharField(
+        write_only=True,
+        required=False,
+        allow_blank=True,
+    )
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+
+        if attrs['action'] == 'refund_transaction' and not attrs.get('transaction_id'):
+            raise serializers.ValidationError({
+                'transaction_id': 'This field is required for transaction refunds.',
+            })
+
+        return attrs
+
+
 class IdentifierSerializer(serializers.ModelSerializer):
     current_utilization = serializers.SerializerMethodField()
     remaining_capacity = serializers.SerializerMethodField()

@@ -81,6 +81,7 @@ from .serializers import (
     CollaboratorManageSerializer,
     UserRoleUpdateSerializer,
     MasterOverridePasswordSerializer,
+    TicketRefundActionSerializer,
 )
 
 
@@ -2453,6 +2454,92 @@ class TicketDetailView(generics.RetrieveAPIView):
 
     def get_queryset(self):
         return super().get_queryset().filter(created_by=self.request.user)
+
+
+class TicketRefundView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, ticket_number):
+        ticket = Ticket.objects.filter(
+            ticket_number=ticket_number,
+            created_by=request.user,
+        ).prefetch_related(
+            'transactions__overflows',
+            'transactions__allocations',
+        ).first()
+
+        if ticket is None:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = TicketRefundActionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        validated = serializer.validated_data
+
+        override_profile = get_request_admin_override_profile(request)
+        if not is_admin_user(request.user) and override_profile is None:
+            return Response(
+                {"detail": "Admin override code is required for refund actions."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        helper_name = helper_name_from_request(request)
+        action_name = validated['action']
+
+        if action_name == 'refund_ticket':
+            transactions = list(ticket.transactions.all())
+            if not any(not transaction.is_refunded for transaction in transactions):
+                return Response(
+                    {"detail": "This ticket has already been refunded."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            with db_transaction.atomic():
+                refund_transactions(
+                    transactions,
+                    helper_name=helper_name,
+                    resolution_type=Overflow.RESOLUTION_REFUND_TICKET,
+                )
+
+            record_audit_log(
+                request,
+                'ticket.refunded',
+                target=ticket,
+                details=f"Refunded ticket '{ticket.ticket_number}'",
+                changes={'resolution_type': Overflow.RESOLUTION_REFUND_TICKET},
+            )
+            return Response({
+                "message": f"Ticket '{ticket.ticket_number}' refunded successfully",
+            }, status=status.HTTP_200_OK)
+
+        transaction_obj = ticket.transactions.filter(pk=validated['transaction_id']).first()
+        if transaction_obj is None:
+            return Response(
+                {"detail": "Transaction does not belong to this ticket."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if transaction_obj.is_refunded:
+            return Response(
+                {"detail": "This transaction has already been refunded."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with db_transaction.atomic():
+            refund_transactions(
+                [transaction_obj],
+                helper_name=helper_name,
+                resolution_type=Overflow.RESOLUTION_REFUND_TRANSACTION,
+            )
+
+        record_audit_log(
+            request,
+            'transaction.refunded',
+            target=transaction_obj,
+            details=f"Refunded transaction '{transaction_obj.order_number}'",
+            changes={'resolution_type': Overflow.RESOLUTION_REFUND_TRANSACTION},
+        )
+        return Response({
+            "message": f"Transaction '{transaction_obj.order_number}' refunded successfully",
+        }, status=status.HTTP_200_OK)
 
 
 class CreateTicketWithTransactions(APIView):
