@@ -82,6 +82,7 @@ from .serializers import (
     UserRoleUpdateSerializer,
     MasterOverridePasswordSerializer,
     TicketRefundActionSerializer,
+    TicketReceiptPdfSerializer,
 )
 
 
@@ -2540,6 +2541,147 @@ class TicketRefundView(APIView):
         return Response({
             "message": f"Transaction '{transaction_obj.order_number}' refunded successfully",
         }, status=status.HTTP_200_OK)
+
+
+def _ticket_visible_transactions(ticket):
+    return list(ticket.transactions.filter(is_refunded=False).prefetch_related('allocations', 'overflows'))
+
+
+def _ticket_visible_total(ticket):
+    return sum((transaction.total_amount for transaction in _ticket_visible_transactions(ticket)), Decimal('0.00'))
+
+
+def _ticket_visible_line_amount(transaction_obj):
+    allocated_total = sum(
+        (
+            allocation.amount or Decimal('0.00')
+            for allocation in transaction_obj.allocations.all()
+        ),
+        Decimal('0.00'),
+    )
+
+    active_overflows = [overflow for overflow in transaction_obj.overflows.all() if overflow.status != Overflow.STATUS_REFUNDED]
+    overflow_total = sum(
+        (
+            overflow.excess_amount
+            if overflow.status == Overflow.STATUS_TCSO
+            else (overflow.amount_to_approve or overflow.excess_amount or Decimal('0.00'))
+            for overflow in active_overflows
+        ),
+        Decimal('0.00'),
+    )
+
+    active_total = allocated_total + overflow_total
+    if active_total > 0:
+        return active_total
+
+    return transaction_obj.total_amount * Decimal('1.25')
+
+
+class TicketReceiptPdfExportView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = TicketReceiptPdfSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        ticket_numbers = serializer.validated_data['ticket_numbers']
+        tickets = list(
+            Ticket.objects.filter(
+                ticket_number__in=ticket_numbers,
+                created_by=request.user,
+            ).prefetch_related(
+                'transactions__allocations',
+                'transactions__overflows',
+            ).order_by('-created_at')
+        )
+
+        found_numbers = {ticket.ticket_number for ticket in tickets}
+        missing_numbers = [ticket_number for ticket_number in ticket_numbers if ticket_number not in found_numbers]
+        if missing_numbers:
+            return Response(
+                {"detail": f"Unknown ticket(s): {', '.join(missing_numbers)}"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        response = HttpResponse(content_type='application/pdf')
+        suffix = tickets[0].ticket_number if len(tickets) == 1 else f"{len(tickets)}_tickets"
+        response['Content-Disposition'] = f'attachment; filename="receipt_{suffix}.pdf"'
+
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5 * inch, bottomMargin=0.5 * inch)
+        styles = getSampleStyleSheet()
+        elements = []
+
+        title_style = ParagraphStyle(
+            'TicketReceiptTitle',
+            parent=styles['Heading1'],
+            fontSize=18,
+            textColor=colors.HexColor('#1a1a1a'),
+            spaceAfter=16,
+            alignment=TA_CENTER,
+        )
+
+        label_style = ParagraphStyle(
+            'TicketReceiptLabel',
+            parent=styles['BodyText'],
+            fontSize=10,
+            textColor=colors.HexColor('#66605a'),
+        )
+
+        for index, ticket in enumerate(tickets):
+            visible_transactions = _ticket_visible_transactions(ticket)
+            total_amount = _ticket_visible_total(ticket)
+
+            elements.append(Paragraph(ticket.ticket_number, title_style))
+            elements.append(Paragraph(timezone.localtime(ticket.created_at).strftime('%d %b %Y %H:%M'), label_style))
+            period_name = Period.objects.filter(
+                start_date__lte=ticket.created_at,
+                end_date__gte=ticket.created_at,
+            ).order_by('start_date').values_list('name', flat=True).first()
+            if period_name:
+                elements.append(Paragraph(period_name, label_style))
+            elements.append(Spacer(1, 0.16 * inch))
+
+            info_table = Table([
+                ['Ticket No', ticket.ticket_number],
+                ['Entries', str(len(visible_transactions))],
+                ['Customer', (ticket.customer_name.strip() if ticket.customer_name and not ticket.customer_name.strip().startswith('Walk-in ') else '-')],
+                ['Total amount', f"{total_amount:,.2f}"],
+            ], colWidths=[1.6 * inch, 4.2 * inch])
+            info_table.setStyle(TableStyle([
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#d7d0c7')),
+                ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ]))
+            elements.append(info_table)
+            elements.append(Spacer(1, 0.18 * inch))
+
+            line_rows = [['Identifier', 'Amount']]
+            for transaction_obj in visible_transactions:
+                line_rows.append([
+                    transaction_obj.identifier.number,
+                    f"{_ticket_visible_line_amount(transaction_obj):,.2f}",
+                ])
+
+            line_table = Table(line_rows, colWidths=[2.0 * inch, 2.0 * inch])
+            line_table.setStyle(TableStyle([
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#d7d0c7')),
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f4efe8')),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('ALIGN', (1, 1), (1, -1), 'RIGHT'),
+            ]))
+            elements.append(line_table)
+
+            if index < len(tickets) - 1:
+                elements.append(Spacer(1, 0.28 * inch))
+                elements.append(Paragraph(" ", label_style))
+                elements.append(Spacer(1, 0.28 * inch))
+
+        doc.build(elements)
+        response.write(buffer.getvalue())
+        buffer.close()
+        return response
 
 
 class CreateTicketWithTransactions(APIView):

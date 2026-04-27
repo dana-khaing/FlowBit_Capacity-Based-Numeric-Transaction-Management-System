@@ -25,6 +25,7 @@ from .views import (
     TicketListView,
     TicketDetailView,
     TicketRefundView,
+    TicketReceiptPdfExportView,
 )
 
 router = DefaultRouter()
@@ -60,6 +61,7 @@ urlpatterns = [
 
     # Ticket listing & detail
     path('tickets/', TicketListView.as_view(), name='ticket-list'),
+    path('tickets/receipt-pdf/', TicketReceiptPdfExportView.as_view(), name='ticket-receipt-pdf'),
     path('tickets/<str:ticket_number>/', TicketDetailView.as_view(), name='ticket-detail'),
     path('tickets/<str:ticket_number>/refund/', TicketRefundView.as_view(), name='ticket-refund'),
 ]
