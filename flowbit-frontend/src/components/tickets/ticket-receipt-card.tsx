@@ -44,7 +44,38 @@ function getTicketBasisAmount(
   return (amount * 1.25).toFixed(2);
 }
 
-function getOverflowDisplayAmount(
+function getActiveOverflowAmount(
+  transaction: FlowBitTicketDetail["transactions"][number],
+) {
+  return transaction.overflows
+    .filter((overflow) => overflow.status !== "RFND")
+    .reduce((sum, overflow) => {
+      const amount = Number(getOverflowDisplayAmount(overflow));
+      return sum + (Number.isNaN(amount) ? 0 : amount);
+    }, 0);
+}
+
+function getActiveAllocatedAmount(
+  transaction: FlowBitTicketDetail["transactions"][number],
+) {
+  return transaction.allocations.reduce((sum, allocation) => {
+    const amount = Number(allocation.amount ?? allocation.amount_allocated ?? "0");
+    return sum + (Number.isNaN(amount) ? 0 : amount);
+  }, 0);
+}
+
+function getVisibleLineAmount(
+  transaction: FlowBitTicketDetail["transactions"][number],
+) {
+  const activeAmount = getActiveAllocatedAmount(transaction) + getActiveOverflowAmount(transaction);
+  if (activeAmount > 0) {
+    return activeAmount.toFixed(2);
+  }
+
+  return getTicketBasisAmount(transaction);
+}
+
+export function getOverflowDisplayAmount(
   overflow: FlowBitTicketDetail["transactions"][number]["overflows"][number],
 ) {
   if (overflow.status === "TCSO") {
@@ -146,7 +177,7 @@ export function TicketReceiptCard({
                 </span>
                 <span className="mb-1 min-w-[48px] flex-1 border-b border-dotted border-stone-300" />
                 <p className="text-base font-semibold text-stone-950">
-                  {formatTicketAmount(getTicketBasisAmount(transaction))}
+                  {formatTicketAmount(getVisibleLineAmount(transaction))}
                 </p>
               </div>
             </div>
@@ -174,13 +205,15 @@ export function TicketReceiptCard({
               </div>
             ) : null}
 
-            {transaction.overflows.length ? (
+            {transaction.overflows.filter((overflow) => overflow.status !== "RFND").length ? (
               <div className="mt-3 rounded-[18px] border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800 print:hidden">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-700">
                   Spill over
                 </p>
                 <div className="mt-2 space-y-2">
-                  {transaction.overflows.map((overflow) => (
+                  {transaction.overflows
+                    .filter((overflow) => overflow.status !== "RFND")
+                    .map((overflow) => (
                     <div
                       key={overflow.id}
                       className="flex items-center justify-between gap-3"

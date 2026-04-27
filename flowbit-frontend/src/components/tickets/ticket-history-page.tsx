@@ -19,6 +19,7 @@ import {
   formatTicketDate,
   formatTicketAmount,
   getTicketCustomerDisplayName,
+  getOverflowDisplayAmount,
   TicketReceiptCard,
 } from "@/components/tickets/ticket-receipt-card";
 import { Button } from "@/components/ui/button";
@@ -204,11 +205,26 @@ export function TicketHistoryPage() {
 
     const receiptLines = visibleTransactions
       .map((transaction) => {
+        const allocatedAmount = transaction.allocations.reduce((sum, allocation) => {
+          const amount = Number(allocation.amount ?? allocation.amount_allocated ?? "0");
+          return sum + (Number.isNaN(amount) ? 0 : amount);
+        }, 0);
+        const overflowAmount = transaction.overflows
+          .filter((overflow) => overflow.status !== "RFND")
+          .reduce((sum, overflow) => {
+            const amount = Number(getOverflowDisplayAmount(overflow));
+            return sum + (Number.isNaN(amount) ? 0 : amount);
+          }, 0);
+        const visibleLineAmount =
+          allocatedAmount + overflowAmount > 0
+            ? String(allocatedAmount + overflowAmount)
+            : String(Number(transaction.total_amount) * 1.25);
+
         return `
           <section style="margin-top:16px;padding-top:16px;border-top:1px dashed #c7c2b8;">
             <div style="display:flex;justify-content:space-between;gap:16px;">
               <strong>${transaction.identifier_number} ........ ${formatTicketAmount(
-                String(Number(transaction.total_amount) * 1.25),
+                visibleLineAmount,
               )}</strong>
             </div>
           </section>
