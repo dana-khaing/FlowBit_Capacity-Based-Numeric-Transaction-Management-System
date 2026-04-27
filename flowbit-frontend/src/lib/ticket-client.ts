@@ -87,6 +87,8 @@ export type FlowBitTicketListItem = {
   is_refunded: boolean;
   refunded_at: string | null;
   has_spill_over: boolean;
+  active_spill_over_count: number;
+  refunded_transaction_count: number;
   total_amount: string;
   transaction_count: number;
   identifier_numbers: string[];
@@ -225,4 +227,26 @@ export async function fetchTicketDetail(ticketNumber: string) {
     method: "GET",
     headers: authHeaders(),
   });
+}
+
+export async function downloadTicketReceiptPdf(ticketNumbers: string[]) {
+  const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000/api"}/tickets/receipt-pdf/`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(),
+    },
+    body: JSON.stringify({ ticket_numbers: ticketNumbers }),
+  });
+
+  if (!response.ok) {
+    let message = "Request failed.";
+    try {
+      const data = await response.json();
+      message = data.detail || data.message || message;
+    } catch {}
+    throw new Error(message);
+  }
+
+  return response.blob();
 }

@@ -1,13 +1,19 @@
 "use client";
 
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
+  faCheckSquare,
   faCircleNotch,
   faDownload,
   faMagnifyingGlass,
+  faMinusCircle,
   faPrint,
   faReceipt,
+  faRotateLeft,
+  faShieldHalved,
+  faSquare,
   faTicket,
   faTriangleExclamation,
   faUser,
@@ -29,6 +35,7 @@ import { getStoredUser } from "@/lib/auth-client";
 import {
   fetchTicketDetail,
   fetchTickets,
+  downloadTicketReceiptPdf,
   resolveOverflowAction,
   resolveTicketRefundAction,
   type FlowBitTicketDetail,
@@ -55,6 +62,7 @@ export function TicketHistoryPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [showRefundModal, setShowRefundModal] = useState(false);
   const [adminOverrideCode, setAdminOverrideCode] = useState("");
+  const [selectedTicketNumbers, setSelectedTicketNumbers] = useState<string[]>([]);
   const [busyRefundAction, setBusyRefundAction] = useState<null | {
     kind: "ticket" | "transaction" | "overflow";
     id: number;
@@ -87,6 +95,11 @@ export function TicketHistoryPage() {
           return;
         }
         setTickets(nextTickets);
+        setSelectedTicketNumbers((current) =>
+          current.filter((ticketNumber) =>
+            nextTickets.some((ticket) => ticket.ticket_number === ticketNumber),
+          ),
+        );
         setSelectedTicketNumber((current) =>
           current && nextTickets.some((ticket) => ticket.ticket_number === current)
             ? current
@@ -111,6 +124,10 @@ export function TicketHistoryPage() {
       isMounted = false;
     };
   }, [activePeriod?.id, hasActivePeriod]);
+
+  useEffect(() => {
+    setSelectedTicketNumbers([]);
+  }, [activePeriod?.id]);
 
   const filteredTickets = useMemo(() => {
     const normalizedSearch = deferredSearchTerm.trim().toLowerCase();
@@ -168,6 +185,24 @@ export function TicketHistoryPage() {
     return filteredTickets.slice(start, start + pageSize);
   }, [currentPage, filteredTickets]);
 
+  const groupedTickets = useMemo(() => {
+    const groups: Array<{ label: string; tickets: FlowBitTicketListItem[] }> = [];
+    for (const ticket of paginatedTickets) {
+      const label = new Date(ticket.created_at).toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "long",
+        year: "numeric",
+      });
+      const lastGroup = groups[groups.length - 1];
+      if (lastGroup && lastGroup.label === label) {
+        lastGroup.tickets.push(ticket);
+      } else {
+        groups.push({ label, tickets: [ticket] });
+      }
+    }
+    return groups;
+  }, [paginatedTickets]);
+
   useEffect(() => {
     setCurrentPage(1);
   }, [deferredCustomerFilter, deferredSearchTerm, dateFrom, dateTo, sortBy]);
@@ -190,73 +225,101 @@ export function TicketHistoryPage() {
     }
   }, [paginatedTickets, selectedTicketNumber]);
 
-  function downloadSelectedTicket() {
+  async function downloadSelectedTicket() {
     if (!selectedTicket) {
       return;
     }
+    try {
+      const blob = await downloadTicketReceiptPdf([selectedTicket.ticket_number]);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${selectedTicket.ticket_number}.pdf`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Request failed.";
+      setToast({ type: "error", message });
+    }
+  }
 
-    const visibleTransactions = selectedTicket.transactions.filter(
-      (transaction) => !transaction.is_refunded,
-    );
-    const visibleTotalAmount = visibleTransactions.reduce((sum, transaction) => {
-      const amount = Number(transaction.total_amount);
-      return sum + (Number.isNaN(amount) ? 0 : amount);
-    }, 0);
+  async function downloadSelectedTickets() {
+    if (!selectedTicketNumbers.length) {
+      return;
+    }
+    try {
+      const blob = await downloadTicketReceiptPdf(selectedTicketNumbers);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download =
+        selectedTicketNumbers.length === 1
+          ? `${selectedTicketNumbers[0]}.pdf`
+          : `tickets_${selectedTicketNumbers.length}.pdf`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Request failed.";
+      setToast({ type: "error", message });
+    }
+  }
 
-    const receiptLines = visibleTransactions
-      .map((transaction) => {
-        const allocatedAmount = transaction.allocations.reduce((sum, allocation) => {
-          const amount = Number(allocation.amount ?? allocation.amount_allocated ?? "0");
-          return sum + (Number.isNaN(amount) ? 0 : amount);
-        }, 0);
-        const overflowAmount = transaction.overflows
-          .filter((overflow) => overflow.status !== "RFND")
-          .reduce((sum, overflow) => {
-            const amount = Number(getOverflowDisplayAmount(overflow));
+  async function printSelectedTickets() {
+    if (!selectedTicketNumbers.length) {
+      return;
+    }
+    try {
+      const details = await Promise.all(
+        selectedTicketNumbers.map((ticketNumber) => fetchTicketDetail(ticketNumber)),
+      );
+      const receipts = details
+        .map((ticket) => {
+          const visibleTransactions = ticket.transactions.filter((transaction) => !transaction.is_refunded);
+          const visibleTotalAmount = visibleTransactions.reduce((sum, transaction) => {
+            const amount = Number(transaction.total_amount);
             return sum + (Number.isNaN(amount) ? 0 : amount);
           }, 0);
-        const visibleLineAmount =
-          allocatedAmount + overflowAmount > 0
-            ? String(allocatedAmount + overflowAmount)
-            : String(Number(transaction.total_amount) * 1.25);
+          const rows = visibleTransactions
+            .map((transaction) => {
+              const activeOverflowAmount = transaction.overflows
+                .filter((overflow) => overflow.status !== "RFND")
+                .reduce((sum, overflow) => sum + Number(getOverflowDisplayAmount(overflow) || 0), 0);
+              const activeAllocationAmount = transaction.allocations
+                .reduce((sum, allocation) => sum + Number(allocation.amount ?? allocation.amount_allocated ?? 0), 0);
+              const lineAmount = activeOverflowAmount + activeAllocationAmount > 0
+                ? activeOverflowAmount + activeAllocationAmount
+                : Number(transaction.total_amount) * 1.25;
+              return `<div style="display:flex;justify-content:space-between;gap:16px;padding-top:12px;margin-top:12px;border-top:1px dashed #c7c2b8;"><strong>${transaction.identifier_number}</strong><strong>${formatTicketAmount(String(lineAmount))}</strong></div>`;
+            })
+            .join("");
+          return `
+            <section style="break-after:page;max-width:540px;margin:0 auto 28px;padding:24px;color:#1c1814;font-family:Arial,sans-serif;">
+              <h1 style="font-size:24px;margin:0;">${ticket.ticket_number}</h1>
+              <p style="margin:8px 0 0;color:#6b645a;">${formatTicketDate(ticket.created_at)}</p>
+              <p style="margin:4px 0 0;color:#6b645a;">${activePeriod?.name ?? ""}</p>
+              <hr style="margin:16px 0;border:none;border-top:1px dashed #c7c2b8;" />
+              <p><strong>Entries:</strong> ${visibleTransactions.length}</p>
+              <p><strong>Customer:</strong> ${getTicketCustomerDisplayName(ticket.customer_name)}</p>
+              <p><strong>Total amount:</strong> ${formatTicketAmount(String(visibleTotalAmount))}</p>
+              ${rows}
+            </section>
+          `;
+        })
+        .join("");
 
-        return `
-          <section style="margin-top:16px;padding-top:16px;border-top:1px dashed #c7c2b8;">
-            <div style="display:flex;justify-content:space-between;gap:16px;">
-              <strong>${transaction.identifier_number} ........ ${formatTicketAmount(
-                visibleLineAmount,
-              )}</strong>
-            </div>
-          </section>
-        `;
-      })
-      .join("");
-
-    const html = `<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <title>${selectedTicket.ticket_number}</title>
-  </head>
-  <body style="font-family: Arial, sans-serif; color:#1c1814; max-width:540px; margin:0 auto; padding:24px;">
-    <h1 style="font-size:24px; margin:0;">${selectedTicket.ticket_number}</h1>
-    <p style="margin:8px 0 0; color:#6b645a;">${formatTicketDate(selectedTicket.created_at)}</p>
-    <p style="margin:4px 0 0; color:#6b645a;">${activePeriod?.name ?? ""}</p>
-    <hr style="margin:16px 0; border:none; border-top:1px dashed #c7c2b8;" />
-    <p><strong>Entries:</strong> ${visibleTransactions.length}</p>
-    <p><strong>Customer:</strong> ${getTicketCustomerDisplayName(selectedTicket.customer_name)}</p>
-    <p><strong>Total amount:</strong> ${formatTicketAmount(String(visibleTotalAmount))}</p>
-    ${receiptLines}
-  </body>
-</html>`;
-
-    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${selectedTicket.ticket_number}.html`;
-    link.click();
-    URL.revokeObjectURL(url);
+      const printWindow = window.open("", "_blank", "noopener,noreferrer");
+      if (!printWindow) {
+        setToast({ type: "error", message: "Unable to open print window." });
+        return;
+      }
+      printWindow.document.write(`<!doctype html><html><head><title>Ticket receipts</title></head><body>${receipts}</body></html>`);
+      printWindow.document.close();
+      printWindow.focus();
+      printWindow.print();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Request failed.";
+      setToast({ type: "error", message });
+    }
   }
 
   async function refreshTicketHistoryState() {
@@ -397,6 +460,24 @@ export function TicketHistoryPage() {
     [tickets],
   );
 
+  function toggleTicketSelection(ticketNumber: string) {
+    setSelectedTicketNumbers((current) =>
+      current.includes(ticketNumber)
+        ? current.filter((value) => value !== ticketNumber)
+        : [...current, ticketNumber],
+    );
+  }
+
+  function togglePageSelection() {
+    const pageNumbers = paginatedTickets.map((ticket) => ticket.ticket_number);
+    const allSelected = pageNumbers.every((ticketNumber) => selectedTicketNumbers.includes(ticketNumber));
+    setSelectedTicketNumbers((current) =>
+      allSelected
+        ? current.filter((ticketNumber) => !pageNumbers.includes(ticketNumber))
+        : Array.from(new Set([...current, ...pageNumbers])),
+    );
+  }
+
   useEffect(() => {
     if (!paginatedTickets.length) {
       return;
@@ -518,6 +599,15 @@ export function TicketHistoryPage() {
                 <FontAwesomeIcon icon={faPrint} className="h-3.5 w-3.5" />
                 Print
               </Button>
+              {selectedTicket && getStoredUser()?.role === "admin" ? (
+                <Link
+                  href={`/admin/audit-logs?target_model=ticket&target_id=${selectedTicket.id}`}
+                  className="inline-flex items-center justify-center gap-2 rounded-[18px] border border-stone-900/10 bg-white px-5 py-3 text-sm font-semibold text-stone-700 transition hover:bg-stone-50"
+                >
+                  <FontAwesomeIcon icon={faShieldHalved} className="h-3.5 w-3.5" />
+                  Audit
+                </Link>
+              ) : null}
             </div>
           </div>
 
@@ -573,8 +663,50 @@ export function TicketHistoryPage() {
         }
       />
 
-      <div className="space-y-5">
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="space-y-5">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-3 text-sm text-stone-600">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={togglePageSelection}
+                className="inline-flex items-center gap-2 font-medium text-stone-700"
+              >
+                <FontAwesomeIcon
+                  icon={
+                    paginatedTickets.length &&
+                    paginatedTickets.every((ticket) => selectedTicketNumbers.includes(ticket.ticket_number))
+                      ? faCheckSquare
+                      : faSquare
+                  }
+                  className="h-4 w-4"
+                />
+                Select page
+              </button>
+              <span>{selectedTicketNumbers.length} selected</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-[16px]"
+                onClick={printSelectedTickets}
+                disabled={!selectedTicketNumbers.length}
+              >
+                Print selected
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-[16px]"
+                onClick={downloadSelectedTickets}
+                disabled={!selectedTicketNumbers.length}
+              >
+                Download selected
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3">
           <div className="rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">
               Tickets
@@ -659,64 +791,110 @@ export function TicketHistoryPage() {
             </div>
           ) : paginatedTickets.length ? (
             <div className="space-y-3">
-              {paginatedTickets.map((ticket) => {
-                const isActive = ticket.ticket_number === selectedTicketNumber;
-                return (
-                  <button
-                    key={ticket.id}
-                    type="button"
-                    onClick={() => setSelectedTicketNumber(ticket.ticket_number)}
-                    className={`block w-full rounded-[22px] border px-4 py-4 text-left transition ${
-                      isActive
-                        ? "border-stone-950 bg-stone-950 text-white shadow-[0_14px_30px_rgba(28,24,20,0.12)]"
-                        : "border-stone-900/8 bg-stone-50 text-stone-900 hover:border-stone-300 hover:bg-white"
-                    }`}
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <p className={`text-xs font-semibold uppercase tracking-[0.16em] ${isActive ? "text-stone-300" : "text-stone-400"}`}>
-                          Ticket
-                        </p>
-                        <p className="mt-2 text-lg font-semibold">{ticket.ticket_number}</p>
-                      </div>
-                      <div className="flex flex-wrap items-center justify-end gap-2">
-                        <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${
-                          isActive ? "bg-white/10 text-stone-100" : "bg-white text-stone-500"
-                        }`}>
-                          <FontAwesomeIcon icon={faTicket} className="h-3 w-3" />
-                          {ticket.transaction_count} {ticket.transaction_count === 1 ? "entry" : "entries"}
-                        </span>
-                        {ticket.is_refunded ? (
-                          <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${
-                            isActive ? "bg-emerald-200/20 text-emerald-100" : "bg-emerald-100 text-emerald-700"
-                          }`}>
-                            Refunded
-                          </span>
-                        ) : null}
-                        {ticket.has_spill_over ? (
-                          <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${
-                            isActive ? "bg-amber-200/20 text-amber-100" : "bg-amber-100 text-amber-800"
-                          }`}>
-                            Spill over
-                          </span>
-                        ) : null}
-                      </div>
-                    </div>
+              {groupedTickets.map((group) => (
+                <section key={group.label} className="space-y-3">
+                  <div className="sticky top-0 rounded-[16px] bg-white/85 px-1 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-stone-400 backdrop-blur">
+                    {group.label}
+                  </div>
+                  {group.tickets.map((ticket) => {
+                    const isActive = ticket.ticket_number === selectedTicketNumber;
+                    const isSelected = selectedTicketNumbers.includes(ticket.ticket_number);
+                    const isPartialRefund =
+                      !ticket.is_refunded && ticket.refunded_transaction_count > 0;
 
-                    <div className={`mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm ${isActive ? "text-stone-200" : "text-stone-600"}`}>
-                      <span className="inline-flex items-center gap-2">
-                        <FontAwesomeIcon icon={faUser} className={`h-3.5 w-3.5 ${isActive ? "text-stone-300" : "text-stone-400"}`} />
-                        {getTicketCustomerDisplayName(ticket.customer_name)}
-                      </span>
-                      <span className="inline-flex items-center gap-2">
-                        <FontAwesomeIcon icon={faReceipt} className={`h-3.5 w-3.5 ${isActive ? "text-stone-300" : "text-stone-400"}`} />
-                        {formatTicketAmount(ticket.total_amount)}
-                      </span>
-                      <span>{formatTicketDate(ticket.created_at)}</span>
-                    </div>
-                  </button>
-                );
-              })}
+                    return (
+                      <div
+                        key={ticket.id}
+                        className={`rounded-[22px] border px-4 py-4 transition ${
+                          isActive
+                            ? "border-stone-950 bg-stone-950 text-white shadow-[0_14px_30px_rgba(28,24,20,0.12)]"
+                            : "border-stone-900/8 bg-stone-50 text-stone-900 hover:border-stone-300 hover:bg-white"
+                        }`}
+                      >
+                        <div className="flex items-start gap-3">
+                          <button
+                            type="button"
+                            onClick={() => toggleTicketSelection(ticket.ticket_number)}
+                            className={`mt-1 inline-flex h-5 w-5 items-center justify-center rounded border ${
+                              isActive
+                                ? "border-white/40 bg-white/10 text-white"
+                                : "border-stone-300 bg-white text-stone-500"
+                            }`}
+                            aria-label={`Select ${ticket.ticket_number}`}
+                          >
+                            <FontAwesomeIcon icon={isSelected ? faCheckSquare : faSquare} className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedTicketNumber(ticket.ticket_number)}
+                            className="min-w-0 flex-1 text-left"
+                          >
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div>
+                                <p className={`text-xs font-semibold uppercase tracking-[0.16em] ${isActive ? "text-stone-300" : "text-stone-400"}`}>
+                                  Ticket
+                                </p>
+                                <p className="mt-2 text-lg font-semibold">{ticket.ticket_number}</p>
+                              </div>
+                              <div className="flex flex-wrap items-center justify-end gap-2">
+                                <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${
+                                  isActive ? "bg-white/10 text-stone-100" : "bg-white text-stone-500"
+                                }`}>
+                                  <FontAwesomeIcon icon={faTicket} className="h-3 w-3" />
+                                  {ticket.transaction_count} {ticket.transaction_count === 1 ? "entry" : "entries"}
+                                </span>
+                                {ticket.is_refunded ? (
+                                  <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${
+                                    isActive ? "bg-emerald-200/20 text-emerald-100" : "bg-emerald-100 text-emerald-700"
+                                  }`}>
+                                    <FontAwesomeIcon icon={faRotateLeft} className="h-3 w-3" />
+                                    Refunded
+                                  </span>
+                                ) : null}
+                                {isPartialRefund ? (
+                                  <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${
+                                    isActive ? "bg-sky-200/20 text-sky-100" : "bg-sky-100 text-sky-700"
+                                  }`}>
+                                    <FontAwesomeIcon icon={faMinusCircle} className="h-3 w-3" />
+                                    Partial refund
+                                  </span>
+                                ) : null}
+                                {ticket.active_spill_over_count > 0 ? (
+                                  <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${
+                                    isActive ? "bg-amber-200/20 text-amber-100" : "bg-amber-100 text-amber-800"
+                                  }`}>
+                                    <FontAwesomeIcon icon={faTriangleExclamation} className="h-3 w-3" />
+                                    Spill over {ticket.active_spill_over_count}
+                                  </span>
+                                ) : null}
+                                {!ticket.is_refunded && ticket.active_spill_over_count === 0 && !isPartialRefund ? (
+                                  <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${
+                                    isActive ? "bg-emerald-200/20 text-emerald-100" : "bg-emerald-100 text-emerald-700"
+                                  }`}>
+                                    Clean
+                                  </span>
+                                ) : null}
+                              </div>
+                            </div>
+
+                            <div className={`mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm ${isActive ? "text-stone-200" : "text-stone-600"}`}>
+                              <span className="inline-flex items-center gap-2">
+                                <FontAwesomeIcon icon={faUser} className={`h-3.5 w-3.5 ${isActive ? "text-stone-300" : "text-stone-400"}`} />
+                                {getTicketCustomerDisplayName(ticket.customer_name)}
+                              </span>
+                              <span className="inline-flex items-center gap-2">
+                                <FontAwesomeIcon icon={faReceipt} className={`h-3.5 w-3.5 ${isActive ? "text-stone-300" : "text-stone-400"}`} />
+                                {formatTicketAmount(ticket.total_amount)}
+                              </span>
+                              <span>{formatTicketDate(ticket.created_at)}</span>
+                            </div>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </section>
+              ))}
             </div>
           ) : (
             <div className="rounded-[22px] border border-dashed border-stone-300 bg-stone-50 px-4 py-4 text-sm text-stone-500">
