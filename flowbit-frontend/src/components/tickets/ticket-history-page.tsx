@@ -5,7 +5,6 @@ import Link from "next/link";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faCircleNotch,
-  faCopy,
   faDownload,
   faMagnifyingGlass,
   faPrint,
@@ -180,19 +179,6 @@ export function TicketHistoryPage() {
       setSelectedTicketNumber(paginatedTickets[0].ticket_number);
     }
   }, [paginatedTickets, selectedTicketNumber]);
-
-  async function copySelectedTicketNumber() {
-    if (!selectedTicket) {
-      return;
-    }
-
-    try {
-      await navigator.clipboard.writeText(selectedTicket.ticket_number);
-      setToast({ type: "success", message: "Ticket number copied." });
-    } catch {
-      setToast({ type: "error", message: "Unable to copy the ticket number." });
-    }
-  }
 
   function downloadSelectedTicket() {
     if (!selectedTicket) {
@@ -400,7 +386,7 @@ export function TicketHistoryPage() {
                   className="inline-flex h-10 items-center justify-center gap-2 rounded-[18px] border border-stone-900/10 bg-white px-4 text-sm font-medium text-stone-700 transition hover:bg-stone-50"
                 >
                   <FontAwesomeIcon icon={faTriangleExclamation} className="h-3.5 w-3.5" />
-                  Refund / review
+                  Refund
                 </Link>
               ) : null}
               <Button
@@ -412,16 +398,6 @@ export function TicketHistoryPage() {
               >
                 <FontAwesomeIcon icon={faDownload} className="h-3.5 w-3.5" />
                 Download
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="rounded-[18px]"
-                onClick={copySelectedTicketNumber}
-                disabled={!selectedTicket}
-              >
-                <FontAwesomeIcon icon={faCopy} className="h-3.5 w-3.5" />
-                Copy ticket no
               </Button>
               <Button
                 type="button"
