@@ -189,6 +189,8 @@ class TicketSerializer(serializers.ModelSerializer):
     created_by_username = serializers.CharField(source='created_by.username', read_only=True, default=None)
     identifier_numbers = serializers.SerializerMethodField()
     has_spill_over = serializers.SerializerMethodField()
+    active_spill_over_count = serializers.SerializerMethodField()
+    refunded_transaction_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Ticket
@@ -206,6 +208,8 @@ class TicketSerializer(serializers.ModelSerializer):
             'transaction_count',
             'identifier_numbers',
             'has_spill_over',
+            'active_spill_over_count',
+            'refunded_transaction_count',
         ]
         read_only_fields = [
             'ticket_number',
@@ -229,6 +233,21 @@ class TicketSerializer(serializers.ModelSerializer):
         return Overflow.objects.filter(transaction__ticket=obj).exclude(
             status=Overflow.STATUS_REFUNDED
         ).exists()
+
+    def get_active_spill_over_count(self, obj):
+        return Overflow.objects.filter(transaction__ticket=obj).exclude(
+            status=Overflow.STATUS_REFUNDED
+        ).count()
+
+    def get_refunded_transaction_count(self, obj):
+        return obj.transactions.filter(is_refunded=True).count()
+
+
+class TicketReceiptPdfSerializer(serializers.Serializer):
+    ticket_numbers = serializers.ListField(
+        child=serializers.CharField(),
+        allow_empty=False,
+    )
 
 
 class TicketRefundActionSerializer(serializers.Serializer):

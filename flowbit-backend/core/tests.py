@@ -1526,6 +1526,16 @@ class PrivateWorkflowAPITests(APITestCase):
         self.active_transaction.refresh_from_db()
         self.assertTrue(self.active_transaction.is_refunded)
 
+    def test_ticket_receipt_pdf_export_returns_pdf_for_current_user(self):
+        response = self.client.post(
+            '/api/tickets/receipt-pdf/',
+            {'ticket_numbers': [self.active_ticket.ticket_number]},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response['Content-Type'], 'application/pdf')
+
     def test_period_summary_returns_private_totals(self):
         response = self.client.get(f'/api/periods/{self.active_period.id}/summary/')
 
