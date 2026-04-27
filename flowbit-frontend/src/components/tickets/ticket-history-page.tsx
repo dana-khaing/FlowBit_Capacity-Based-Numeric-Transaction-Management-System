@@ -40,8 +40,13 @@ export function TicketHistoryPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [customerFilter, setCustomerFilter] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [sortBy, setSortBy] = useState("newest");
   const [toast, setToast] = useState<ToastState>(null);
   const deferredSearchTerm = useDeferredValue(searchTerm);
+  const deferredCustomerFilter = useDeferredValue(customerFilter);
   const {
     activePeriod,
     hasActivePeriod,
@@ -94,23 +99,53 @@ export function TicketHistoryPage() {
 
   const filteredTickets = useMemo(() => {
     const normalizedSearch = deferredSearchTerm.trim().toLowerCase();
-    if (!normalizedSearch) {
-      return tickets;
-    }
+    const normalizedCustomer = deferredCustomerFilter.trim().toLowerCase();
 
-    return tickets.filter((ticket) =>
-      [
-        ticket.ticket_number,
-        ticket.customer_name || "",
-        ticket.total_amount,
-        ...(ticket.identifier_numbers || []),
-      ].some((value) =>
-        String(value ?? "")
+    const filtered = tickets.filter((ticket) => {
+      const ticketDate = new Date(ticket.created_at);
+      const matchesSearch =
+        !normalizedSearch ||
+        [
+          ticket.ticket_number,
+          ticket.customer_name || "",
+          ticket.total_amount,
+          ...(ticket.identifier_numbers || []),
+        ].some((value) =>
+          String(value ?? "")
+            .toLowerCase()
+            .includes(normalizedSearch),
+        );
+
+      const matchesCustomer =
+        !normalizedCustomer ||
+        String(ticket.customer_name ?? "")
           .toLowerCase()
-          .includes(normalizedSearch),
-      ),
-    );
-  }, [deferredSearchTerm, tickets]);
+          .includes(normalizedCustomer);
+
+      const matchesDateFrom =
+        !dateFrom || ticketDate >= new Date(`${dateFrom}T00:00:00`);
+      const matchesDateTo =
+        !dateTo || ticketDate <= new Date(`${dateTo}T23:59:59`);
+
+      return matchesSearch && matchesCustomer && matchesDateFrom && matchesDateTo;
+    });
+
+    return filtered.slice().sort((left, right) => {
+      if (sortBy === "oldest") {
+        return new Date(left.created_at).getTime() - new Date(right.created_at).getTime();
+      }
+
+      if (sortBy === "amount_desc") {
+        return Number(right.total_amount) - Number(left.total_amount);
+      }
+
+      if (sortBy === "amount_asc") {
+        return Number(left.total_amount) - Number(right.total_amount);
+      }
+
+      return new Date(right.created_at).getTime() - new Date(left.created_at).getTime();
+    });
+  }, [dateFrom, dateTo, deferredCustomerFilter, deferredSearchTerm, sortBy, tickets]);
 
   useEffect(() => {
     if (!filteredTickets.length) {
@@ -341,6 +376,39 @@ export function TicketHistoryPage() {
               placeholder="Search by ticket number, customer, or amount"
               className="pl-11"
             />
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <Input
+              value={customerFilter}
+              onChange={(event) => setCustomerFilter(event.target.value)}
+              placeholder="Filter by customer"
+            />
+            <Input
+              type="date"
+              value={dateFrom}
+              onChange={(event) => setDateFrom(event.target.value)}
+            />
+            <Input
+              type="date"
+              value={dateTo}
+              onChange={(event) => setDateTo(event.target.value)}
+            />
+            <label className="flex items-center rounded-[18px] border border-stone-900/10 bg-white px-4">
+              <span className="mr-3 text-xs font-semibold uppercase tracking-[0.14em] text-stone-400">
+                Sort
+              </span>
+              <select
+                value={sortBy}
+                onChange={(event) => setSortBy(event.target.value)}
+                className="h-12 w-full bg-transparent text-sm text-stone-700 outline-none"
+              >
+                <option value="newest">Newest first</option>
+                <option value="oldest">Oldest first</option>
+                <option value="amount_desc">Amount high to low</option>
+                <option value="amount_asc">Amount low to high</option>
+              </select>
+            </label>
           </div>
 
           {isLoading ? (
