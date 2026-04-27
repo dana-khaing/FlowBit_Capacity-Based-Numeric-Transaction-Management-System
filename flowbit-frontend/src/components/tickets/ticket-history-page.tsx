@@ -791,8 +791,8 @@ export function TicketHistoryPage() {
             </div>
           ) : paginatedTickets.length ? (
             <div className="space-y-3">
-              {groupedTickets.map((group) => (
-                <section key={group.label} className="space-y-3">
+              {groupedTickets.map((group, groupIndex) => (
+                <section key={`${group.label}-${groupIndex}`} className="space-y-3">
                   <div className="sticky top-0 rounded-[16px] bg-white/85 px-1 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-stone-400 backdrop-blur">
                     {group.label}
                   </div>
