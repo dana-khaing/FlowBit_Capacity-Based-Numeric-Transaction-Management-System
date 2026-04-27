@@ -1536,6 +1536,48 @@ class PrivateWorkflowAPITests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response['Content-Type'], 'application/pdf')
 
+    def test_audit_logs_can_filter_by_related_ticket_number(self):
+        AuditLog.objects.create(
+            user=self.approver,
+            action='ticket.created',
+            target_model='ticket',
+            target_id=self.active_ticket.id,
+            details='Created ticket',
+        )
+        AuditLog.objects.create(
+            user=self.approver,
+            action='transaction.refunded',
+            target_model='transaction',
+            target_id=self.active_transaction.id,
+            details='Refunded transaction',
+        )
+        unrelated_transaction = Transaction.objects.create(
+            identifier=self.second_identifier,
+            total_amount=Decimal('25.00'),
+            created_by=self.approver,
+            ticket=Ticket.objects.create(customer_name='Elsewhere', created_by=self.approver),
+        )
+        AuditLog.objects.create(
+            user=self.approver,
+            action='transaction.refunded',
+            target_model='transaction',
+            target_id=unrelated_transaction.id,
+            details='Unrelated transaction',
+        )
+
+        response = self.client.get('/api/audit-logs/', {
+            'related_ticket_number': self.active_ticket.ticket_number,
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        actions = {entry['action'] for entry in response.data}
+        details = {entry['details'] for entry in response.data}
+        self.assertIn('ticket.created', actions)
+        self.assertIn('transaction.refunded', actions)
+        self.assertIn('Created ticket', details)
+        self.assertIn('Refunded transaction', details)
+        self.assertNotIn('Unrelated transaction', details)
+
     def test_period_summary_returns_private_totals(self):
         response = self.client.get(f'/api/periods/{self.active_period.id}/summary/')
 

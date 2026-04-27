@@ -1531,6 +1531,7 @@ class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
         action = (self.request.query_params.get('action') or '').strip()
         target_model = (self.request.query_params.get('target_model') or '').strip()
         target_id = self.request.query_params.get('target_id')
+        related_ticket_number = (self.request.query_params.get('related_ticket_number') or '').strip()
         user_id = self.request.query_params.get('user_id')
         date_from = parse_period_value(self.request.query_params.get('date_from'))
         date_to = parse_period_value(self.request.query_params.get('date_to'))
@@ -1541,6 +1542,22 @@ class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
             queryset = queryset.filter(target_model__iexact=target_model)
         if target_id:
             queryset = queryset.filter(target_id=target_id)
+        if related_ticket_number:
+            ticket = Ticket.objects.filter(ticket_number=related_ticket_number).prefetch_related(
+                'transactions__overflows'
+            ).first()
+            if ticket is None:
+                return queryset.none()
+
+            transaction_ids = list(ticket.transactions.values_list('id', flat=True))
+            overflow_ids = list(
+                Overflow.objects.filter(transaction__ticket=ticket).values_list('id', flat=True)
+            )
+            queryset = queryset.filter(
+                Q(target_model__iexact='ticket', target_id=ticket.id) |
+                Q(target_model__iexact='transaction', target_id__in=transaction_ids) |
+                Q(target_model__iexact='overflow', target_id__in=overflow_ids)
+            )
         if user_id:
             queryset = queryset.filter(user_id=user_id)
         if date_from:
