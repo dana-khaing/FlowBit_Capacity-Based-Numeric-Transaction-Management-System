@@ -1,7 +1,6 @@
 "use client";
 
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faCircleNotch,
@@ -15,6 +14,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { AppSectionPage } from "@/components/app/app-section-page";
 import { AdminActionToast } from "@/components/admin/admin-action-toast";
+import { TicketRefundModal } from "@/components/tickets/ticket-refund-modal";
 import {
   formatTicketDate,
   formatTicketAmount,
@@ -24,9 +24,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { usePeriodState } from "@/components/period/use-period-state";
+import { getStoredUser } from "@/lib/auth-client";
 import {
   fetchTicketDetail,
   fetchTickets,
+  resolveOverflowAction,
   type FlowBitTicketDetail,
   type FlowBitTicketListItem,
 } from "@/lib/ticket-client";
@@ -49,6 +51,12 @@ export function TicketHistoryPage() {
   const [dateTo, setDateTo] = useState("");
   const [sortBy, setSortBy] = useState("newest");
   const [currentPage, setCurrentPage] = useState(1);
+  const [showRefundModal, setShowRefundModal] = useState(false);
+  const [adminOverrideCode, setAdminOverrideCode] = useState("");
+  const [busyRefundAction, setBusyRefundAction] = useState<null | {
+    kind: "ticket" | "transaction" | "overflow";
+    id: number;
+  }>(null);
   const [toast, setToast] = useState<ToastState>(null);
   const deferredSearchTerm = useDeferredValue(searchTerm);
   const deferredCustomerFilter = useDeferredValue(customerFilter);
@@ -227,6 +235,50 @@ export function TicketHistoryPage() {
     URL.revokeObjectURL(url);
   }
 
+  async function runRefundAction(
+    overflowId: number,
+    action: "refund_overflow_only" | "refund_transaction" | "refund_ticket",
+    kind: "ticket" | "transaction" | "overflow",
+  ) {
+    const user = getStoredUser();
+    const requireOverrideCode = user?.role !== "admin";
+    if (requireOverrideCode && !adminOverrideCode.trim()) {
+      setToast({
+        type: "error",
+        message: "Admin override code is required for refund actions.",
+      });
+      return;
+    }
+
+    setBusyRefundAction({ kind, id: overflowId });
+    try {
+      const response = await resolveOverflowAction({
+        overflowId,
+        action,
+        adminOverrideCode: adminOverrideCode.trim() || undefined,
+      });
+      if (activePeriod) {
+        const nextTickets = await fetchTickets({ periodId: activePeriod.id });
+        setTickets(nextTickets);
+      }
+      if (selectedTicketNumber) {
+        const detail = await fetchTicketDetail(selectedTicketNumber);
+        setSelectedTicket(detail);
+      }
+      setToast({
+        type: "success",
+        message: response.message || "Refund completed.",
+      });
+      setShowRefundModal(false);
+      setAdminOverrideCode("");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Request failed.";
+      setToast({ type: "error", message });
+    } finally {
+      setBusyRefundAction(null);
+    }
+  }
+
   useEffect(() => {
     if (!selectedTicketNumber) {
       setSelectedTicket(null);
@@ -367,13 +419,14 @@ export function TicketHistoryPage() {
             </div>
             <div className="flex flex-wrap items-center gap-2 print:hidden">
               {selectedTicket ? (
-                <Link
-                  href={`/spill-over?ticket=${selectedTicket.ticket_number}`}
+                <button
+                  type="button"
+                  onClick={() => setShowRefundModal(true)}
                   className="inline-flex items-center justify-center gap-2 rounded-[18px] border border-stone-900/10 bg-white px-5 py-3 text-sm font-semibold text-stone-700 transition hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-950/20"
                 >
                   <FontAwesomeIcon icon={faTriangleExclamation} className="h-3.5 w-3.5" />
                   Refund
-                </Link>
+                </button>
               ) : null}
               <Button
                 type="button"
@@ -428,6 +481,27 @@ export function TicketHistoryPage() {
           onClose={() => setToast(null)}
         />
       ) : null}
+      <TicketRefundModal
+        open={showRefundModal}
+        ticket={selectedTicket}
+        requireOverrideCode={getStoredUser()?.role !== "admin"}
+        adminOverrideCode={adminOverrideCode}
+        busyAction={busyRefundAction}
+        onCodeChange={setAdminOverrideCode}
+        onClose={() => {
+          setShowRefundModal(false);
+          setAdminOverrideCode("");
+        }}
+        onRefundTicket={(overflowId) =>
+          runRefundAction(overflowId, "refund_ticket", "ticket")
+        }
+        onRefundTransaction={(overflowId) =>
+          runRefundAction(overflowId, "refund_transaction", "transaction")
+        }
+        onRefundOverflow={(overflowId) =>
+          runRefundAction(overflowId, "refund_overflow_only", "overflow")
+        }
+      />
 
       <div className="space-y-5">
         <div className="grid gap-3 sm:grid-cols-3">

@@ -129,6 +129,23 @@ export type FlowBitTicketDetail = FlowBitTicketListItem & {
   }>;
 };
 
+export async function resolveOverflowAction(payload: {
+  overflowId: number;
+  action: "refund_overflow_only" | "refund_transaction" | "refund_ticket";
+  adminOverrideCode?: string;
+}) {
+  return apiRequest<{ message: string }>(`/overflows/${payload.overflowId}/resolve/`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({
+      action: payload.action,
+      ...(payload.adminOverrideCode
+        ? { admin_override_code: payload.adminOverrideCode }
+        : {}),
+    }),
+  });
+}
+
 function authHeaders() {
   const token = getStoredToken();
   if (!token) {
