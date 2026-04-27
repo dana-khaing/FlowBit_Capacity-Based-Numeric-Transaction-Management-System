@@ -187,15 +187,6 @@ export function TicketHistoryPage() {
 
     const receiptLines = selectedTicket.transactions
       .map((transaction, index) => {
-        const allocationLines = transaction.allocations
-          .map(
-            (allocation) =>
-              `<li>${allocation.ledger_name}: ${formatTicketAmount(
-                allocation.amount ?? allocation.amount_allocated ?? "0.00",
-              )}</li>`,
-          )
-          .join("");
-
         return `
           <section style="margin-top:16px;padding-top:16px;border-top:1px dashed #c7c2b8;">
             <div style="display:flex;justify-content:space-between;gap:16px;">
@@ -204,11 +195,6 @@ export function TicketHistoryPage() {
                 String(Number(transaction.total_amount) * 1.25),
               )}</strong>
             </div>
-            ${
-              allocationLines
-                ? `<div style="margin-top:8px;"><div style="font-size:12px;color:#6b645a;">Ledger allocation</div><ul style="margin:6px 0 0 18px;padding:0;">${allocationLines}</ul></div>`
-                : ""
-            }
           </section>
         `;
       })
