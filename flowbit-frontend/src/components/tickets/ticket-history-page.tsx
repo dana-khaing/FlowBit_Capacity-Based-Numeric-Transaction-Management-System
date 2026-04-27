@@ -194,12 +194,19 @@ export function TicketHistoryPage() {
       return;
     }
 
-    const receiptLines = selectedTicket.transactions
-      .map((transaction, index) => {
+    const visibleTransactions = selectedTicket.transactions.filter(
+      (transaction) => !transaction.is_refunded,
+    );
+    const visibleTotalAmount = visibleTransactions.reduce((sum, transaction) => {
+      const amount = Number(transaction.total_amount);
+      return sum + (Number.isNaN(amount) ? 0 : amount);
+    }, 0);
+
+    const receiptLines = visibleTransactions
+      .map((transaction) => {
         return `
           <section style="margin-top:16px;padding-top:16px;border-top:1px dashed #c7c2b8;">
             <div style="display:flex;justify-content:space-between;gap:16px;">
-              <strong>Entry ${index + 1}</strong>
               <strong>${transaction.identifier_number} ........ ${formatTicketAmount(
                 String(Number(transaction.total_amount) * 1.25),
               )}</strong>
@@ -220,9 +227,9 @@ export function TicketHistoryPage() {
     <p style="margin:8px 0 0; color:#6b645a;">${formatTicketDate(selectedTicket.created_at)}</p>
     <p style="margin:4px 0 0; color:#6b645a;">${activePeriod?.name ?? ""}</p>
     <hr style="margin:16px 0; border:none; border-top:1px dashed #c7c2b8;" />
-    <p><strong>Entries:</strong> ${selectedTicket.transaction_count}</p>
+    <p><strong>Entries:</strong> ${visibleTransactions.length}</p>
     <p><strong>Customer:</strong> ${getTicketCustomerDisplayName(selectedTicket.customer_name)}</p>
-    <p><strong>Total amount:</strong> ${formatTicketAmount(selectedTicket.total_amount)}</p>
+    <p><strong>Total amount:</strong> ${formatTicketAmount(String(visibleTotalAmount))}</p>
     ${receiptLines}
   </body>
 </html>`;
