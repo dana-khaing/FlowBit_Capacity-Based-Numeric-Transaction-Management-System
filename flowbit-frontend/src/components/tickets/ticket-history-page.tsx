@@ -1,6 +1,7 @@
 "use client";
 
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faCircleNotch,
@@ -9,6 +10,7 @@ import {
   faPrint,
   faReceipt,
   faTicket,
+  faTriangleExclamation,
   faUser,
 } from "@fortawesome/free-solid-svg-icons";
 import { AppSectionPage } from "@/components/app/app-section-page";
@@ -330,6 +332,15 @@ export function TicketHistoryPage() {
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2 print:hidden">
+              {selectedTicket ? (
+                <Link
+                  href={`/spill-over?ticket=${selectedTicket.ticket_number}`}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-[18px] border border-stone-900/10 bg-white px-4 text-sm font-medium text-stone-700 transition hover:bg-stone-50"
+                >
+                  <FontAwesomeIcon icon={faTriangleExclamation} className="h-3.5 w-3.5" />
+                  Refund / review
+                </Link>
+              ) : null}
               <Button
                 type="button"
                 variant="outline"
