@@ -23,6 +23,11 @@ export type TicketDraftItem = {
   manualMode: boolean;
   manualAllocations: Record<number, string>;
   preview: AllocationPreview | null;
+  previewPermutationDetails: Array<{
+    identifier: string;
+    overflowAmount: string;
+    hasOverflow: boolean;
+  }> | null;
   previewError: string | null;
   isPreviewing: boolean;
   isTakingAll: boolean;
@@ -258,7 +263,12 @@ export function TicketItemRow({
       ) : null}
 
       <div className="mt-4">
-        <TicketPreviewCard preview={item.preview} loading={item.isPreviewing} error={item.previewError} />
+        <TicketPreviewCard
+          preview={item.preview}
+          permutationDetails={item.previewPermutationDetails}
+          loading={item.isPreviewing}
+          error={item.previewError}
+        />
       </div>
     </div>
   );

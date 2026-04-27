@@ -70,6 +70,7 @@ function createDraftItem(partial?: Partial<TicketDraftItem>): TicketDraftItem {
     manualMode: false,
     manualAllocations: {},
     preview: null,
+    previewPermutationDetails: null,
     previewError: null,
     isPreviewing: false,
     isTakingAll: false,
@@ -474,6 +475,7 @@ export function TicketCreationPage() {
       permutationIdentifiers:
         field === "identifierNumber" ? null : item.permutationIdentifiers,
       preview: null,
+      previewPermutationDetails: null,
       previewError: null,
     }));
     if (hasAttemptedSubmit) {
@@ -487,6 +489,7 @@ export function TicketCreationPage() {
       manualMode: mode === "manual",
       manualAllocations: mode === "manual" ? item.manualAllocations : {},
       preview: null,
+      previewPermutationDetails: null,
       previewError: null,
     }));
   }
@@ -496,6 +499,7 @@ export function TicketCreationPage() {
       ...item,
       amountUsesAllocationBasis: !item.amountUsesAllocationBasis,
       preview: null,
+      previewPermutationDetails: null,
       previewError: null,
     }));
   }
@@ -512,6 +516,7 @@ export function TicketCreationPage() {
         [ledgerId]: sanitizeAmountInput(value),
       },
       preview: null,
+      previewPermutationDetails: null,
       previewError: null,
     }));
   }
@@ -554,6 +559,7 @@ export function TicketCreationPage() {
         ...item,
         amount: nextAmount,
         preview: null,
+        previewPermutationDetails: null,
         previewError: null,
         isTakingAll: false,
       }));
@@ -599,6 +605,9 @@ export function TicketCreationPage() {
       manualMode: source.manualMode,
       manualAllocations: { ...source.manualAllocations },
       preview: source.preview,
+      previewPermutationDetails: source.previewPermutationDetails
+        ? [...source.previewPermutationDetails]
+        : null,
       previewError: source.previewError,
     });
   }
@@ -614,6 +623,7 @@ export function TicketCreationPage() {
         ...item,
         permutationIdentifiers: item.permutationIdentifiers ? null : permutations,
         preview: null,
+        previewPermutationDetails: null,
         previewError: null,
       };
     });
@@ -664,6 +674,7 @@ export function TicketCreationPage() {
       setItemState(itemId, (item) => ({
         ...item,
         preview: null,
+        previewPermutationDetails: null,
         previewError: "Choose a valid identifier before previewing this line.",
         isPreviewing: false,
       }));
@@ -675,6 +686,7 @@ export function TicketCreationPage() {
       setItemState(itemId, (item) => ({
         ...item,
         preview: null,
+        previewPermutationDetails: null,
         previewError: "Enter an amount before previewing this line.",
         isPreviewing: false,
       }));
@@ -688,16 +700,53 @@ export function TicketCreationPage() {
     }));
 
     try {
-      const preview = await previewTicketItemAllocation({
-        identifier: identifier.id,
-        total_amount: amount,
-        ...(buildManualAllocations(draft)
-          ? { manual_allocations: buildManualAllocations(draft) }
-          : {}),
-      });
+      const manualAllocations = buildManualAllocations(draft);
+      const targetIdentifierNumbers =
+        draft.permutationIdentifiers && draft.permutationIdentifiers.length
+          ? draft.permutationIdentifiers
+          : [normalizeIdentifierNumber(draft.identifierNumber)];
+      let primaryPreview: TicketDraftItem["preview"] = null;
+      const permutationDetails: NonNullable<TicketDraftItem["previewPermutationDetails"]> = [];
+
+      for (const targetIdentifierNumber of targetIdentifierNumbers) {
+        const targetIdentifier = identifierMap.get(targetIdentifierNumber);
+        if (!targetIdentifier) {
+          throw new Error(`Identifier ${targetIdentifierNumber} is not available.`);
+        }
+
+        const preview = await previewTicketItemAllocation({
+          identifier: targetIdentifier.id,
+          total_amount: amount,
+          ...(manualAllocations ? { manual_allocations: manualAllocations } : {}),
+        });
+
+        if (!primaryPreview) {
+          primaryPreview = preview;
+        }
+
+        permutationDetails.push({
+          identifier: targetIdentifier.number,
+          overflowAmount: preview.overflow_amount,
+          hasOverflow: preview.has_overflow,
+        });
+      }
+
+      const totalOverflow = permutationDetails.reduce(
+        (sum, detail) => sum + (detail.hasOverflow ? Number(detail.overflowAmount) || 0 : 0),
+        0,
+      );
+
       setItemState(itemId, (item) => ({
         ...item,
-        preview,
+        preview: primaryPreview
+          ? {
+              ...primaryPreview,
+              has_overflow: permutationDetails.some((detail) => detail.hasOverflow),
+              overflow_amount: String(totalOverflow),
+            }
+          : null,
+        previewPermutationDetails:
+          permutationDetails.length > 1 ? permutationDetails : null,
         previewError: null,
         isPreviewing: false,
       }));
@@ -707,6 +756,7 @@ export function TicketCreationPage() {
       setItemState(itemId, (item) => ({
         ...item,
         preview: null,
+        previewPermutationDetails: null,
         previewError: message,
         isPreviewing: false,
       }));
@@ -750,7 +800,11 @@ export function TicketCreationPage() {
     const payloadItems: TicketSubmissionItem[] = [];
     const nextPreviewState = new Map<
       string,
-      { preview: TicketDraftItem["preview"]; previewError: string | null }
+      {
+        preview: TicketDraftItem["preview"];
+        previewPermutationDetails: TicketDraftItem["previewPermutationDetails"];
+        previewError: string | null;
+      }
     >();
     let overflowEntryCount = 0;
     let overflowAmount = 0;
@@ -784,6 +838,7 @@ export function TicketCreationPage() {
           : [normalizeIdentifierNumber(item.identifierNumber)];
       try {
         let primaryPreview: TicketDraftItem["preview"] = null;
+        const permutationDetails: NonNullable<TicketDraftItem["previewPermutationDetails"]> = [];
 
         for (const targetIdentifierNumber of targetIdentifierNumbers) {
           const targetIdentifier = identifierMap.get(targetIdentifierNumber);
@@ -800,6 +855,12 @@ export function TicketCreationPage() {
           if (!primaryPreview) {
             primaryPreview = preview;
           }
+
+          permutationDetails.push({
+            identifier: targetIdentifier.number,
+            overflowAmount: preview.overflow_amount,
+            hasOverflow: preview.has_overflow,
+          });
 
           if (preview.has_overflow) {
             overflowEntryCount += 1;
@@ -819,11 +880,31 @@ export function TicketCreationPage() {
           });
         }
 
-        nextPreviewState.set(item.id, { preview: primaryPreview, previewError: null });
+        const totalOverflow = permutationDetails.reduce(
+          (sum, detail) => sum + (detail.hasOverflow ? Number(detail.overflowAmount) || 0 : 0),
+          0,
+        );
+
+        nextPreviewState.set(item.id, {
+          preview: primaryPreview
+            ? {
+                ...primaryPreview,
+                has_overflow: permutationDetails.some((detail) => detail.hasOverflow),
+                overflow_amount: String(totalOverflow),
+              }
+            : null,
+          previewPermutationDetails:
+            permutationDetails.length > 1 ? permutationDetails : null,
+          previewError: null,
+        });
       } catch (error) {
         const message =
           error instanceof Error ? error.message : "Request failed.";
-        nextPreviewState.set(item.id, { preview: null, previewError: message });
+        nextPreviewState.set(item.id, {
+          preview: null,
+          previewPermutationDetails: null,
+          previewError: message,
+        });
         setItems((current) =>
           current.map((currentItem) => {
             const nextState = nextPreviewState.get(currentItem.id);
@@ -831,6 +912,7 @@ export function TicketCreationPage() {
               ? {
                   ...currentItem,
                   preview: nextState.preview,
+                  previewPermutationDetails: nextState.previewPermutationDetails,
                   previewError: nextState.previewError,
                   isPreviewing: false,
                 }
@@ -845,14 +927,15 @@ export function TicketCreationPage() {
 
     setItems((current) =>
       current.map((item) => {
-        const nextState = nextPreviewState.get(item.id);
-        return nextState
-          ? {
-              ...item,
-              preview: nextState.preview,
-              previewError: nextState.previewError,
-              isPreviewing: false,
-            }
+            const nextState = nextPreviewState.get(item.id);
+            return nextState
+              ? {
+                  ...item,
+                  preview: nextState.preview,
+                  previewPermutationDetails: nextState.previewPermutationDetails,
+                  previewError: nextState.previewError,
+                  isPreviewing: false,
+                }
           : item;
       }),
     );
