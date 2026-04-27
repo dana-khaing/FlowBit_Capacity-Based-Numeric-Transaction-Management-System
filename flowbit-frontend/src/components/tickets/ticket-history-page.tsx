@@ -383,7 +383,7 @@ export function TicketHistoryPage() {
               {selectedTicket ? (
                 <Link
                   href={`/spill-over?ticket=${selectedTicket.ticket_number}`}
-                  className="inline-flex h-10 items-center justify-center gap-2 rounded-[18px] border border-stone-900/10 bg-white px-4 text-sm font-medium text-stone-700 transition hover:bg-stone-50"
+                  className="inline-flex items-center justify-center gap-2 rounded-[18px] border border-stone-900/10 bg-white px-5 py-3 text-sm font-semibold text-stone-700 transition hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-950/20"
                 >
                   <FontAwesomeIcon icon={faTriangleExclamation} className="h-3.5 w-3.5" />
                   Refund
