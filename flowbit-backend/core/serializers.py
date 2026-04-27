@@ -188,6 +188,7 @@ class TicketSerializer(serializers.ModelSerializer):
     transaction_count = serializers.ReadOnlyField()
     created_by_username = serializers.CharField(source='created_by.username', read_only=True, default=None)
     identifier_numbers = serializers.SerializerMethodField()
+    has_spill_over = serializers.SerializerMethodField()
 
     class Meta:
         model = Ticket
@@ -204,6 +205,7 @@ class TicketSerializer(serializers.ModelSerializer):
             'total_amount',
             'transaction_count',
             'identifier_numbers',
+            'has_spill_over',
         ]
         read_only_fields = [
             'ticket_number',
@@ -213,6 +215,7 @@ class TicketSerializer(serializers.ModelSerializer):
             'total_amount',
             'transaction_count',
             'identifier_numbers',
+            'has_spill_over',
         ]
 
     def get_identifier_numbers(self, obj):
@@ -221,6 +224,11 @@ class TicketSerializer(serializers.ModelSerializer):
             .values_list('identifier__number', flat=True)
             .distinct()
         )
+
+    def get_has_spill_over(self, obj):
+        return Overflow.objects.filter(transaction__ticket=obj).exclude(
+            status=Overflow.STATUS_REFUNDED
+        ).exists()
 
 
 class IdentifierSerializer(serializers.ModelSerializer):

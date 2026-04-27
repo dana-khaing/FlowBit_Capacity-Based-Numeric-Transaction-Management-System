@@ -573,12 +573,28 @@ export function TicketHistoryPage() {
                         </p>
                         <p className="mt-2 text-lg font-semibold">{ticket.ticket_number}</p>
                       </div>
-                      <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${
-                        isActive ? "bg-white/10 text-stone-100" : "bg-white text-stone-500"
-                      }`}>
-                        <FontAwesomeIcon icon={faTicket} className="h-3 w-3" />
-                        {ticket.transaction_count} {ticket.transaction_count === 1 ? "entry" : "entries"}
-                      </span>
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${
+                          isActive ? "bg-white/10 text-stone-100" : "bg-white text-stone-500"
+                        }`}>
+                          <FontAwesomeIcon icon={faTicket} className="h-3 w-3" />
+                          {ticket.transaction_count} {ticket.transaction_count === 1 ? "entry" : "entries"}
+                        </span>
+                        {ticket.is_refunded ? (
+                          <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${
+                            isActive ? "bg-emerald-200/20 text-emerald-100" : "bg-emerald-100 text-emerald-700"
+                          }`}>
+                            Refunded
+                          </span>
+                        ) : null}
+                        {ticket.has_spill_over ? (
+                          <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${
+                            isActive ? "bg-amber-200/20 text-amber-100" : "bg-amber-100 text-amber-800"
+                          }`}>
+                            Spill over
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
 
                     <div className={`mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm ${isActive ? "text-stone-200" : "text-stone-600"}`}>

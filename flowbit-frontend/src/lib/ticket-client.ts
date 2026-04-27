@@ -84,6 +84,9 @@ export type FlowBitTicketListItem = {
   ticket_number: string;
   created_at: string;
   customer_name: string;
+  is_refunded: boolean;
+  refunded_at: string | null;
+  has_spill_over: boolean;
   total_amount: string;
   transaction_count: number;
   identifier_numbers: string[];
