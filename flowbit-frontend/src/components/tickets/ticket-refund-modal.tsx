@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { FlowBitTicketDetail } from "@/lib/ticket-client";
@@ -33,6 +34,11 @@ function formatAmount(value: string) {
   });
 }
 
+type ConfirmRefundAction =
+  | { kind: "ticket"; label: string }
+  | { kind: "transaction"; id: number; label: string }
+  | { kind: "overflow"; id: number; label: string };
+
 export function TicketRefundModal({
   open,
   ticket,
@@ -61,14 +67,42 @@ export function TicketRefundModal({
         identifierNumber: transaction.identifier_number,
       })),
   );
+  const [confirmAction, setConfirmAction] = useState<ConfirmRefundAction | null>(null);
+
+  function closeModal() {
+    setConfirmAction(null);
+    onClose();
+  }
+
+  function openConfirmation(action: ConfirmRefundAction) {
+    setConfirmAction(action);
+  }
+
+  function handleConfirmRefund() {
+    if (!confirmAction) {
+      return;
+    }
+
+    if (confirmAction.kind === "ticket") {
+      onRefundTicket();
+      return;
+    }
+
+    if (confirmAction.kind === "transaction") {
+      onRefundTransaction(confirmAction.id);
+      return;
+    }
+
+    onRefundOverflow(confirmAction.id);
+  }
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/30 px-4"
-      onClick={onClose}
+      onClick={closeModal}
     >
       <div
-        className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_18px_48px_rgba(24,24,24,0.18)] sm:p-6"
+        className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_18px_48px_rgba(24,24,24,0.18)] sm:p-6"
         onClick={(event) => event.stopPropagation()}
       >
         <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-500">
@@ -108,7 +142,12 @@ export function TicketRefundModal({
               <Button
                 variant="outline"
                 className="rounded-[18px]"
-                onClick={onRefundTicket}
+                onClick={() =>
+                  openConfirmation({
+                    kind: "ticket",
+                    label: `Refund the full ticket ${ticket.ticket_number}`,
+                  })
+                }
                 disabled={Boolean(busyAction)}
               >
                 {busyAction?.kind === "ticket" ? "Refunding..." : "Refund ticket"}
@@ -143,7 +182,13 @@ export function TicketRefundModal({
                   <Button
                     variant="outline"
                     className="rounded-[18px]"
-                    onClick={() => onRefundTransaction(transaction.id)}
+                    onClick={() =>
+                      openConfirmation({
+                        kind: "transaction",
+                        id: transaction.id,
+                        label: `Refund transaction ${transaction.order_number}`,
+                      })
+                    }
                     disabled={Boolean(busyAction)}
                   >
                     {busyAction?.kind === "transaction" &&
@@ -181,7 +226,13 @@ export function TicketRefundModal({
                   <Button
                     variant="outline"
                     className="rounded-[18px]"
-                    onClick={() => onRefundOverflow(overflow.id)}
+                    onClick={() =>
+                      openConfirmation({
+                        kind: "overflow",
+                        id: overflow.id,
+                        label: `Refund spill over for ${overflow.identifierNumber}`,
+                      })
+                    }
                     disabled={Boolean(busyAction)}
                   >
                     {busyAction?.kind === "overflow" && busyAction.id === overflow.id
@@ -195,10 +246,44 @@ export function TicketRefundModal({
         ) : null}
 
         <div className="mt-5 flex justify-end">
-          <Button variant="outline" onClick={onClose} disabled={Boolean(busyAction)}>
+          <Button variant="outline" onClick={closeModal} disabled={Boolean(busyAction)}>
             Close
           </Button>
         </div>
+
+        {confirmAction ? (
+          <div
+            className="absolute inset-0 flex items-center justify-center rounded-[28px] bg-stone-950/30 px-4"
+            onClick={() => setConfirmAction(null)}
+          >
+            <div
+              className="w-full max-w-lg rounded-[24px] border border-stone-900/8 bg-white p-5 shadow-[0_18px_48px_rgba(24,24,24,0.18)]"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-500">
+                Confirmation
+              </p>
+              <h3 className="mt-2 text-xl font-semibold text-stone-950">
+                Confirm refund
+              </h3>
+              <p className="mt-2 text-sm leading-6 text-stone-500">
+                {confirmAction.label}. This action will reverse the selected ticket records.
+              </p>
+              <div className="mt-5 flex justify-end gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => setConfirmAction(null)}
+                  disabled={Boolean(busyAction)}
+                >
+                  Cancel
+                </Button>
+                <Button onClick={handleConfirmRefund} disabled={Boolean(busyAction)}>
+                  Confirm refund
+                </Button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );
