@@ -70,6 +70,15 @@ export function TicketReceiptCard({
   periodName,
   className,
 }: TicketReceiptCardProps) {
+  const visibleTransactions = ticket.transactions.filter(
+    (transaction) => !transaction.is_refunded,
+  );
+  const visibleTransactionCount = visibleTransactions.length;
+  const visibleTotalAmount = visibleTransactions.reduce((sum, transaction) => {
+    const amount = Number(transaction.total_amount);
+    return sum + (Number.isNaN(amount) ? 0 : amount);
+  }, 0);
+
   return (
     <div
       className={
@@ -101,7 +110,7 @@ export function TicketReceiptCard({
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">
             Entries
           </p>
-          <p className="mt-2 font-medium text-stone-950">{ticket.transaction_count}</p>
+          <p className="mt-2 font-medium text-stone-950">{visibleTransactionCount}</p>
         </div>
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">
@@ -116,19 +125,19 @@ export function TicketReceiptCard({
             Total amount
           </p>
           <p className="mt-2 font-medium text-stone-950">
-            {formatTicketAmount(ticket.total_amount)}
+            {formatTicketAmount(String(visibleTotalAmount))}
           </p>
         </div>
       </div>
 
       <div className="space-y-4 py-4">
-        {ticket.transactions.map((transaction, index) => (
+        {visibleTransactions.map((transaction, index) => (
           <div
             key={transaction.id}
             className="border-b border-dashed border-stone-300 pb-4 last:border-b-0 last:pb-0"
           >
             <div className="space-y-2">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400 print:hidden">
                 Entry {index + 1}
               </p>
               <div className="flex items-end gap-2">
