@@ -146,6 +146,25 @@ export async function resolveOverflowAction(payload: {
   });
 }
 
+export async function resolveTicketRefundAction(payload: {
+  ticketNumber: string;
+  action: "refund_ticket" | "refund_transaction";
+  transactionId?: number;
+  adminOverrideCode?: string;
+}) {
+  return apiRequest<{ message: string }>(`/tickets/${payload.ticketNumber}/refund/`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({
+      action: payload.action,
+      ...(payload.transactionId ? { transaction_id: payload.transactionId } : {}),
+      ...(payload.adminOverrideCode
+        ? { admin_override_code: payload.adminOverrideCode }
+        : {}),
+    }),
+  });
+}
+
 function authHeaders() {
   const token = getStoredToken();
   if (!token) {
