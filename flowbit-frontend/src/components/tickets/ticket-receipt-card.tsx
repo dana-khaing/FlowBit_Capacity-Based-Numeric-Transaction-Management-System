@@ -90,7 +90,7 @@ export function TicketReceiptCard({
         ) : null}
       </div>
 
-      <div className="grid gap-3 border-b border-dashed border-stone-300 py-4 text-sm sm:grid-cols-2">
+      <div className="grid gap-3 border-b border-dashed border-stone-300 py-4 text-sm md:grid-cols-4">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">
             Ticket No
