@@ -109,6 +109,9 @@ export function TicketReceiptCard({
     const amount = Number(transaction.total_amount);
     return sum + (Number.isNaN(amount) ? 0 : amount);
   }, 0);
+  const refundedTransactions = ticket.transactions.filter(
+    (transaction) => transaction.is_refunded,
+  );
 
   return (
     <div
@@ -230,6 +233,35 @@ export function TicketReceiptCard({
           </div>
         ))}
       </div>
+
+      {refundedTransactions.length ? (
+        <div className="border-t border-dashed border-stone-300 pt-4 print:hidden">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">
+            Refunded entries
+          </p>
+          <div className="mt-3 space-y-3">
+            {refundedTransactions.map((transaction) => (
+              <div
+                key={transaction.id}
+                className="rounded-[18px] border border-stone-200 bg-stone-100/80 px-3 py-3 text-sm text-stone-500"
+              >
+                <div className="flex items-end gap-2">
+                  <span className="font-semibold tracking-[0.18em] text-stone-700">
+                    {transaction.identifier_number}
+                  </span>
+                  <span className="mb-1 min-w-[48px] flex-1 border-b border-dotted border-stone-300" />
+                  <span className="font-semibold text-stone-700">
+                    {formatTicketAmount(getTicketBasisAmount(transaction))}
+                  </span>
+                </div>
+                <p className="mt-2 text-xs uppercase tracking-[0.14em] text-stone-400">
+                  Refunded
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {ticket.notes ? (
         <div className="border-t border-dashed border-stone-300 pt-4">

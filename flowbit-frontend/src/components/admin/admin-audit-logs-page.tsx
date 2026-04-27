@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { WorkspaceShell } from "@/components/app/workspace-shell";
 import { AdminAccessGuard } from "@/components/admin/admin-access-guard";
 import { AdminPageHeader } from "@/components/admin/admin-page-header";
@@ -11,6 +12,7 @@ import { fetchAuditLogs, type AuditLogEntry } from "@/lib/admin-client";
 type AuditFilters = {
   action: string;
   target_model: string;
+  target_id: string;
   user_id: string;
   date_from: string;
   date_to: string;
@@ -19,6 +21,7 @@ type AuditFilters = {
 const initialFilters: AuditFilters = {
   action: "",
   target_model: "",
+  target_id: "",
   user_id: "",
   date_from: "",
   date_to: "",
@@ -37,6 +40,7 @@ function formatValue(value: unknown) {
 }
 
 export function AdminAuditLogsPage() {
+  const searchParams = useSearchParams();
   const [filters, setFilters] = useState<AuditFilters>(initialFilters);
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -56,8 +60,17 @@ export function AdminAuditLogsPage() {
   }
 
   useEffect(() => {
-    loadLogs(initialFilters);
-  }, []);
+    const nextFilters = {
+      action: searchParams.get("action") || "",
+      target_model: searchParams.get("target_model") || "",
+      target_id: searchParams.get("target_id") || "",
+      user_id: searchParams.get("user_id") || "",
+      date_from: searchParams.get("date_from") || "",
+      date_to: searchParams.get("date_to") || "",
+    };
+    setFilters(nextFilters);
+    loadLogs(nextFilters);
+  }, [searchParams]);
 
   const hasActiveFilters = useMemo(() => Object.values(filters).some(Boolean), [filters]);
 
@@ -91,11 +104,20 @@ export function AdminAuditLogsPage() {
                   aria-label="Filter by target model"
                 />
                 <Input
+                  value={filters.target_id}
+                  onChange={(event) => updateFilter("target_id", event.target.value)}
+                  placeholder="Target id"
+                  aria-label="Filter by target id"
+                />
+                <Input
                   value={filters.user_id}
                   onChange={(event) => updateFilter("user_id", event.target.value)}
                   placeholder="User id"
                   aria-label="Filter by user id"
                 />
+              </div>
+
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
                 <Input
                   type="date"
                   value={filters.date_from}
