@@ -13,6 +13,7 @@ type AuditFilters = {
   action: string;
   target_model: string;
   target_id: string;
+  related_ticket_number: string;
   user_id: string;
   date_from: string;
   date_to: string;
@@ -22,6 +23,7 @@ const initialFilters: AuditFilters = {
   action: "",
   target_model: "",
   target_id: "",
+  related_ticket_number: "",
   user_id: "",
   date_from: "",
   date_to: "",
@@ -64,6 +66,7 @@ export function AdminAuditLogsPage() {
       action: searchParams.get("action") || "",
       target_model: searchParams.get("target_model") || "",
       target_id: searchParams.get("target_id") || "",
+      related_ticket_number: searchParams.get("related_ticket_number") || "",
       user_id: searchParams.get("user_id") || "",
       date_from: searchParams.get("date_from") || "",
       date_to: searchParams.get("date_to") || "",

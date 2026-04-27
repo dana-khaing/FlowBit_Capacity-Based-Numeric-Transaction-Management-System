@@ -20,6 +20,7 @@ export type AuditLogFilters = {
   action?: string;
   target_model?: string;
   target_id?: string;
+  related_ticket_number?: string;
   user_id?: string;
   date_from?: string;
   date_to?: string;

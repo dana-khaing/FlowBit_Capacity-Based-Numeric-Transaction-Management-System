@@ -601,7 +601,7 @@ export function TicketHistoryPage() {
               </Button>
               {selectedTicket && getStoredUser()?.role === "admin" ? (
                 <Link
-                  href={`/admin/audit-logs?target_model=ticket&target_id=${selectedTicket.id}`}
+                  href={`/admin/audit-logs?related_ticket_number=${selectedTicket.ticket_number}`}
                   className="inline-flex items-center justify-center gap-2 rounded-[18px] border border-stone-900/10 bg-white px-5 py-3 text-sm font-semibold text-stone-700 transition hover:bg-stone-50"
                 >
                   <FontAwesomeIcon icon={faShieldHalved} className="h-3.5 w-3.5" />
