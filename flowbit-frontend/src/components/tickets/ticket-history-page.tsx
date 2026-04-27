@@ -4,6 +4,7 @@ import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faCircleNotch,
+  faCopy,
   faMagnifyingGlass,
   faPrint,
   faReceipt,
@@ -159,6 +160,19 @@ export function TicketHistoryPage() {
     }
   }, [filteredTickets, selectedTicketNumber]);
 
+  async function copySelectedTicketNumber() {
+    if (!selectedTicket) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(selectedTicket.ticket_number);
+      setToast({ type: "success", message: "Ticket number copied." });
+    } catch {
+      setToast({ type: "error", message: "Unable to copy the ticket number." });
+    }
+  }
+
   useEffect(() => {
     if (!selectedTicketNumber) {
       setSelectedTicket(null);
@@ -297,16 +311,28 @@ export function TicketHistoryPage() {
                 Receipt layout
               </p>
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              className="rounded-[18px] print:hidden"
-              onClick={() => window.print()}
-              disabled={!selectedTicket}
-            >
-              <FontAwesomeIcon icon={faPrint} className="h-3.5 w-3.5" />
-              Print
-            </Button>
+            <div className="flex flex-wrap items-center gap-2 print:hidden">
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-[18px]"
+                onClick={copySelectedTicketNumber}
+                disabled={!selectedTicket}
+              >
+                <FontAwesomeIcon icon={faCopy} className="h-3.5 w-3.5" />
+                Copy ticket no
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-[18px]"
+                onClick={() => window.print()}
+                disabled={!selectedTicket}
+              >
+                <FontAwesomeIcon icon={faPrint} className="h-3.5 w-3.5" />
+                Print
+              </Button>
+            </div>
           </div>
 
           {isDetailLoading ? (
