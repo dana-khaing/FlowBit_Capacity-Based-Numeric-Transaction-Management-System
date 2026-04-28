@@ -4,7 +4,6 @@ import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
-  faCheckSquare,
   faCircleNotch,
   faDownload,
   faMagnifyingGlass,
@@ -13,7 +12,6 @@ import {
   faReceipt,
   faRotateLeft,
   faShieldHalved,
-  faSquare,
   faTicket,
   faTriangleExclamation,
   faUser,
@@ -49,9 +47,9 @@ type ToastState = {
 
 export function TicketHistoryPage() {
   const pageSize = 12;
-  const actionButtonClassName = "h-12 rounded-[18px] px-5";
+  const actionButtonClassName = "h-12 min-w-[8.5rem] rounded-[18px] px-5 font-medium";
   const actionLinkClassName =
-    "inline-flex h-12 items-center justify-center gap-2 rounded-[18px] border border-stone-900/10 bg-white px-5 text-sm font-medium text-stone-700 transition hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-950/20";
+    "inline-flex h-12 min-w-[8.5rem] items-center justify-center gap-2 rounded-[18px] border border-stone-900/10 bg-white px-5 text-sm font-medium text-stone-700 transition hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-950/20";
   const [tickets, setTickets] = useState<FlowBitTicketListItem[]>([]);
   const [selectedTicketNumber, setSelectedTicketNumber] = useState<string | null>(null);
   const [selectedTicket, setSelectedTicket] = useState<FlowBitTicketDetail | null>(null);
@@ -65,7 +63,6 @@ export function TicketHistoryPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [showRefundModal, setShowRefundModal] = useState(false);
   const [adminOverrideCode, setAdminOverrideCode] = useState("");
-  const [selectedTicketNumbers, setSelectedTicketNumbers] = useState<string[]>([]);
   const [busyRefundAction, setBusyRefundAction] = useState<null | {
     kind: "ticket" | "transaction" | "overflow";
     id: number;
@@ -97,11 +94,6 @@ export function TicketHistoryPage() {
           return;
         }
         setTickets(nextTickets);
-        setSelectedTicketNumbers((current) =>
-          current.filter((ticketNumber) =>
-            nextTickets.some((ticket) => ticket.ticket_number === ticketNumber),
-          ),
-        );
         setSelectedTicketNumber((current) =>
           current && nextTickets.some((ticket) => ticket.ticket_number === current)
             ? current
@@ -126,10 +118,6 @@ export function TicketHistoryPage() {
       isMounted = false;
     };
   }, [activePeriod?.id, hasActivePeriod]);
-
-  useEffect(() => {
-    setSelectedTicketNumbers([]);
-  }, [activePeriod?.id]);
 
   const filteredTickets = useMemo(() => {
     const normalizedSearch = deferredSearchTerm.trim().toLowerCase();
@@ -242,81 +230,6 @@ export function TicketHistoryPage() {
       link.download = `${selectedTicket.ticket_number}.pdf`;
       link.click();
       URL.revokeObjectURL(url);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Request failed.";
-      setToast({ type: "error", message });
-    }
-  }
-
-  async function downloadSelectedTickets() {
-    if (!selectedTicketNumbers.length) {
-      return;
-    }
-    try {
-      const blob = await downloadTicketReceiptPdf(selectedTicketNumbers);
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download =
-        selectedTicketNumbers.length === 1
-          ? `${selectedTicketNumbers[0]}.pdf`
-          : `tickets_${selectedTicketNumbers.length}.pdf`;
-      link.click();
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Request failed.";
-      setToast({ type: "error", message });
-    }
-  }
-
-  async function printSelectedTickets() {
-    if (!selectedTicketNumbers.length) {
-      return;
-    }
-    try {
-      const details = await Promise.all(
-        selectedTicketNumbers.map((ticketNumber) => fetchTicketDetail(ticketNumber)),
-      );
-      const receipts = details
-        .map((ticket) => {
-          const visibleTransactions = ticket.transactions.filter((transaction) => !transaction.is_refunded);
-          const rows = visibleTransactions
-            .map((transaction) => {
-              const activeOverflowAmount = transaction.overflows
-                .filter((overflow) => overflow.status !== "RFND")
-                .reduce((sum, overflow) => sum + Number(getOverflowDisplayAmount(overflow) || 0), 0);
-              const activeAllocationAmount = transaction.allocations
-                .reduce((sum, allocation) => sum + Number(allocation.amount ?? allocation.amount_allocated ?? 0), 0);
-              const lineAmount = activeOverflowAmount + activeAllocationAmount > 0
-                ? activeOverflowAmount + activeAllocationAmount
-                : Number(transaction.total_amount) * 1.25;
-              return `<div style="display:flex;justify-content:space-between;gap:16px;padding-top:12px;margin-top:12px;border-top:1px dashed #c7c2b8;"><strong>${transaction.identifier_number}</strong><strong>${formatTicketAmount(String(lineAmount))}</strong></div>`;
-            })
-            .join("");
-          return `
-            <section style="break-after:page;max-width:540px;margin:0 auto 28px;padding:24px;color:#1c1814;font-family:Arial,sans-serif;">
-              <h1 style="font-size:24px;margin:0;">${ticket.ticket_number}</h1>
-              <p style="margin:8px 0 0;color:#6b645a;">${formatTicketDate(ticket.created_at)}</p>
-              <p style="margin:4px 0 0;color:#6b645a;">${activePeriod?.name ?? ""}</p>
-              <hr style="margin:16px 0;border:none;border-top:1px dashed #c7c2b8;" />
-              <p><strong>Entries:</strong> ${visibleTransactions.length}</p>
-              <p><strong>Customer:</strong> ${getTicketCustomerDisplayName(ticket.customer_name)}</p>
-              <p><strong>Total amount:</strong> ${formatTicketAmount(ticket.total_amount)}</p>
-              ${rows}
-            </section>
-          `;
-        })
-        .join("");
-
-      const printWindow = window.open("", "_blank", "noopener,noreferrer");
-      if (!printWindow) {
-        setToast({ type: "error", message: "Unable to open print window." });
-        return;
-      }
-      printWindow.document.write(`<!doctype html><html><head><title>Ticket receipts</title></head><body>${receipts}</body></html>`);
-      printWindow.document.close();
-      printWindow.focus();
-      printWindow.print();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Request failed.";
       setToast({ type: "error", message });
@@ -461,24 +374,6 @@ export function TicketHistoryPage() {
     [tickets],
   );
 
-  function toggleTicketSelection(ticketNumber: string) {
-    setSelectedTicketNumbers((current) =>
-      current.includes(ticketNumber)
-        ? current.filter((value) => value !== ticketNumber)
-        : [...current, ticketNumber],
-    );
-  }
-
-  function togglePageSelection() {
-    const pageNumbers = paginatedTickets.map((ticket) => ticket.ticket_number);
-    const allSelected = pageNumbers.every((ticketNumber) => selectedTicketNumbers.includes(ticketNumber));
-    setSelectedTicketNumbers((current) =>
-      allSelected
-        ? current.filter((ticketNumber) => !pageNumbers.includes(ticketNumber))
-        : Array.from(new Set([...current, ...pageNumbers])),
-    );
-  }
-
   useEffect(() => {
     if (!paginatedTickets.length) {
       return;
@@ -552,14 +447,14 @@ export function TicketHistoryPage() {
     <AppSectionPage
       eyebrow="Tickets"
       title="Ticket history"
-      description={`All tickets created in ${activePeriod?.name}.`}
-      workspaceLabel="Ticket history"
-      headerClassName="hidden"
-      layoutClassName="print:block"
-      workspaceClassName="print:hidden"
-      asideClassName="print:block"
-      aside={
-        <section className="max-h-[calc(100vh-11rem)] overflow-y-auto rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] print:max-h-none print:overflow-visible print:rounded-none print:border-0 print:p-0 print:shadow-none sm:p-6">
+        description={`All tickets created in ${activePeriod?.name}.`}
+        workspaceLabel="Ticket history"
+        headerClassName="hidden"
+        layoutClassName="print:block"
+        workspaceClassName="print:hidden"
+        asideClassName="print:block"
+        aside={
+        <section className="h-[calc(100vh-8.5rem)] overflow-y-auto rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] print:h-auto print:max-h-none print:overflow-visible print:rounded-none print:border-0 print:p-0 print:shadow-none sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">
@@ -665,49 +560,7 @@ export function TicketHistoryPage() {
         }
       />
 
-        <div className="space-y-5">
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-3 text-sm text-stone-600">
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={togglePageSelection}
-                className="inline-flex items-center gap-2 font-medium text-stone-700"
-              >
-                <FontAwesomeIcon
-                  icon={
-                    paginatedTickets.length &&
-                    paginatedTickets.every((ticket) => selectedTicketNumbers.includes(ticket.ticket_number))
-                      ? faCheckSquare
-                      : faSquare
-                  }
-                  className="h-4 w-4"
-                />
-                Select page
-              </button>
-              <span>{selectedTicketNumbers.length} selected</span>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="rounded-[16px]"
-                onClick={printSelectedTickets}
-                disabled={!selectedTicketNumbers.length}
-              >
-                Print selected
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="rounded-[16px]"
-                onClick={downloadSelectedTickets}
-                disabled={!selectedTicketNumbers.length}
-              >
-                Download selected
-              </Button>
-            </div>
-          </div>
-
+        <div className="flex h-[calc(100vh-8.5rem)] flex-col gap-5">
           <div className="grid gap-3 sm:grid-cols-3">
           <div className="rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">
@@ -731,7 +584,7 @@ export function TicketHistoryPage() {
           </div>
         </div>
 
-        <div className="space-y-5">
+        <div className="flex min-h-0 flex-1 flex-col gap-5">
           <div className="relative">
             <FontAwesomeIcon
               icon={faMagnifyingGlass}
@@ -803,7 +656,7 @@ export function TicketHistoryPage() {
               ))}
             </div>
           ) : paginatedTickets.length ? (
-            <div className="max-h-[calc(100vh-18rem)] space-y-3 overflow-y-auto pr-2">
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-2">
               {groupedTickets.map((group, groupIndex) => (
                 <section key={`${group.label}-${groupIndex}`} className="space-y-3">
                   <div className="sticky top-0 rounded-[16px] bg-white/85 px-1 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-stone-400 backdrop-blur">
@@ -811,7 +664,6 @@ export function TicketHistoryPage() {
                   </div>
                   {group.tickets.map((ticket) => {
                     const isActive = ticket.ticket_number === selectedTicketNumber;
-                    const isSelected = selectedTicketNumbers.includes(ticket.ticket_number);
                     const isPartialRefund =
                       !ticket.is_refunded && ticket.refunded_transaction_count > 0;
                     const hasSpillOverRefunded = ticket.refunded_spill_over_count > 0;
@@ -826,18 +678,6 @@ export function TicketHistoryPage() {
                         }`}
                       >
                         <div className="flex items-start gap-3">
-                          <button
-                            type="button"
-                            onClick={() => toggleTicketSelection(ticket.ticket_number)}
-                            className={`mt-1 inline-flex h-5 w-5 items-center justify-center rounded border ${
-                              isActive
-                                ? "border-white/40 bg-white/10 text-white"
-                                : "border-stone-300 bg-white text-stone-500"
-                            }`}
-                            aria-label={`Select ${ticket.ticket_number}`}
-                          >
-                            <FontAwesomeIcon icon={isSelected ? faCheckSquare : faSquare} className="h-4 w-4" />
-                          </button>
                           <button
                             type="button"
                             onClick={() => setSelectedTicketNumber(ticket.ticket_number)}
