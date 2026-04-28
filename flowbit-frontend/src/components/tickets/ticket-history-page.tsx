@@ -275,10 +275,6 @@ export function TicketHistoryPage() {
       const receipts = details
         .map((ticket) => {
           const visibleTransactions = ticket.transactions.filter((transaction) => !transaction.is_refunded);
-          const visibleTotalAmount = visibleTransactions.reduce((sum, transaction) => {
-            const amount = Number(transaction.total_amount);
-            return sum + (Number.isNaN(amount) ? 0 : amount);
-          }, 0);
           const rows = visibleTransactions
             .map((transaction) => {
               const activeOverflowAmount = transaction.overflows
@@ -300,7 +296,7 @@ export function TicketHistoryPage() {
               <hr style="margin:16px 0;border:none;border-top:1px dashed #c7c2b8;" />
               <p><strong>Entries:</strong> ${visibleTransactions.length}</p>
               <p><strong>Customer:</strong> ${getTicketCustomerDisplayName(ticket.customer_name)}</p>
-              <p><strong>Total amount:</strong> ${formatTicketAmount(String(visibleTotalAmount))}</p>
+              <p><strong>Total amount:</strong> ${formatTicketAmount(ticket.total_amount)}</p>
               ${rows}
             </section>
           `;
