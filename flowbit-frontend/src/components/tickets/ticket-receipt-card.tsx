@@ -105,10 +105,6 @@ export function TicketReceiptCard({
     (transaction) => !transaction.is_refunded,
   );
   const visibleTransactionCount = visibleTransactions.length;
-  const visibleTotalAmount = visibleTransactions.reduce((sum, transaction) => {
-    const amount = Number(transaction.total_amount);
-    return sum + (Number.isNaN(amount) ? 0 : amount);
-  }, 0);
   const refundedTransactions = ticket.transactions.filter(
     (transaction) => transaction.is_refunded,
   );
@@ -159,7 +155,7 @@ export function TicketReceiptCard({
             Total amount
           </p>
           <p className="mt-2 font-medium text-stone-950">
-            {formatTicketAmount(String(visibleTotalAmount))}
+            {formatTicketAmount(ticket.total_amount)}
           </p>
         </div>
       </div>
