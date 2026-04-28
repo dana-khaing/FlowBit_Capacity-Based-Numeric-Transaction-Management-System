@@ -1527,6 +1527,9 @@ class PrivateWorkflowAPITests(APITestCase):
         self.assertTrue(self.active_transaction.is_refunded)
         self.active_ticket.refresh_from_db()
         self.assertEqual(self.active_ticket.total_amount, Decimal('0.00'))
+        audit_entry = AuditLog.objects.filter(action='transaction.refunded').latest('timestamp')
+        self.assertEqual(audit_entry.changes['identifier_number'], self.identifier.number)
+        self.assertEqual(audit_entry.changes['refund_amount'], '75.00')
 
     def test_ticket_total_amount_updates_after_partial_transaction_refund(self):
         second_transaction = Transaction.objects.create(
@@ -1574,6 +1577,19 @@ class PrivateWorkflowAPITests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response['Content-Type'], 'application/pdf')
+
+    def test_ticket_refund_audit_includes_ticket_summary(self):
+        response = self.client.post(
+            f'/api/tickets/{self.active_ticket.ticket_number}/refund/',
+            {'action': 'refund_ticket'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        audit_entry = AuditLog.objects.filter(action='ticket.refunded').latest('timestamp')
+        self.assertEqual(audit_entry.changes['ticket_number'], self.active_ticket.ticket_number)
+        self.assertEqual(audit_entry.changes['entry_count'], 1)
+        self.assertEqual(audit_entry.changes['entries'][0]['identifier_number'], self.identifier.number)
 
     def test_audit_logs_can_filter_by_related_ticket_number(self):
         AuditLog.objects.create(
