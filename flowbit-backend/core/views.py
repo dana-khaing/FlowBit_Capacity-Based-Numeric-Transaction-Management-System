@@ -218,6 +218,29 @@ def helper_name_from_request(request):
     return DEFAULT_HELPER_NAME
 
 
+def _ticket_refund_summary(ticket):
+    transactions = list(ticket.transactions.all())
+    visible_transactions = [transaction for transaction in transactions if not transaction.is_refunded]
+    entries = []
+    total_amount = Decimal('0.00')
+
+    for transaction_obj in visible_transactions:
+        total_amount += transaction_obj.total_amount
+        entries.append({
+            'transaction_id': transaction_obj.id,
+            'order_number': transaction_obj.order_number,
+            'identifier_number': transaction_obj.identifier.number,
+            'ticket_amount': str(transaction_obj.total_amount),
+        })
+
+    return {
+        'ticket_number': ticket.ticket_number,
+        'entry_count': len(visible_transactions),
+        'total_ticket_amount': str(total_amount),
+        'entries': entries,
+    }
+
+
 def _build_unique_username(email, fallback='google_user'):
     base = (email.split('@')[0] if email else fallback).strip() or fallback
     base = ''.join(char if char.isalnum() or char in {'_', '.'} else '_' for char in base).strip('._') or fallback
@@ -1445,6 +1468,7 @@ class OverflowViewSet(viewsets.ModelViewSet):
                 )
 
         if action_name == 'refund_overflow_only':
+            refund_amount = overflow.amount_to_approve or overflow.excess_amount or Decimal('0.00')
             with db_transaction.atomic():
                 refund_overflow(
                     overflow,
@@ -1457,7 +1481,15 @@ class OverflowViewSet(viewsets.ModelViewSet):
                 'overflow.refunded',
                 target=overflow,
                 details=f"Refunded overflow for transaction '{overflow.transaction.order_number}'",
-                changes={'resolution_type': Overflow.RESOLUTION_REFUND_OVERFLOW},
+                changes={
+                    'resolution_type': Overflow.RESOLUTION_REFUND_OVERFLOW,
+                    'ticket_number': overflow.transaction.ticket.ticket_number if overflow.transaction.ticket_id else '',
+                    'transaction_id': overflow.transaction.id,
+                    'order_number': overflow.transaction.order_number,
+                    'identifier_number': overflow.transaction.identifier.number,
+                    'refund_amount': str(refund_amount),
+                    'status': overflow.status,
+                },
             )
             return Response({
                 "message": "Overflow refunded successfully",
@@ -1465,6 +1497,7 @@ class OverflowViewSet(viewsets.ModelViewSet):
             }, status=status.HTTP_200_OK)
 
         if action_name == 'refund_transaction':
+            refund_amount = overflow.transaction.total_amount
             with db_transaction.atomic():
                 refund_transactions(
                     [overflow.transaction],
@@ -1476,7 +1509,14 @@ class OverflowViewSet(viewsets.ModelViewSet):
                 'transaction.refunded',
                 target=overflow.transaction,
                 details=f"Refunded transaction '{overflow.transaction.order_number}'",
-                changes={'resolution_type': Overflow.RESOLUTION_REFUND_TRANSACTION},
+                changes={
+                    'resolution_type': Overflow.RESOLUTION_REFUND_TRANSACTION,
+                    'ticket_number': overflow.transaction.ticket.ticket_number if overflow.transaction.ticket_id else '',
+                    'transaction_id': overflow.transaction.id,
+                    'order_number': overflow.transaction.order_number,
+                    'identifier_number': overflow.transaction.identifier.number,
+                    'refund_amount': str(refund_amount),
+                },
             )
             return Response({
                 "message": f"Transaction '{overflow.transaction.order_number}' refunded successfully",
@@ -1488,22 +1528,27 @@ class OverflowViewSet(viewsets.ModelViewSet):
                     {"detail": "Overflow transaction is not attached to a ticket."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+            ticket = overflow.transaction.ticket
+            refund_summary = _ticket_refund_summary(ticket)
 
             with db_transaction.atomic():
                 refund_transactions(
-                    list(overflow.transaction.ticket.transactions.all()),
+                    list(ticket.transactions.all()),
                     helper_name=helper_name,
                     resolution_type=Overflow.RESOLUTION_REFUND_TICKET,
                 )
             record_audit_log(
                 request,
                 'ticket.refunded',
-                target=overflow.transaction.ticket,
-                details=f"Refunded ticket '{overflow.transaction.ticket.ticket_number}'",
-                changes={'resolution_type': Overflow.RESOLUTION_REFUND_TICKET},
+                target=ticket,
+                details=f"Refunded ticket '{ticket.ticket_number}'",
+                changes={
+                    'resolution_type': Overflow.RESOLUTION_REFUND_TICKET,
+                    **refund_summary,
+                },
             )
             return Response({
-                "message": f"Ticket '{overflow.transaction.ticket.ticket_number}' refunded successfully",
+                "message": f"Ticket '{ticket.ticket_number}' refunded successfully",
             }, status=status.HTTP_200_OK)
 
         return Response(
@@ -2510,6 +2555,7 @@ class TicketRefundView(APIView):
                     {"detail": "This ticket has already been refunded."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+            refund_summary = _ticket_refund_summary(ticket)
 
             with db_transaction.atomic():
                 refund_transactions(
@@ -2523,7 +2569,10 @@ class TicketRefundView(APIView):
                 'ticket.refunded',
                 target=ticket,
                 details=f"Refunded ticket '{ticket.ticket_number}'",
-                changes={'resolution_type': Overflow.RESOLUTION_REFUND_TICKET},
+                changes={
+                    'resolution_type': Overflow.RESOLUTION_REFUND_TICKET,
+                    **refund_summary,
+                },
             )
             return Response({
                 "message": f"Ticket '{ticket.ticket_number}' refunded successfully",
@@ -2553,7 +2602,14 @@ class TicketRefundView(APIView):
             'transaction.refunded',
             target=transaction_obj,
             details=f"Refunded transaction '{transaction_obj.order_number}'",
-            changes={'resolution_type': Overflow.RESOLUTION_REFUND_TRANSACTION},
+            changes={
+                'resolution_type': Overflow.RESOLUTION_REFUND_TRANSACTION,
+                'ticket_number': ticket.ticket_number,
+                'transaction_id': transaction_obj.id,
+                'order_number': transaction_obj.order_number,
+                'identifier_number': transaction_obj.identifier.number,
+                'refund_amount': str(transaction_obj.total_amount),
+            },
         )
         return Response({
             "message": f"Transaction '{transaction_obj.order_number}' refunded successfully",
