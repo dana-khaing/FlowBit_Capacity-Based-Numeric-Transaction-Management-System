@@ -47,12 +47,15 @@ type ToastState = {
 
 export function TicketHistoryPage() {
   const pageSize = 12;
-  const actionButtonClassName = "h-12 min-w-[8.5rem] rounded-[18px] px-5 font-medium";
+  const actionButtonClassName = "h-12 w-12 rounded-[18px] p-0";
   const actionLinkClassName =
-    "inline-flex h-12 min-w-[8.5rem] items-center justify-center gap-2 rounded-[18px] border border-stone-900/10 bg-white px-5 text-sm font-medium text-stone-700 transition hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-950/20";
+    "inline-flex h-12 w-12 items-center justify-center rounded-[18px] border border-stone-900/10 bg-white text-sm font-medium text-stone-700 transition hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-950/20";
   const [tickets, setTickets] = useState<FlowBitTicketListItem[]>([]);
-  const [selectedTicketNumber, setSelectedTicketNumber] = useState<string | null>(null);
-  const [selectedTicket, setSelectedTicket] = useState<FlowBitTicketDetail | null>(null);
+  const [selectedTicketNumber, setSelectedTicketNumber] = useState<
+    string | null
+  >(null);
+  const [selectedTicket, setSelectedTicket] =
+    useState<FlowBitTicketDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -95,9 +98,10 @@ export function TicketHistoryPage() {
         }
         setTickets(nextTickets);
         setSelectedTicketNumber((current) =>
-          current && nextTickets.some((ticket) => ticket.ticket_number === current)
+          current &&
+          nextTickets.some((ticket) => ticket.ticket_number === current)
             ? current
-            : nextTickets[0]?.ticket_number ?? null,
+            : (nextTickets[0]?.ticket_number ?? null),
         );
       })
       .catch((error) => {
@@ -152,12 +156,17 @@ export function TicketHistoryPage() {
       const matchesDateTo =
         !dateTo || ticketDate <= new Date(`${dateTo}T23:59:59`);
 
-      return matchesSearch && matchesRefundFilter && matchesDateFrom && matchesDateTo;
+      return (
+        matchesSearch && matchesRefundFilter && matchesDateFrom && matchesDateTo
+      );
     });
 
     return filtered.slice().sort((left, right) => {
       if (sortBy === "oldest") {
-        return new Date(left.created_at).getTime() - new Date(right.created_at).getTime();
+        return (
+          new Date(left.created_at).getTime() -
+          new Date(right.created_at).getTime()
+        );
       }
 
       if (sortBy === "amount_desc") {
@@ -168,7 +177,10 @@ export function TicketHistoryPage() {
         return Number(left.total_amount) - Number(right.total_amount);
       }
 
-      return new Date(right.created_at).getTime() - new Date(left.created_at).getTime();
+      return (
+        new Date(right.created_at).getTime() -
+        new Date(left.created_at).getTime()
+      );
     });
   }, [dateFrom, dateTo, deferredSearchTerm, refundFilter, sortBy, tickets]);
 
@@ -179,7 +191,8 @@ export function TicketHistoryPage() {
   }, [currentPage, filteredTickets]);
 
   const groupedTickets = useMemo(() => {
-    const groups: Array<{ label: string; tickets: FlowBitTicketListItem[] }> = [];
+    const groups: Array<{ label: string; tickets: FlowBitTicketListItem[] }> =
+      [];
     for (const ticket of paginatedTickets) {
       const label = new Date(ticket.created_at).toLocaleDateString("en-GB", {
         day: "2-digit",
@@ -213,7 +226,12 @@ export function TicketHistoryPage() {
       return;
     }
 
-    if (!selectedTicketNumber || !paginatedTickets.some((ticket) => ticket.ticket_number === selectedTicketNumber)) {
+    if (
+      !selectedTicketNumber ||
+      !paginatedTickets.some(
+        (ticket) => ticket.ticket_number === selectedTicketNumber,
+      )
+    ) {
       setSelectedTicketNumber(paginatedTickets[0].ticket_number);
     }
   }, [paginatedTickets, selectedTicketNumber]);
@@ -223,7 +241,9 @@ export function TicketHistoryPage() {
       return;
     }
     try {
-      const blob = await downloadTicketReceiptPdf([selectedTicket.ticket_number]);
+      const blob = await downloadTicketReceiptPdf([
+        selectedTicket.ticket_number,
+      ]);
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
@@ -231,7 +251,8 @@ export function TicketHistoryPage() {
       link.click();
       URL.revokeObjectURL(url);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Request failed.";
+      const message =
+        error instanceof Error ? error.message : "Request failed.";
       setToast({ type: "error", message });
     }
   }
@@ -247,10 +268,7 @@ export function TicketHistoryPage() {
     }
   }
 
-  async function runOverflowRefundAction(
-    overflowId: number,
-    kind: "overflow",
-  ) {
+  async function runOverflowRefundAction(overflowId: number, kind: "overflow") {
     const user = getStoredUser();
     const requireOverrideCode = user?.role !== "admin";
     if (requireOverrideCode && !adminOverrideCode.trim()) {
@@ -276,7 +294,8 @@ export function TicketHistoryPage() {
       setShowRefundModal(false);
       setAdminOverrideCode("");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Request failed.";
+      const message =
+        error instanceof Error ? error.message : "Request failed.";
       setToast({ type: "error", message });
     } finally {
       setBusyRefundAction(null);
@@ -319,7 +338,8 @@ export function TicketHistoryPage() {
       setShowRefundModal(false);
       setAdminOverrideCode("");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Request failed.";
+      const message =
+        error instanceof Error ? error.message : "Request failed.";
       setToast({ type: "error", message });
     } finally {
       setBusyRefundAction(null);
@@ -419,7 +439,10 @@ export function TicketHistoryPage() {
         description="Review every ticket created in the active period."
       >
         <div className="inline-flex items-center gap-3 rounded-full border border-stone-900/8 bg-stone-50 px-5 py-3 text-sm font-medium text-stone-600">
-          <FontAwesomeIcon icon={faCircleNotch} className="h-4 w-4 animate-spin text-stone-400" />
+          <FontAwesomeIcon
+            icon={faCircleNotch}
+            className="h-4 w-4 animate-spin text-stone-400"
+          />
           Checking active period for ticket history.
         </div>
       </AppSectionPage>
@@ -447,13 +470,13 @@ export function TicketHistoryPage() {
     <AppSectionPage
       eyebrow="Tickets"
       title="Ticket history"
-        description={`All tickets created in ${activePeriod?.name}.`}
-        workspaceLabel="Ticket history"
-        headerClassName="hidden"
-        layoutClassName="print:block"
-        workspaceClassName="print:hidden"
-        asideClassName="print:block"
-        aside={
+      description={`All tickets created in ${activePeriod?.name}.`}
+      workspaceLabel="Ticket history"
+      headerClassName="hidden"
+      layoutClassName="print:block"
+      workspaceClassName="print:hidden"
+      asideClassName="print:block"
+      aside={
         <section className="h-[calc(100vh-8.5rem)] overflow-y-auto rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] print:h-auto print:max-h-none print:overflow-visible print:rounded-none print:border-0 print:p-0 print:shadow-none sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -471,9 +494,13 @@ export function TicketHistoryPage() {
                   variant="outline"
                   className={actionButtonClassName}
                   onClick={() => setShowRefundModal(true)}
+                  aria-label="Refund ticket"
+                  title="Refund"
                 >
-                  <FontAwesomeIcon icon={faTriangleExclamation} className="h-3.5 w-3.5" />
-                  Refund
+                  <FontAwesomeIcon
+                    icon={faTriangleExclamation}
+                    className="h-3.5 w-3.5"
+                  />
                 </Button>
               ) : null}
               <Button
@@ -482,9 +509,10 @@ export function TicketHistoryPage() {
                 className={actionButtonClassName}
                 onClick={downloadSelectedTicket}
                 disabled={!selectedTicket}
+                aria-label="Download receipt"
+                title="Download"
               >
                 <FontAwesomeIcon icon={faDownload} className="h-3.5 w-3.5" />
-                Download
               </Button>
               <Button
                 type="button"
@@ -492,17 +520,22 @@ export function TicketHistoryPage() {
                 className={actionButtonClassName}
                 onClick={() => window.print()}
                 disabled={!selectedTicket}
+                aria-label="Print receipt"
+                title="Print"
               >
                 <FontAwesomeIcon icon={faPrint} className="h-3.5 w-3.5" />
-                Print
               </Button>
               {selectedTicket && getStoredUser()?.role === "admin" ? (
                 <Link
                   href={`/admin/audit-logs?related_ticket_number=${selectedTicket.ticket_number}`}
                   className={actionLinkClassName}
+                  aria-label="Open ticket audit logs"
+                  title="Audit"
                 >
-                  <FontAwesomeIcon icon={faShieldHalved} className="h-3.5 w-3.5" />
-                  Audit
+                  <FontAwesomeIcon
+                    icon={faShieldHalved}
+                    className="h-3.5 w-3.5"
+                  />
                 </Link>
               ) : null}
             </div>
@@ -525,7 +558,8 @@ export function TicketHistoryPage() {
             </div>
           ) : (
             <div className="mt-5 rounded-[22px] border border-dashed border-stone-300 bg-stone-50 px-4 py-4 text-sm text-stone-500">
-              Select a ticket from the workspace list to open its receipt view here.
+              Select a ticket from the workspace list to open its receipt view
+              here.
             </div>
           )}
         </section>
@@ -549,30 +583,36 @@ export function TicketHistoryPage() {
           setShowRefundModal(false);
           setAdminOverrideCode("");
         }}
-        onRefundTicket={() =>
-          runTicketRefundAction("refund_ticket", "ticket")
-        }
+        onRefundTicket={() => runTicketRefundAction("refund_ticket", "ticket")}
         onRefundTransaction={(transactionId) =>
-          runTicketRefundAction("refund_transaction", "transaction", transactionId)
+          runTicketRefundAction(
+            "refund_transaction",
+            "transaction",
+            transactionId,
+          )
         }
         onRefundOverflow={(overflowId) =>
           runOverflowRefundAction(overflowId, "overflow")
         }
       />
 
-        <div className="flex h-[calc(100vh-8.5rem)] flex-col gap-5">
-          <div className="grid gap-3 sm:grid-cols-3">
+      <div className="flex h-[calc(100vh-8.5rem)] flex-col gap-5">
+        <div className="grid gap-3 sm:grid-cols-3">
           <div className="rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">
               Tickets
             </p>
-            <p className="mt-2 text-3xl font-semibold text-stone-950">{tickets.length}</p>
+            <p className="mt-2 text-3xl font-semibold text-stone-950">
+              {tickets.length}
+            </p>
           </div>
           <div className="rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">
               Entries
             </p>
-            <p className="mt-2 text-3xl font-semibold text-stone-950">{totalEntries}</p>
+            <p className="mt-2 text-3xl font-semibold text-stone-950">
+              {totalEntries}
+            </p>
           </div>
           <div className="rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">
@@ -598,8 +638,8 @@ export function TicketHistoryPage() {
             />
           </div>
 
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <label className="flex items-center rounded-[18px] border border-stone-900/10 bg-white px-4">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)]">
+            <label className="flex min-w-0 items-center rounded-[18px] border border-stone-900/10 bg-white px-4">
               <span className="mr-3 text-xs font-semibold uppercase tracking-[0.14em] text-stone-400">
                 Status
               </span>
@@ -625,7 +665,7 @@ export function TicketHistoryPage() {
               value={dateTo}
               onChange={(event) => setDateTo(event.target.value)}
             />
-            <label className="flex items-center rounded-[18px] border border-stone-900/10 bg-white px-4">
+            <label className="flex min-w-0 items-center rounded-[18px] border border-stone-900/10 bg-white px-4">
               <span className="mr-3 text-xs font-semibold uppercase tracking-[0.14em] text-stone-400">
                 Sort
               </span>
@@ -658,15 +698,21 @@ export function TicketHistoryPage() {
           ) : paginatedTickets.length ? (
             <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-2">
               {groupedTickets.map((group, groupIndex) => (
-                <section key={`${group.label}-${groupIndex}`} className="space-y-3">
+                <section
+                  key={`${group.label}-${groupIndex}`}
+                  className="space-y-3"
+                >
                   <div className="sticky top-0 rounded-[16px] bg-white/85 px-1 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-stone-400 backdrop-blur">
                     {group.label}
                   </div>
                   {group.tickets.map((ticket) => {
-                    const isActive = ticket.ticket_number === selectedTicketNumber;
+                    const isActive =
+                      ticket.ticket_number === selectedTicketNumber;
                     const isPartialRefund =
-                      !ticket.is_refunded && ticket.refunded_transaction_count > 0;
-                    const hasSpillOverRefunded = ticket.refunded_spill_over_count > 0;
+                      !ticket.is_refunded &&
+                      ticket.refunded_transaction_count > 0;
+                    const hasSpillOverRefunded =
+                      ticket.refunded_spill_over_count > 0;
 
                     return (
                       <div
@@ -680,72 +726,132 @@ export function TicketHistoryPage() {
                         <div className="flex items-start gap-3">
                           <button
                             type="button"
-                            onClick={() => setSelectedTicketNumber(ticket.ticket_number)}
+                            onClick={() =>
+                              setSelectedTicketNumber(ticket.ticket_number)
+                            }
                             className="min-w-0 flex-1 text-left"
                           >
                             <div className="flex flex-wrap items-start justify-between gap-3">
                               <div>
-                                <p className={`text-xs font-semibold uppercase tracking-[0.16em] ${isActive ? "text-stone-300" : "text-stone-400"}`}>
+                                <p
+                                  className={`text-xs font-semibold uppercase tracking-[0.16em] ${isActive ? "text-stone-300" : "text-stone-400"}`}
+                                >
                                   Ticket
                                 </p>
-                                <p className="mt-2 text-lg font-semibold">{ticket.ticket_number}</p>
+                                <p className="mt-2 text-lg font-semibold">
+                                  {ticket.ticket_number}
+                                </p>
                               </div>
                               <div className="flex flex-wrap items-center justify-end gap-2">
-                                <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${
-                                  isActive ? "bg-white/10 text-stone-100" : "bg-white text-stone-500"
-                                }`}>
-                                  <FontAwesomeIcon icon={faTicket} className="h-3 w-3" />
-                                  {ticket.transaction_count} {ticket.transaction_count === 1 ? "entry" : "entries"}
+                                <span
+                                  className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${
+                                    isActive
+                                      ? "bg-white/10 text-stone-100"
+                                      : "bg-white text-stone-500"
+                                  }`}
+                                >
+                                  <FontAwesomeIcon
+                                    icon={faTicket}
+                                    className="h-3 w-3"
+                                  />
+                                  {ticket.transaction_count}{" "}
+                                  {ticket.transaction_count === 1
+                                    ? "entry"
+                                    : "entries"}
                                 </span>
                                 {ticket.is_refunded ? (
-                                  <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${
-                                    isActive ? "bg-emerald-200/20 text-emerald-100" : "bg-emerald-100 text-emerald-700"
-                                  }`}>
-                                    <FontAwesomeIcon icon={faRotateLeft} className="h-3 w-3" />
+                                  <span
+                                    className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${
+                                      isActive
+                                        ? "bg-emerald-200/20 text-emerald-100"
+                                        : "bg-emerald-100 text-emerald-700"
+                                    }`}
+                                  >
+                                    <FontAwesomeIcon
+                                      icon={faRotateLeft}
+                                      className="h-3 w-3"
+                                    />
                                     Refunded
                                   </span>
                                 ) : null}
                                 {isPartialRefund ? (
-                                  <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${
-                                    isActive ? "bg-sky-200/20 text-sky-100" : "bg-sky-100 text-sky-700"
-                                  }`}>
-                                    <FontAwesomeIcon icon={faMinusCircle} className="h-3 w-3" />
+                                  <span
+                                    className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${
+                                      isActive
+                                        ? "bg-sky-200/20 text-sky-100"
+                                        : "bg-sky-100 text-sky-700"
+                                    }`}
+                                  >
+                                    <FontAwesomeIcon
+                                      icon={faMinusCircle}
+                                      className="h-3 w-3"
+                                    />
                                     Partial refund
                                   </span>
                                 ) : null}
                                 {ticket.active_spill_over_count > 0 ? (
-                                  <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${
-                                    isActive ? "bg-amber-200/20 text-amber-100" : "bg-amber-100 text-amber-800"
-                                  }`}>
-                                    <FontAwesomeIcon icon={faTriangleExclamation} className="h-3 w-3" />
+                                  <span
+                                    className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${
+                                      isActive
+                                        ? "bg-amber-200/20 text-amber-100"
+                                        : "bg-amber-100 text-amber-800"
+                                    }`}
+                                  >
+                                    <FontAwesomeIcon
+                                      icon={faTriangleExclamation}
+                                      className="h-3 w-3"
+                                    />
                                     Spill over {ticket.active_spill_over_count}
                                   </span>
                                 ) : null}
                                 {hasSpillOverRefunded ? (
-                                  <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${
-                                    isActive ? "bg-orange-200/20 text-orange-100" : "bg-orange-100 text-orange-800"
-                                  }`}>
-                                    <FontAwesomeIcon icon={faRotateLeft} className="h-3 w-3" />
+                                  <span
+                                    className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${
+                                      isActive
+                                        ? "bg-orange-200/20 text-orange-100"
+                                        : "bg-orange-100 text-orange-800"
+                                    }`}
+                                  >
+                                    <FontAwesomeIcon
+                                      icon={faRotateLeft}
+                                      className="h-3 w-3"
+                                    />
                                     Spill over refund
                                   </span>
                                 ) : null}
-                                {!ticket.is_refunded && ticket.active_spill_over_count === 0 && !isPartialRefund ? (
-                                  <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${
-                                    isActive ? "bg-emerald-200/20 text-emerald-100" : "bg-emerald-100 text-emerald-700"
-                                  }`}>
+                                {!ticket.is_refunded &&
+                                ticket.active_spill_over_count === 0 &&
+                                !isPartialRefund ? (
+                                  <span
+                                    className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${
+                                      isActive
+                                        ? "bg-emerald-200/20 text-emerald-100"
+                                        : "bg-emerald-100 text-emerald-700"
+                                    }`}
+                                  >
                                     Clean
                                   </span>
                                 ) : null}
                               </div>
                             </div>
 
-                            <div className={`mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm ${isActive ? "text-stone-200" : "text-stone-600"}`}>
+                            <div
+                              className={`mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm ${isActive ? "text-stone-200" : "text-stone-600"}`}
+                            >
                               <span className="inline-flex items-center gap-2">
-                                <FontAwesomeIcon icon={faUser} className={`h-3.5 w-3.5 ${isActive ? "text-stone-300" : "text-stone-400"}`} />
-                                {getTicketCustomerDisplayName(ticket.customer_name)}
+                                <FontAwesomeIcon
+                                  icon={faUser}
+                                  className={`h-3.5 w-3.5 ${isActive ? "text-stone-300" : "text-stone-400"}`}
+                                />
+                                {getTicketCustomerDisplayName(
+                                  ticket.customer_name,
+                                )}
                               </span>
                               <span className="inline-flex items-center gap-2">
-                                <FontAwesomeIcon icon={faReceipt} className={`h-3.5 w-3.5 ${isActive ? "text-stone-300" : "text-stone-400"}`} />
+                                <FontAwesomeIcon
+                                  icon={faReceipt}
+                                  className={`h-3.5 w-3.5 ${isActive ? "text-stone-300" : "text-stone-400"}`}
+                                />
                                 {formatTicketAmount(ticket.total_amount)}
                               </span>
                               <span>{formatTicketDate(ticket.created_at)}</span>
@@ -776,7 +882,9 @@ export function TicketHistoryPage() {
                   type="button"
                   variant="outline"
                   className="rounded-[16px]"
-                  onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                  onClick={() =>
+                    setCurrentPage((page) => Math.max(1, page - 1))
+                  }
                   disabled={currentPage === 1}
                 >
                   Previous
@@ -785,7 +893,9 @@ export function TicketHistoryPage() {
                   type="button"
                   variant="outline"
                   className="rounded-[16px]"
-                  onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                  onClick={() =>
+                    setCurrentPage((page) => Math.min(totalPages, page + 1))
+                  }
                   disabled={currentPage === totalPages}
                 >
                   Next
