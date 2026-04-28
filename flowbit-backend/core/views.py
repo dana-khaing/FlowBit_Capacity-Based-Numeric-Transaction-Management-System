@@ -2827,38 +2827,38 @@ class TicketReceiptPdfExportView(APIView):
                 elements.append(row_table)
                 elements.append(Spacer(1, 0.08 * inch))
 
-                if transaction_obj.allocations.exists():
-                    elements.append(Spacer(1, 0.02 * inch))
-                    elements.append(
-                        Paragraph(
-                            "LEDGER ALLOCATION",
-                            ledger_label_style,
-                        )
-                    )
-                    allocation_rows = []
-                    for allocation in transaction_obj.allocations.all():
-                        allocation_rows.append([
-                            allocation.ledger.name,
-                            f"{(allocation.amount or Decimal('0.00')):,.2f}",
-                        ])
+                # if transaction_obj.allocations.exists():
+                #     elements.append(Spacer(1, 0.02 * inch))
+                #     elements.append(
+                #         Paragraph(
+                #             "LEDGER ALLOCATION",
+                #             ledger_label_style,
+                #         )
+                #     )
+                #     allocation_rows = []
+                #     for allocation in transaction_obj.allocations.all():
+                #         allocation_rows.append([
+                #             allocation.ledger.name,
+                #             f"{(allocation.amount or Decimal('0.00')):,.2f}",
+                #         ])
 
-                    allocation_table = Table(
-                        allocation_rows,
-                        colWidths=[4.35 * inch, 1.25 * inch],
-                    )
-                    allocation_table.setStyle(TableStyle([
-                        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#faf7f2')),
-                        ('BOX', (0, 0), (-1, -1), 0.6, colors.HexColor('#efebe5')),
-                        ('LEFTPADDING', (0, 0), (-1, -1), 14),
-                        ('RIGHTPADDING', (0, 0), (-1, -1), 14),
-                        ('TOPPADDING', (0, 0), (-1, -1), 8),
-                        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-                        ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#59524b')),
-                        ('FONTSIZE', (0, 0), (-1, -1), 10),
-                        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
-                    ]))
-                    elements.append(allocation_table)
-                    elements.append(Spacer(1, 0.10 * inch))
+                #     allocation_table = Table(
+                #         allocation_rows,
+                #         colWidths=[4.35 * inch, 1.25 * inch],
+                #     )
+                #     allocation_table.setStyle(TableStyle([
+                #         ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#faf7f2')),
+                #         ('BOX', (0, 0), (-1, -1), 0.6, colors.HexColor('#efebe5')),
+                #         ('LEFTPADDING', (0, 0), (-1, -1), 14),
+                #         ('RIGHTPADDING', (0, 0), (-1, -1), 14),
+                #         ('TOPPADDING', (0, 0), (-1, -1), 8),
+                #         ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                #         ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#59524b')),
+                #         ('FONTSIZE', (0, 0), (-1, -1), 10),
+                #         ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+                #     ]))
+                #     elements.append(allocation_table)
+                #     elements.append(Spacer(1, 0.10 * inch))
 
             if index < len(tickets) - 1:
                 elements.append(Spacer(1, 0.28 * inch))
