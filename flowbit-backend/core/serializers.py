@@ -190,6 +190,7 @@ class TicketSerializer(serializers.ModelSerializer):
     identifier_numbers = serializers.SerializerMethodField()
     has_spill_over = serializers.SerializerMethodField()
     active_spill_over_count = serializers.SerializerMethodField()
+    refunded_spill_over_count = serializers.SerializerMethodField()
     refunded_transaction_count = serializers.SerializerMethodField()
 
     class Meta:
@@ -209,6 +210,7 @@ class TicketSerializer(serializers.ModelSerializer):
             'identifier_numbers',
             'has_spill_over',
             'active_spill_over_count',
+            'refunded_spill_over_count',
             'refunded_transaction_count',
         ]
         read_only_fields = [
@@ -237,6 +239,12 @@ class TicketSerializer(serializers.ModelSerializer):
     def get_active_spill_over_count(self, obj):
         return Overflow.objects.filter(transaction__ticket=obj).exclude(
             status=Overflow.STATUS_REFUNDED
+        ).count()
+
+    def get_refunded_spill_over_count(self, obj):
+        return Overflow.objects.filter(
+            transaction__ticket=obj,
+            status=Overflow.STATUS_REFUNDED,
         ).count()
 
     def get_refunded_transaction_count(self, obj):
