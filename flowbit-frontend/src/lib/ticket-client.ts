@@ -124,6 +124,7 @@ export type FlowBitTicketDetail = FlowBitTicketListItem & {
       id: number;
       excess_amount?: string;
       amount_to_approve: string;
+      refund_amount?: string | null;
       approved_at: string | null;
       status: string;
       resolution_type?: string | null;
