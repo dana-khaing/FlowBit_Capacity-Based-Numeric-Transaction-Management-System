@@ -2743,35 +2743,66 @@ class TicketReceiptPdfExportView(APIView):
                 elements.append(Paragraph(period_name, label_style))
             elements.append(Spacer(1, 0.16 * inch))
 
+            customer_name = (
+                ticket.customer_name.strip()
+                if ticket.customer_name and not ticket.customer_name.strip().startswith('Walk-in ')
+                else '-'
+            )
+
             info_table = Table([
-                ['Ticket No', ticket.ticket_number],
-                ['Entries', str(len(visible_transactions))],
-                ['Customer', (ticket.customer_name.strip() if ticket.customer_name and not ticket.customer_name.strip().startswith('Walk-in ') else '-')],
-                ['Total amount', f"{total_amount:,.2f}"],
-            ], colWidths=[1.6 * inch, 4.2 * inch])
+                ['Ticket No', ticket.ticket_number, 'Entries', str(len(visible_transactions))],
+                ['Customer', customer_name, 'Total amount', f"{total_amount:,.2f}"],
+            ], colWidths=[1.15 * inch, 2.0 * inch, 1.25 * inch, 1.6 * inch])
             info_table.setStyle(TableStyle([
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#d7d0c7')),
+                ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
                 ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+                ('FONTNAME', (2, 0), (2, -1), 'Helvetica-Bold'),
+                ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#1c1814')),
+                ('FONTSIZE', (0, 0), (-1, -1), 10),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                ('TOPPADDING', (0, 0), (-1, -1), 2),
                 ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('LINEBELOW', (0, 0), (-1, -1), 0.5, colors.HexColor('#d7d0c7')),
             ]))
             elements.append(info_table)
             elements.append(Spacer(1, 0.18 * inch))
 
-            line_rows = [['Identifier', 'Amount']]
             for transaction_obj in visible_transactions:
-                line_rows.append([
-                    transaction_obj.identifier.number,
-                    f"{_ticket_visible_line_amount(transaction_obj):,.2f}",
-                ])
-
-            line_table = Table(line_rows, colWidths=[2.0 * inch, 2.0 * inch])
-            line_table.setStyle(TableStyle([
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#d7d0c7')),
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f4efe8')),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('ALIGN', (1, 1), (1, -1), 'RIGHT'),
-            ]))
-            elements.append(line_table)
+                row_table = Table([
+                    [
+                        Paragraph(
+                            f"<b>{transaction_obj.identifier.number}</b>",
+                            ParagraphStyle(
+                                'TicketReceiptRowIdentifier',
+                                parent=styles['BodyText'],
+                                fontSize=13,
+                                textColor=colors.HexColor('#1c1814'),
+                                leading=16,
+                            ),
+                        ),
+                        '',
+                        Paragraph(
+                            f"<b>{_ticket_visible_line_amount(transaction_obj):,.2f}</b>",
+                            ParagraphStyle(
+                                'TicketReceiptRowAmount',
+                                parent=styles['BodyText'],
+                                fontSize=13,
+                                textColor=colors.HexColor('#1c1814'),
+                                alignment=TA_LEFT,
+                                leading=16,
+                            ),
+                        ),
+                    ]
+                ], colWidths=[1.0 * inch, 3.5 * inch, 1.1 * inch])
+                row_table.setStyle(TableStyle([
+                    ('LINEBELOW', (0, 0), (-1, 0), 0.7, colors.HexColor('#d7d0c7')),
+                    ('VALIGN', (0, 0), (-1, -1), 'BOTTOM'),
+                    ('ALIGN', (2, 0), (2, 0), 'RIGHT'),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+                    ('TOPPADDING', (0, 0), (-1, -1), 4),
+                ]))
+                elements.append(row_table)
+                elements.append(Spacer(1, 0.08 * inch))
 
             if index < len(tickets) - 1:
                 elements.append(Spacer(1, 0.28 * inch))
