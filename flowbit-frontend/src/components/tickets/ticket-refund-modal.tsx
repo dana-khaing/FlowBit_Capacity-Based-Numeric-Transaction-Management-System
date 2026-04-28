@@ -58,6 +58,7 @@ export function TicketRefundModal({
   const refundableTransactions = ticket.transactions.filter(
     (transaction) => !transaction.is_refunded,
   );
+  const showTransactionRefunds = refundableTransactions.length > 1;
   const activeOverflows = ticket.transactions.flatMap((transaction) =>
     transaction.overflows
       .filter((overflow) => overflow.status !== "RFND")
@@ -160,7 +161,7 @@ export function TicketRefundModal({
           </div>
         )}
 
-        {refundableTransactions.length ? (
+        {showTransactionRefunds ? (
           <div className="mt-5 space-y-3">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">
               Transaction refunds

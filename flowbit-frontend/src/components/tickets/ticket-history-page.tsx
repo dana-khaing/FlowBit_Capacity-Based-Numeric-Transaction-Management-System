@@ -50,13 +50,15 @@ type ToastState = {
 export function TicketHistoryPage() {
   const pageSize = 12;
   const actionButtonClassName = "h-12 rounded-[18px] px-5";
+  const actionLinkClassName =
+    "inline-flex h-12 items-center justify-center gap-2 rounded-[18px] border border-stone-900/10 bg-white px-5 text-sm font-medium text-stone-700 transition hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-950/20";
   const [tickets, setTickets] = useState<FlowBitTicketListItem[]>([]);
   const [selectedTicketNumber, setSelectedTicketNumber] = useState<string | null>(null);
   const [selectedTicket, setSelectedTicket] = useState<FlowBitTicketDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
-  const [refundFilter, setRefundFilter] = useState("all");
+  const [refundFilter, setRefundFilter] = useState("active");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [sortBy, setSortBy] = useState("newest");
@@ -149,12 +151,13 @@ export function TicketHistoryPage() {
 
       const isPartialRefund =
         !ticket.is_refunded && ticket.refunded_transaction_count > 0;
+      const hasSpillOverRefunded = ticket.refunded_spill_over_count > 0;
       const matchesRefundFilter =
-        refundFilter === "all" ||
+        (refundFilter === "active" && !ticket.is_refunded) ||
         (refundFilter === "refunded" && ticket.is_refunded) ||
         (refundFilter === "partial" && isPartialRefund) ||
-        (refundFilter === "active" && !ticket.is_refunded) ||
-        (refundFilter === "spill_over" && ticket.active_spill_over_count > 0);
+        (refundFilter === "spill_over" && ticket.active_spill_over_count > 0) ||
+        (refundFilter === "spill_over_refunded" && hasSpillOverRefunded);
 
       const matchesDateFrom =
         !dateFrom || ticketDate >= new Date(`${dateFrom}T00:00:00`);
@@ -556,7 +559,7 @@ export function TicketHistoryPage() {
       workspaceClassName="print:hidden"
       asideClassName="print:block"
       aside={
-        <section className="rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] print:rounded-none print:border-0 print:p-0 print:shadow-none sm:p-6">
+        <section className="max-h-[calc(100vh-11rem)] overflow-y-auto rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] print:max-h-none print:overflow-visible print:rounded-none print:border-0 print:p-0 print:shadow-none sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">
@@ -601,7 +604,7 @@ export function TicketHistoryPage() {
               {selectedTicket && getStoredUser()?.role === "admin" ? (
                 <Link
                   href={`/admin/audit-logs?related_ticket_number=${selectedTicket.ticket_number}`}
-                  className="inline-flex h-12 items-center justify-center gap-2 rounded-[18px] border border-stone-900/10 bg-white px-5 text-sm font-semibold text-stone-700 transition hover:bg-stone-50"
+                  className={actionLinkClassName}
                 >
                   <FontAwesomeIcon icon={faShieldHalved} className="h-3.5 w-3.5" />
                   Audit
@@ -752,11 +755,11 @@ export function TicketHistoryPage() {
                 onChange={(event) => setRefundFilter(event.target.value)}
                 className="h-12 w-full bg-transparent text-sm text-stone-700 outline-none"
               >
-                <option value="all">All tickets</option>
+                <option value="active">Active tickets</option>
                 <option value="refunded">Refunded tickets</option>
                 <option value="partial">Partial refunds</option>
-                <option value="active">Active tickets</option>
                 <option value="spill_over">Spill over only</option>
+                <option value="spill_over_refunded">Spill over refund</option>
               </select>
             </label>
             <Input
@@ -811,6 +814,7 @@ export function TicketHistoryPage() {
                     const isSelected = selectedTicketNumbers.includes(ticket.ticket_number);
                     const isPartialRefund =
                       !ticket.is_refunded && ticket.refunded_transaction_count > 0;
+                    const hasSpillOverRefunded = ticket.refunded_spill_over_count > 0;
 
                     return (
                       <div
@@ -875,6 +879,14 @@ export function TicketHistoryPage() {
                                   }`}>
                                     <FontAwesomeIcon icon={faTriangleExclamation} className="h-3 w-3" />
                                     Spill over {ticket.active_spill_over_count}
+                                  </span>
+                                ) : null}
+                                {hasSpillOverRefunded ? (
+                                  <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${
+                                    isActive ? "bg-orange-200/20 text-orange-100" : "bg-orange-100 text-orange-800"
+                                  }`}>
+                                    <FontAwesomeIcon icon={faRotateLeft} className="h-3 w-3" />
+                                    Spill over refund
                                   </span>
                                 ) : null}
                                 {!ticket.is_refunded && ticket.active_spill_over_count === 0 && !isPartialRefund ? (
