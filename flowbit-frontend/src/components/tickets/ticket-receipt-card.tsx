@@ -108,6 +108,15 @@ export function TicketReceiptCard({
   const refundedTransactions = ticket.transactions.filter(
     (transaction) => transaction.is_refunded,
   );
+  const refundedOverflows = visibleTransactions.flatMap((transaction) =>
+    transaction.overflows
+      .filter((overflow) => overflow.status === "RFND")
+      .map((overflow) => ({
+        id: overflow.id,
+        identifierNumber: transaction.identifier_number,
+        amount: overflow.refund_amount || overflow.excess_amount || overflow.amount_to_approve || "0.00",
+      })),
+  );
 
   return (
     <div
@@ -251,6 +260,35 @@ export function TicketReceiptCard({
                   </span>
                 </div>
                 <p className="mt-2 text-xs uppercase tracking-[0.14em] text-stone-400">
+                  Refunded
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {refundedOverflows.length ? (
+        <div className="border-t border-dashed border-stone-300 pt-4 print:hidden">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">
+            Refunded spill over
+          </p>
+          <div className="mt-3 space-y-3">
+            {refundedOverflows.map((overflow) => (
+              <div
+                key={overflow.id}
+                className="rounded-[18px] border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900"
+              >
+                <div className="flex items-end gap-2">
+                  <span className="font-semibold tracking-[0.18em] text-amber-900">
+                    {overflow.identifierNumber}
+                  </span>
+                  <span className="mb-1 min-w-[48px] flex-1 border-b border-dotted border-amber-300" />
+                  <span className="font-semibold text-amber-900">
+                    {formatTicketAmount(overflow.amount)}
+                  </span>
+                </div>
+                <p className="mt-2 text-xs uppercase tracking-[0.14em] text-amber-700">
                   Refunded
                 </p>
               </div>

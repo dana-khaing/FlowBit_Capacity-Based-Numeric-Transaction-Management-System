@@ -41,6 +41,93 @@ function formatValue(value: unknown) {
   return String(value);
 }
 
+function formatAuditTitle(log: AuditLogEntry) {
+  switch (log.action) {
+    case "overflow.refunded":
+      return "Spill over refunded";
+    case "transaction.refunded":
+      return "Transaction refunded";
+    case "ticket.refunded":
+      return "Ticket refunded";
+    default:
+      return log.action;
+  }
+}
+
+function renderAuditSummary(log: AuditLogEntry) {
+  const changes = log.changes || {};
+
+  if (log.action === "overflow.refunded") {
+    return (
+      <div className="mt-3 rounded-[18px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <span className="font-semibold tracking-[0.16em] text-amber-900">
+            {formatValue(changes.identifier_number)}
+          </span>
+          <span className="font-semibold">{formatValue(changes.refund_amount)}</span>
+        </div>
+        <p className="mt-2 text-xs uppercase tracking-[0.14em] text-amber-700">
+          Spill over refunded
+        </p>
+      </div>
+    );
+  }
+
+  if (log.action === "transaction.refunded") {
+    return (
+      <div className="mt-3 rounded-[18px] border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <span className="font-semibold tracking-[0.16em] text-sky-900">
+            {formatValue(changes.identifier_number)}
+          </span>
+          <span className="font-semibold">{formatValue(changes.refund_amount)}</span>
+        </div>
+        <p className="mt-2 text-xs uppercase tracking-[0.14em] text-sky-700">
+          Transaction refunded
+        </p>
+      </div>
+    );
+  }
+
+  if (log.action === "ticket.refunded") {
+    const entries = Array.isArray(changes.entries) ? changes.entries : [];
+    return (
+      <div className="mt-3 rounded-[18px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <span className="font-semibold">{formatValue(changes.ticket_number)}</span>
+          <span className="font-semibold">{formatValue(changes.total_ticket_amount)}</span>
+        </div>
+        <p className="mt-2 text-xs uppercase tracking-[0.14em] text-emerald-700">
+          {formatValue(changes.entry_count)} refunded entries
+        </p>
+        {entries.length ? (
+          <div className="mt-3 space-y-2 border-t border-emerald-200 pt-3">
+            {entries.map((entry, index) => {
+              const typedEntry =
+                typeof entry === "object" && entry !== null
+                  ? (entry as Record<string, unknown>)
+                  : {};
+              return (
+                <div
+                  key={`${typedEntry.transaction_id ?? index}-${index}`}
+                  className="flex flex-wrap items-center justify-between gap-3 text-sm"
+                >
+                  <span className="font-semibold tracking-[0.16em]">
+                    {formatValue(typedEntry.identifier_number)}
+                  </span>
+                  <span>{formatValue(typedEntry.ticket_amount)}</span>
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  return null;
+}
+
 export function AdminAuditLogsPage() {
   const searchParams = useSearchParams();
   const [filters, setFilters] = useState<AuditFilters>(initialFilters);
@@ -161,8 +248,9 @@ export function AdminAuditLogsPage() {
                   >
                     <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
                       <div>
-                        <p className="text-base font-semibold text-stone-950">{log.action}</p>
+                        <p className="text-base font-semibold text-stone-950">{formatAuditTitle(log)}</p>
                         <p className="mt-1 text-sm text-stone-500">{log.details}</p>
+                        {renderAuditSummary(log)}
                       </div>
                       <p className="text-xs uppercase tracking-[0.16em] text-stone-500">
                         {new Date(log.timestamp).toLocaleString()}

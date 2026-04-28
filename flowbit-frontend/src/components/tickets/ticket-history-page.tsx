@@ -49,13 +49,14 @@ type ToastState = {
 
 export function TicketHistoryPage() {
   const pageSize = 12;
+  const actionButtonClassName = "h-12 rounded-[18px] px-5";
   const [tickets, setTickets] = useState<FlowBitTicketListItem[]>([]);
   const [selectedTicketNumber, setSelectedTicketNumber] = useState<string | null>(null);
   const [selectedTicket, setSelectedTicket] = useState<FlowBitTicketDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
-  const [customerFilter, setCustomerFilter] = useState("");
+  const [refundFilter, setRefundFilter] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [sortBy, setSortBy] = useState("newest");
@@ -69,7 +70,6 @@ export function TicketHistoryPage() {
   }>(null);
   const [toast, setToast] = useState<ToastState>(null);
   const deferredSearchTerm = useDeferredValue(searchTerm);
-  const deferredCustomerFilter = useDeferredValue(customerFilter);
   const {
     activePeriod,
     hasActivePeriod,
@@ -131,7 +131,6 @@ export function TicketHistoryPage() {
 
   const filteredTickets = useMemo(() => {
     const normalizedSearch = deferredSearchTerm.trim().toLowerCase();
-    const normalizedCustomer = deferredCustomerFilter.trim().toLowerCase();
 
     const filtered = tickets.filter((ticket) => {
       const ticketDate = new Date(ticket.created_at);
@@ -148,18 +147,21 @@ export function TicketHistoryPage() {
             .includes(normalizedSearch),
         );
 
-      const matchesCustomer =
-        !normalizedCustomer ||
-        String(ticket.customer_name ?? "")
-          .toLowerCase()
-          .includes(normalizedCustomer);
+      const isPartialRefund =
+        !ticket.is_refunded && ticket.refunded_transaction_count > 0;
+      const matchesRefundFilter =
+        refundFilter === "all" ||
+        (refundFilter === "refunded" && ticket.is_refunded) ||
+        (refundFilter === "partial" && isPartialRefund) ||
+        (refundFilter === "active" && !ticket.is_refunded) ||
+        (refundFilter === "spill_over" && ticket.active_spill_over_count > 0);
 
       const matchesDateFrom =
         !dateFrom || ticketDate >= new Date(`${dateFrom}T00:00:00`);
       const matchesDateTo =
         !dateTo || ticketDate <= new Date(`${dateTo}T23:59:59`);
 
-      return matchesSearch && matchesCustomer && matchesDateFrom && matchesDateTo;
+      return matchesSearch && matchesRefundFilter && matchesDateFrom && matchesDateTo;
     });
 
     return filtered.slice().sort((left, right) => {
@@ -177,7 +179,7 @@ export function TicketHistoryPage() {
 
       return new Date(right.created_at).getTime() - new Date(left.created_at).getTime();
     });
-  }, [dateFrom, dateTo, deferredCustomerFilter, deferredSearchTerm, sortBy, tickets]);
+  }, [dateFrom, dateTo, deferredSearchTerm, refundFilter, sortBy, tickets]);
 
   const totalPages = Math.max(1, Math.ceil(filteredTickets.length / pageSize));
   const paginatedTickets = useMemo(() => {
@@ -205,7 +207,7 @@ export function TicketHistoryPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [deferredCustomerFilter, deferredSearchTerm, dateFrom, dateTo, sortBy]);
+  }, [deferredSearchTerm, dateFrom, dateTo, refundFilter, sortBy]);
 
   useEffect(() => {
     if (currentPage > totalPages) {
@@ -566,19 +568,20 @@ export function TicketHistoryPage() {
             </div>
             <div className="flex flex-wrap items-center gap-2 print:hidden">
               {selectedTicket ? (
-                <button
+                <Button
                   type="button"
+                  variant="outline"
+                  className={actionButtonClassName}
                   onClick={() => setShowRefundModal(true)}
-                  className="inline-flex items-center justify-center gap-2 rounded-[18px] border border-stone-900/10 bg-white px-5 py-3 text-sm font-semibold text-stone-700 transition hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-950/20"
                 >
                   <FontAwesomeIcon icon={faTriangleExclamation} className="h-3.5 w-3.5" />
                   Refund
-                </button>
+                </Button>
               ) : null}
               <Button
                 type="button"
                 variant="outline"
-                className="rounded-[18px]"
+                className={actionButtonClassName}
                 onClick={downloadSelectedTicket}
                 disabled={!selectedTicket}
               >
@@ -588,7 +591,7 @@ export function TicketHistoryPage() {
               <Button
                 type="button"
                 variant="outline"
-                className="rounded-[18px]"
+                className={actionButtonClassName}
                 onClick={() => window.print()}
                 disabled={!selectedTicket}
               >
@@ -598,7 +601,7 @@ export function TicketHistoryPage() {
               {selectedTicket && getStoredUser()?.role === "admin" ? (
                 <Link
                   href={`/admin/audit-logs?related_ticket_number=${selectedTicket.ticket_number}`}
-                  className="inline-flex items-center justify-center gap-2 rounded-[18px] border border-stone-900/10 bg-white px-5 py-3 text-sm font-semibold text-stone-700 transition hover:bg-stone-50"
+                  className="inline-flex h-12 items-center justify-center gap-2 rounded-[18px] border border-stone-900/10 bg-white px-5 text-sm font-semibold text-stone-700 transition hover:bg-stone-50"
                 >
                   <FontAwesomeIcon icon={faShieldHalved} className="h-3.5 w-3.5" />
                   Audit
@@ -740,11 +743,22 @@ export function TicketHistoryPage() {
           </div>
 
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <Input
-              value={customerFilter}
-              onChange={(event) => setCustomerFilter(event.target.value)}
-              placeholder="Filter by customer"
-            />
+            <label className="flex items-center rounded-[18px] border border-stone-900/10 bg-white px-4">
+              <span className="mr-3 text-xs font-semibold uppercase tracking-[0.14em] text-stone-400">
+                Status
+              </span>
+              <select
+                value={refundFilter}
+                onChange={(event) => setRefundFilter(event.target.value)}
+                className="h-12 w-full bg-transparent text-sm text-stone-700 outline-none"
+              >
+                <option value="all">All tickets</option>
+                <option value="refunded">Refunded tickets</option>
+                <option value="partial">Partial refunds</option>
+                <option value="active">Active tickets</option>
+                <option value="spill_over">Spill over only</option>
+              </select>
+            </label>
             <Input
               type="date"
               value={dateFrom}
@@ -786,7 +800,7 @@ export function TicketHistoryPage() {
               ))}
             </div>
           ) : paginatedTickets.length ? (
-            <div className="space-y-3">
+            <div className="max-h-[calc(100vh-18rem)] space-y-3 overflow-y-auto pr-2">
               {groupedTickets.map((group, groupIndex) => (
                 <section key={`${group.label}-${groupIndex}`} className="space-y-3">
                   <div className="sticky top-0 rounded-[16px] bg-white/85 px-1 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-stone-400 backdrop-blur">
