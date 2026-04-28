@@ -367,6 +367,10 @@ def _normalize_manual_allocations(manual_allocations):
 def _to_allocation_basis_amount(amount):
     return (Decimal(str(amount)) * Decimal('1.25')).quantize(Decimal('0.01'))
 
+
+def _from_allocation_basis_amount(amount):
+    return (Decimal(str(amount)) / Decimal('1.25')).quantize(Decimal('0.01'))
+
 def preview_transaction_allocation(identifier, total_amount, period, manual_allocations=None, apply_multiplier=True):
     total_amount = Decimal(str(total_amount))
     remaining = _to_allocation_basis_amount(total_amount) if apply_multiplier else total_amount
@@ -682,7 +686,7 @@ class Ticket(models.Model):
             status=Overflow.STATUS_REFUNDED,
         ).aggregate(total=Sum('refund_amount'))['total'] or Decimal('0.00')
 
-        active_total = visible_total - refunded_overflow_total
+        active_total = visible_total - _from_allocation_basis_amount(refunded_overflow_total)
         if active_total < Decimal('0.00'):
             return Decimal('0.00')
         return active_total
