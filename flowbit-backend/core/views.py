@@ -2565,7 +2565,7 @@ def _ticket_visible_transactions(ticket):
 
 
 def _ticket_visible_total(ticket):
-    return sum((transaction.total_amount for transaction in _ticket_visible_transactions(ticket)), Decimal('0.00'))
+    return ticket.total_amount
 
 
 def _ticket_visible_line_amount(transaction_obj):

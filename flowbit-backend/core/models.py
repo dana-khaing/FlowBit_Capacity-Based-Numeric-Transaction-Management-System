@@ -673,7 +673,19 @@ class Ticket(models.Model):
 
     @property
     def total_amount(self):
-        return self.transactions.aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
+        visible_total = self.transactions.filter(is_refunded=False).aggregate(
+            total=Sum('total_amount')
+        )['total'] or Decimal('0.00')
+        refunded_overflow_total = Overflow.objects.filter(
+            transaction__ticket=self,
+            transaction__is_refunded=False,
+            status=Overflow.STATUS_REFUNDED,
+        ).aggregate(total=Sum('refund_amount'))['total'] or Decimal('0.00')
+
+        active_total = visible_total - refunded_overflow_total
+        if active_total < Decimal('0.00'):
+            return Decimal('0.00')
+        return active_total
 
     @property
     def transaction_count(self):

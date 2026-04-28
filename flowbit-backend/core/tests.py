@@ -1525,6 +1525,45 @@ class PrivateWorkflowAPITests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.active_transaction.refresh_from_db()
         self.assertTrue(self.active_transaction.is_refunded)
+        self.active_ticket.refresh_from_db()
+        self.assertEqual(self.active_ticket.total_amount, Decimal('0.00'))
+
+    def test_ticket_total_amount_updates_after_partial_transaction_refund(self):
+        second_transaction = Transaction.objects.create(
+            ticket=self.active_ticket,
+            identifier=self.second_identifier,
+            total_amount=Decimal('25.00'),
+            created_by=self.approver,
+        )
+
+        response = self.client.post(
+            f'/api/tickets/{self.active_ticket.ticket_number}/refund/',
+            {
+                'action': 'refund_transaction',
+                'transaction_id': second_transaction.id,
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(self.active_ticket.total_amount, Decimal('75.00'))
+
+    def test_ticket_total_amount_updates_after_overflow_only_refund(self):
+        overflow = Overflow.objects.create(
+            transaction=self.active_transaction,
+            excess_amount=Decimal('30.00'),
+            status=Overflow.STATUS_TCSO,
+        )
+
+        response = self.client.post(
+            f'/api/overflows/{overflow.id}/resolve/',
+            {'action': 'refund_overflow_only'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.active_ticket.refresh_from_db()
+        self.assertEqual(self.active_ticket.total_amount, Decimal('45.00'))
 
     def test_ticket_receipt_pdf_export_returns_pdf_for_current_user(self):
         response = self.client.post(
