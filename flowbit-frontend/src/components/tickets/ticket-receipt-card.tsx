@@ -176,7 +176,7 @@ export function TicketReceiptCard({
             className="border-b border-dashed border-stone-300 pb-4 last:border-b-0 last:pb-0"
           >
             <div className="space-y-2">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400 print:hidden">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">
                 Entry {index + 1}
               </p>
               <div className="flex items-end gap-2">
@@ -191,7 +191,7 @@ export function TicketReceiptCard({
             </div>
 
             {transaction.allocations.length ? (
-              <div className="mt-3 rounded-[18px] bg-white px-3 py-3 text-sm text-stone-600 print:hidden">
+              <div className="mt-3 rounded-[18px] bg-white px-3 py-3 text-sm text-stone-600">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">
                   Ledger allocation
                 </p>
