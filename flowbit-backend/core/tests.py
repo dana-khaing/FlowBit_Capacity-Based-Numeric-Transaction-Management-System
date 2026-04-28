@@ -1566,7 +1566,34 @@ class PrivateWorkflowAPITests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.active_ticket.refresh_from_db()
-        self.assertEqual(self.active_ticket.total_amount, Decimal('45.00'))
+        self.assertEqual(self.active_ticket.total_amount, Decimal('51.00'))
+
+    def test_ticket_total_amount_converts_refunded_spill_over_from_basis_amount(self):
+        high_value_ticket = Ticket.objects.create(
+            customer_name='Basis Refund Customer',
+            created_by=self.approver,
+        )
+        high_value_transaction = Transaction.objects.create(
+            ticket=high_value_ticket,
+            identifier=self.second_identifier,
+            total_amount=Decimal('1000.00'),
+            created_by=self.approver,
+        )
+        overflow = Overflow.objects.create(
+            transaction=high_value_transaction,
+            excess_amount=Decimal('1100.00'),
+            status=Overflow.STATUS_TCSO,
+        )
+
+        response = self.client.post(
+            f'/api/overflows/{overflow.id}/resolve/',
+            {'action': 'refund_overflow_only'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        high_value_ticket.refresh_from_db()
+        self.assertEqual(high_value_ticket.total_amount, Decimal('120.00'))
 
     def test_fully_refunded_ticket_still_appears_in_active_period_history(self):
         response = self.client.post(
