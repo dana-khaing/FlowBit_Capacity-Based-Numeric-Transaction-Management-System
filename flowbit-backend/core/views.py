@@ -2729,6 +2729,23 @@ class TicketReceiptPdfExportView(APIView):
             textColor=colors.HexColor('#66605a'),
         )
 
+        small_section_label_style = ParagraphStyle(
+            'TicketReceiptSectionLabel',
+            parent=styles['BodyText'],
+            fontSize=10,
+            textColor=colors.HexColor('#a59d94'),
+            leading=12,
+            spaceAfter=4,
+        )
+
+        ledger_label_style = ParagraphStyle(
+            'TicketReceiptLedgerLabel',
+            parent=styles['BodyText'],
+            fontSize=9,
+            textColor=colors.HexColor('#a59d94'),
+            leading=11,
+        )
+
         for index, ticket in enumerate(tickets):
             visible_transactions = _ticket_visible_transactions(ticket)
             total_amount = _ticket_visible_total(ticket)
@@ -2767,7 +2784,13 @@ class TicketReceiptPdfExportView(APIView):
             elements.append(info_table)
             elements.append(Spacer(1, 0.18 * inch))
 
-            for transaction_obj in visible_transactions:
+            for entry_index, transaction_obj in enumerate(visible_transactions, start=1):
+                elements.append(
+                    Paragraph(
+                        f"ENTRY {entry_index}",
+                        small_section_label_style,
+                    )
+                )
                 row_table = Table([
                     [
                         Paragraph(
@@ -2803,6 +2826,39 @@ class TicketReceiptPdfExportView(APIView):
                 ]))
                 elements.append(row_table)
                 elements.append(Spacer(1, 0.08 * inch))
+
+                if transaction_obj.allocations.exists():
+                    elements.append(Spacer(1, 0.02 * inch))
+                    elements.append(
+                        Paragraph(
+                            "LEDGER ALLOCATION",
+                            ledger_label_style,
+                        )
+                    )
+                    allocation_rows = []
+                    for allocation in transaction_obj.allocations.all():
+                        allocation_rows.append([
+                            allocation.ledger.name,
+                            f"{(allocation.amount or Decimal('0.00')):,.2f}",
+                        ])
+
+                    allocation_table = Table(
+                        allocation_rows,
+                        colWidths=[4.35 * inch, 1.25 * inch],
+                    )
+                    allocation_table.setStyle(TableStyle([
+                        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#faf7f2')),
+                        ('BOX', (0, 0), (-1, -1), 0.6, colors.HexColor('#efebe5')),
+                        ('LEFTPADDING', (0, 0), (-1, -1), 14),
+                        ('RIGHTPADDING', (0, 0), (-1, -1), 14),
+                        ('TOPPADDING', (0, 0), (-1, -1), 8),
+                        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                        ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#59524b')),
+                        ('FONTSIZE', (0, 0), (-1, -1), 10),
+                        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+                    ]))
+                    elements.append(allocation_table)
+                    elements.append(Spacer(1, 0.10 * inch))
 
             if index < len(tickets) - 1:
                 elements.append(Spacer(1, 0.28 * inch))
