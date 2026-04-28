@@ -1568,6 +1568,19 @@ class PrivateWorkflowAPITests(APITestCase):
         self.active_ticket.refresh_from_db()
         self.assertEqual(self.active_ticket.total_amount, Decimal('45.00'))
 
+    def test_fully_refunded_ticket_still_appears_in_active_period_history(self):
+        response = self.client.post(
+            f'/api/tickets/{self.active_ticket.ticket_number}/refund/',
+            {'action': 'refund_ticket'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        list_response = self.client.get('/api/tickets/', {'period_id': self.active_period.id})
+        self.assertEqual(list_response.status_code, status.HTTP_200_OK)
+        ticket_numbers = [ticket['ticket_number'] for ticket in list_response.data]
+        self.assertIn(self.active_ticket.ticket_number, ticket_numbers)
+
     def test_ticket_receipt_pdf_export_returns_pdf_for_current_user(self):
         response = self.client.post(
             '/api/tickets/receipt-pdf/',

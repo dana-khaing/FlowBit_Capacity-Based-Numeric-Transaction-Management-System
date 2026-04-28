@@ -2502,11 +2502,38 @@ class TicketListView(generics.ListAPIView):
 
     def get_queryset(self):
         queryset = super().get_queryset().filter(created_by=self.request.user)
-        return apply_ledger_period_filters(
-            queryset,
-            self.request.query_params,
-            ledger_prefix='transactions__allocations__ledger__'
-        )
+        section = (self.request.query_params.get('section') or '').strip().lower()
+        period_start = parse_period_value(self.request.query_params.get('period_start'))
+        period_end = parse_period_value(self.request.query_params.get('period_end'))
+        period_id = self.request.query_params.get('period_id')
+
+        selected_period = None
+        if period_id:
+            try:
+                selected_period = Period.objects.get(id=period_id)
+            except (Period.DoesNotExist, ValueError):
+                selected_period = None
+
+        if section == 'active' and selected_period is None:
+            selected_period = Period.get_open_period()
+
+        if selected_period is not None:
+            queryset = queryset.filter(
+                Q(transactions__allocations__ledger__period=selected_period) |
+                Q(
+                    transactions__allocations__isnull=True,
+                    transactions__timestamp__gte=selected_period.start_date,
+                    transactions__timestamp__lte=selected_period.end_date,
+                )
+            )
+
+        if period_start:
+            queryset = queryset.filter(transactions__timestamp__gte=period_start)
+
+        if period_end:
+            queryset = queryset.filter(transactions__timestamp__lte=period_end)
+
+        return queryset.distinct()
 
 
 class TicketDetailView(generics.RetrieveAPIView):
