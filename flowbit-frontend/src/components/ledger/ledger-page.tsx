@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faArrowDownWideShort,
@@ -85,6 +86,17 @@ function formatCurrencyLike(value: string) {
   }
   return amount.toLocaleString("en-GB", {
     minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function formatCompactAmount(value: string) {
+  const amount = Number(value);
+  if (Number.isNaN(amount)) {
+    return value;
+  }
+  return amount.toLocaleString("en-GB", {
+    minimumFractionDigits: Number.isInteger(amount) ? 0 : 2,
     maximumFractionDigits: 2,
   });
 }
@@ -175,7 +187,6 @@ export function LedgerPage() {
     () => filterLedgers(archivedLedgers, searchQuery, ledgerFilter),
     [archivedLedgers, searchQuery, ledgerFilter],
   );
-
   async function loadPageData() {
     if (!activePeriod) {
       setActiveLedgers([]);
@@ -382,7 +393,6 @@ export function LedgerPage() {
         }}
         onConfirm={handleConfirmAction}
       />
-
       {/*
         Drag-and-drop reorders active ledgers locally first.
         Persisted priorities are written only after explicit confirmation.
@@ -497,7 +507,12 @@ export function LedgerPage() {
                               </span>
                             </div>
                             <div>
-                              <p className="text-xl font-semibold text-stone-950">{ledger.name}</p>
+                              <Link
+                                href={`/ledgers/${ledger.id}`}
+                                className="text-left text-xl font-semibold text-stone-950 underline decoration-transparent underline-offset-4 transition hover:decoration-stone-400"
+                              >
+                                {ledger.name}
+                              </Link>
                               <p className="text-sm text-stone-500">
                                 {ledger.is_capacity_reserve ? "Reserve helper · Fixed last priority" : `Priority ${ledger.priority}`}
                               </p>
@@ -682,7 +697,12 @@ export function LedgerPage() {
                     <div key={ledger.id} className="rounded-[22px] border border-stone-900/8 bg-[#f7f4ef] px-4 py-4">
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
-                          <p className="text-base font-semibold text-stone-900">{ledger.name}</p>
+                          <Link
+                            href={`/ledgers/${ledger.id}`}
+                            className="text-left text-base font-semibold text-stone-900 underline decoration-transparent underline-offset-4 transition hover:decoration-stone-400"
+                          >
+                            {ledger.name}
+                          </Link>
                           <p className="mt-1 text-sm text-stone-500">
                             Closed {formatDateTime(ledger.closed_at)} · Priority {ledger.priority}
                           </p>

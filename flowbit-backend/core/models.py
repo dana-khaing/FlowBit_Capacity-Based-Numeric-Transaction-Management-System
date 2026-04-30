@@ -314,6 +314,84 @@ class Identifier(models.Model):
         ).aggregate(total=Sum('excess_amount'))['total'] or Decimal('0.00')
 
 
+class IdentifierLedgerFreeze(models.Model):
+    identifier = models.ForeignKey(
+        Identifier,
+        on_delete=models.CASCADE,
+        related_name='ledger_freezes',
+    )
+    period = models.ForeignKey(
+        Period,
+        on_delete=models.CASCADE,
+        related_name='identifier_ledger_freezes',
+    )
+    owner = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='identifier_ledger_freezes',
+    )
+    ledger = models.ForeignKey(
+        Ledger,
+        on_delete=models.CASCADE,
+        related_name='identifier_freezes',
+        null=True,
+        blank=True,
+    )
+    applies_to_all = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['identifier', 'period', 'owner'],
+                condition=Q(applies_to_all=True),
+                name='unique_identifier_full_freeze_per_owner_period',
+            ),
+            models.UniqueConstraint(
+                fields=['identifier', 'period', 'owner', 'ledger'],
+                condition=Q(applies_to_all=False),
+                name='unique_identifier_ledger_freeze_per_owner_period',
+            ),
+        ]
+
+    def clean(self):
+        if self.applies_to_all and self.ledger_id:
+            raise ValidationError("All-ledger freezes cannot target a specific ledger.")
+
+        if not self.applies_to_all and self.ledger_id is None:
+            raise ValidationError("Choose a ledger when the freeze does not apply to all ledgers.")
+
+        if self.ledger_id:
+            if self.ledger.is_capacity_reserve:
+                raise ValidationError("Reserve ledgers cannot be frozen directly.")
+            if self.ledger.owner_id != self.owner_id:
+                raise ValidationError("Identifier freeze owner must match the ledger owner.")
+            if self.ledger.period_id != self.period_id:
+                raise ValidationError("Identifier freeze period must match the ledger period.")
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def get_frozen_state(cls, identifier, period, owner):
+        if period is None or owner is None:
+            return {'all_ledgers': False, 'ledger_ids': set()}
+
+        rows = cls.objects.filter(
+            identifier=identifier,
+            period=period,
+            owner=owner,
+        )
+        return {
+            'all_ledgers': rows.filter(applies_to_all=True).exists(),
+            'ledger_ids': set(
+                rows.filter(applies_to_all=False, ledger__isnull=False).values_list('ledger_id', flat=True)
+            ),
+        }
+
+
 def _period_overflow_filter(period):
     if period is None:
         return Q(transaction__allocations__ledger__period__isnull=True)
@@ -345,6 +423,10 @@ def _get_transaction_period(transaction_obj):
 
 
 def _get_ledger_available_capacity(identifier, ledger):
+    frozen_state = IdentifierLedgerFreeze.get_frozen_state(identifier, ledger.period, ledger.owner)
+    if frozen_state['all_ledgers'] or ledger.id in frozen_state['ledger_ids']:
+        return Decimal('0.00')
+
     current_usage = LedgerAllocation.objects.filter(
         transaction__identifier=identifier,
         ledger=ledger,
@@ -376,6 +458,11 @@ def preview_transaction_allocation(identifier, total_amount, period, manual_allo
     remaining = _to_allocation_basis_amount(total_amount) if apply_multiplier else total_amount
     allocation_preview = []
     seen_ledgers = set()
+    freeze_state = IdentifierLedgerFreeze.get_frozen_state(
+        identifier=identifier,
+        period=period,
+        owner=getattr(identifier, '_allocation_owner', None),
+    )
 
     if manual_allocations:
         allocation_plan = _normalize_manual_allocations(manual_allocations)
@@ -388,6 +475,7 @@ def preview_transaction_allocation(identifier, total_amount, period, manual_allo
                 is_capacity_reserve=False,
                 owner=getattr(identifier, '_allocation_owner', None),
             ).order_by('priority', 'end_date', 'id')
+            if not freeze_state['all_ledgers'] and ledger.id not in freeze_state['ledger_ids']
         ]
 
     for item in allocation_plan:
@@ -422,11 +510,13 @@ def preview_transaction_allocation(identifier, total_amount, period, manual_allo
             remaining = Decimal('0.00')
             break
 
-    reserve_available = IdentifierCapacityAdjustment.get_available_capacity(
-        identifier=identifier,
-        period=period,
-        owner=getattr(identifier, '_allocation_owner', None),
-    )
+    reserve_available = Decimal('0.00')
+    if not freeze_state['all_ledgers']:
+        reserve_available = IdentifierCapacityAdjustment.get_available_capacity(
+            identifier=identifier,
+            period=period,
+            owner=getattr(identifier, '_allocation_owner', None),
+        )
     reserve_allocated = min(max(reserve_available, Decimal('0.00')), remaining)
     remaining -= reserve_allocated
 
@@ -440,6 +530,11 @@ def preview_transaction_allocation(identifier, total_amount, period, manual_allo
 
 def _allocate_transaction_amount(transaction_obj, amount, period, apply_multiplier=False):
     remaining = _to_allocation_basis_amount(amount) if apply_multiplier else amount
+    freeze_state = IdentifierLedgerFreeze.get_frozen_state(
+        identifier=transaction_obj.identifier,
+        period=period,
+        owner=transaction_obj.created_by,
+    )
     active_ledgers = Ledger.objects.filter(
         is_active=True,
         period=period,
@@ -450,6 +545,9 @@ def _allocate_transaction_amount(transaction_obj, amount, period, apply_multipli
     for ledger in active_ledgers:
         if remaining <= 0:
             break
+
+        if freeze_state['all_ledgers'] or ledger.id in freeze_state['ledger_ids']:
+            continue
 
         current_usage = LedgerAllocation.objects.filter(
             transaction__identifier=transaction_obj.identifier,
@@ -469,11 +567,13 @@ def _allocate_transaction_amount(transaction_obj, amount, period, apply_multipli
         remaining -= assign_amount
 
     if remaining > 0:
-        reserve_available = IdentifierCapacityAdjustment.get_available_capacity(
-            identifier=transaction_obj.identifier,
-            period=period,
-            owner=transaction_obj.created_by,
-        )
+        reserve_available = Decimal('0.00')
+        if not freeze_state['all_ledgers']:
+            reserve_available = IdentifierCapacityAdjustment.get_available_capacity(
+                identifier=transaction_obj.identifier,
+                period=period,
+                owner=transaction_obj.created_by,
+            )
         if reserve_available > 0:
             reserve_ledger = Ledger.get_capacity_reserve(period, transaction_obj.created_by, create=True)
             reserve_amount = min(remaining, reserve_available)
@@ -565,6 +665,11 @@ def _resolve_pending_overflows(period, exclude_ledger_ids=None):
 
     for overflow in pending_overflows:
         remaining = overflow.excess_amount
+        freeze_state = IdentifierLedgerFreeze.get_frozen_state(
+            identifier=overflow.transaction.identifier,
+            period=period,
+            owner=overflow.transaction.created_by,
+        )
         target_ledgers = list(
             Ledger.objects.filter(
                 period=period,
@@ -579,6 +684,9 @@ def _resolve_pending_overflows(period, exclude_ledger_ids=None):
         for ledger in target_ledgers:
             if remaining <= 0:
                 break
+
+            if freeze_state['all_ledgers'] or ledger.id in freeze_state['ledger_ids']:
+                continue
 
             current_usage = LedgerAllocation.objects.filter(
                 transaction__identifier=overflow.transaction.identifier,

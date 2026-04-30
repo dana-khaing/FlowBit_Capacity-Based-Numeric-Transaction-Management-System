@@ -43,6 +43,7 @@ from .models import (
     Ticket,
     LedgerAllocation,
     IdentifierCapacityAdjustment,
+    IdentifierLedgerFreeze,
     preview_transaction_allocation,
     refund_overflow,
     refund_transactions,
@@ -817,6 +818,147 @@ class LedgerViewSet(viewsets.ModelViewSet):
             "ledgers": updated_ledgers
         }, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['get'], url_path='view')
+    def view_ledger(self, request, pk=None):
+        ledger = self.get_object()
+        identifiers = list(Identifier.objects.all().order_by('number'))
+        freeze_rows = list(
+            IdentifierLedgerFreeze.objects.filter(
+                period=ledger.period,
+                owner=ledger.owner,
+            ).values('identifier_id', 'ledger_id', 'applies_to_all')
+        )
+        active_ledger_ids = list(
+            Ledger.objects.filter(
+                period=ledger.period,
+                owner=ledger.owner,
+                is_active=True,
+                is_capacity_reserve=False,
+            ).values_list('id', flat=True)
+        )
+        active_ledger_capacities = {
+            item['id']: item['limit_per_identifier']
+            for item in Ledger.objects.filter(
+                period=ledger.period,
+                owner=ledger.owner,
+                is_active=True,
+                is_capacity_reserve=False,
+            ).values('id', 'limit_per_identifier')
+        }
+        allocations = list(
+            LedgerAllocation.objects.filter(
+                ledger__period=ledger.period,
+                ledger__owner=ledger.owner,
+                ledger__is_active=True,
+                ledger__is_capacity_reserve=False,
+            )
+            .select_related('transaction__identifier', 'transaction__ticket')
+            .order_by('ledger_id', 'transaction__timestamp', 'id')
+        )
+
+        allocations_by_identifier = {}
+        ledger_usage_by_identifier = {}
+        freezes_by_identifier = {}
+        total_allocated = Decimal('0.00')
+        used_identifier_ids = set()
+
+        for row in freeze_rows:
+            identifier_freezes = freezes_by_identifier.setdefault(
+                row['identifier_id'],
+                {'all_ledgers': False, 'ledger_ids': set()},
+            )
+            if row['applies_to_all']:
+                identifier_freezes['all_ledgers'] = True
+            elif row['ledger_id']:
+                identifier_freezes['ledger_ids'].add(row['ledger_id'])
+
+        for allocation in allocations:
+            identifier_id = allocation.transaction.identifier_id
+            ledger_id = allocation.ledger_id
+            amount = allocation.amount or Decimal('0.00')
+            ledger_usage = ledger_usage_by_identifier.setdefault(identifier_id, {})
+            ledger_usage[ledger_id] = ledger_usage.get(ledger_id, Decimal('0.00')) + amount
+
+            if ledger_id == ledger.id:
+                used_identifier_ids.add(identifier_id)
+                total_allocated += amount
+                allocations_by_identifier.setdefault(identifier_id, []).append(
+                    {
+                        'allocation_id': allocation.id,
+                        'amount': str(amount),
+                        'display_amount': str(int(amount)) if amount == amount.to_integral_value() else f"{amount}",
+                        'order_number': allocation.transaction.order_number,
+                        'ticket_number': allocation.transaction.ticket.ticket_number if allocation.transaction.ticket else None,
+                        'transaction_id': allocation.transaction.id,
+                        'created_at': allocation.transaction.timestamp,
+                    }
+                )
+
+        identifier_rows = []
+        capacity_per_identifier = ledger.limit_per_identifier or Decimal('0.00')
+        for identifier in identifiers:
+            recordings = allocations_by_identifier.get(identifier.id, [])
+            freeze_state = freezes_by_identifier.get(
+                identifier.id,
+                {'all_ledgers': False, 'ledger_ids': set()},
+            )
+            allocated_amount = sum(
+                (Decimal(item['amount']) for item in recordings),
+                Decimal('0.00'),
+            )
+            remaining_amount = capacity_per_identifier - allocated_amount
+            if remaining_amount < Decimal('0.00'):
+                remaining_amount = Decimal('0.00')
+
+            recording_display = '------'
+            if recordings:
+                recording_display = '.'.join(item['display_amount'] for item in recordings) + '.------'
+
+            full_ledger_ids = sorted(
+                ledger_id
+                for ledger_id in active_ledger_ids
+                if ledger_usage_by_identifier.get(identifier.id, {}).get(ledger_id, Decimal('0.00'))
+                >= Decimal(str(active_ledger_capacities.get(ledger_id, Decimal('0.00'))))
+            )
+
+            identifier_rows.append(
+                {
+                    'identifier_id': identifier.id,
+                    'number': identifier.number,
+                    'recording_display': recording_display,
+                    'recordings': recordings,
+                    'allocated_amount': str(allocated_amount),
+                    'remaining_capacity': str(remaining_amount),
+                    'is_full': remaining_amount <= Decimal('0.00'),
+                    'is_frozen': freeze_state['all_ledgers'] or ledger.id in freeze_state['ledger_ids'],
+                    'frozen_all_ledgers': freeze_state['all_ledgers'],
+                    'frozen_ledger_ids': sorted(freeze_state['ledger_ids']),
+                    'full_ledger_ids': full_ledger_ids,
+                }
+            )
+
+        identifier_count = len(identifiers)
+        total_capacity = capacity_per_identifier * identifier_count
+        remaining_capacity = total_capacity - total_allocated
+        if remaining_capacity < Decimal('0.00'):
+            remaining_capacity = Decimal('0.00')
+
+        return Response(
+            {
+                'ledger': self.get_serializer(ledger).data,
+                'summary': {
+                    'identifier_count': identifier_count,
+                    'used_identifier_count': len(used_identifier_ids),
+                    'capacity_per_identifier': str(capacity_per_identifier),
+                    'total_capacity': str(total_capacity),
+                    'allocated_total': str(total_allocated),
+                    'remaining_capacity': str(remaining_capacity),
+                },
+                'identifiers': identifier_rows,
+            },
+            status=status.HTTP_200_OK,
+        )
+
 
     # =============================================================================
     # METHOD 1: CSV EXPORT WITH IDENTIFIER VISUAL REPRESENTATION
@@ -1069,6 +1211,11 @@ class IdentifierViewSet(viewsets.ModelViewSet):
     serializer_class = IdentifierSerializer
     permission_classes = [IsAuthenticatedReadOnlyOrAdminWriteOrOverride]
 
+    def get_permissions(self):
+        if self.action in {'freeze', 'unfreeze'}:
+            return [IsAuthenticated()]
+        return [permission() for permission in self.permission_classes]
+
     @action(detail=False, methods=['get'], url_path='options')
     def options(self, request):
         identifiers = list(
@@ -1108,6 +1255,150 @@ class IdentifierViewSet(viewsets.ModelViewSet):
             'identifier.deleted',
             details=f"Deleted identifier '{identifier_number}'",
             changes={'before': before},
+        )
+
+    @action(detail=True, methods=['post'], url_path='freeze')
+    def freeze(self, request, pk=None):
+        identifier = self.get_object()
+        period = Period.get_open_period()
+        if not period:
+            return Response({"detail": "No open period available."}, status=status.HTTP_400_BAD_REQUEST)
+
+        scope = (request.data.get('scope') or '').strip().lower()
+        if scope not in {'all', 'ledger'}:
+            return Response({"detail": "scope must be 'all' or 'ledger'."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if scope == 'all':
+            IdentifierLedgerFreeze.objects.filter(
+                identifier=identifier,
+                period=period,
+                owner=request.user,
+            ).delete()
+            freeze, created = IdentifierLedgerFreeze.objects.get_or_create(
+                identifier=identifier,
+                period=period,
+                owner=request.user,
+                applies_to_all=True,
+                defaults={'ledger': None},
+            )
+            record_audit_log(
+                request,
+                'identifier.freeze_all',
+                target=identifier,
+                details=f"Froze identifier '{identifier.number}' across all ledgers",
+                changes={'identifier_number': identifier.number, 'period': period.name, 'created': created},
+            )
+            return Response(
+                {
+                    'message': f"Identifier '{identifier.number}' frozen across all ledgers.",
+                    'identifier_number': identifier.number,
+                    'scope': 'all',
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        ledger_id = request.data.get('ledger_id')
+        try:
+            ledger = Ledger.objects.get(
+                pk=ledger_id,
+                owner=request.user,
+                period=period,
+                is_active=True,
+                is_capacity_reserve=False,
+            )
+        except (Ledger.DoesNotExist, TypeError, ValueError):
+            return Response({"detail": "Choose a valid active ledger."}, status=status.HTTP_400_BAD_REQUEST)
+
+        freeze, created = IdentifierLedgerFreeze.objects.get_or_create(
+            identifier=identifier,
+            period=period,
+            owner=request.user,
+            ledger=ledger,
+            applies_to_all=False,
+        )
+        record_audit_log(
+            request,
+            'identifier.freeze_ledger',
+            target=identifier,
+            details=f"Froze identifier '{identifier.number}' in ledger '{ledger.name}'",
+            changes={
+                'identifier_number': identifier.number,
+                'ledger_name': ledger.name,
+                'period': period.name,
+                'created': created,
+            },
+        )
+        return Response(
+            {
+                'message': f"Identifier '{identifier.number}' frozen in ledger '{ledger.name}'.",
+                'identifier_number': identifier.number,
+                'scope': 'ledger',
+                'ledger_id': ledger.id,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    @action(detail=True, methods=['post'], url_path='unfreeze')
+    def unfreeze(self, request, pk=None):
+        identifier = self.get_object()
+        period = Period.get_open_period()
+        if not period:
+            return Response({"detail": "No open period available."}, status=status.HTTP_400_BAD_REQUEST)
+
+        scope = (request.data.get('scope') or '').strip().lower()
+        if scope not in {'all', 'ledger'}:
+            return Response({"detail": "scope must be 'all' or 'ledger'."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if scope == 'all':
+            deleted, _ = IdentifierLedgerFreeze.objects.filter(
+                identifier=identifier,
+                period=period,
+                owner=request.user,
+            ).delete()
+            record_audit_log(
+                request,
+                'identifier.unfreeze_all',
+                target=identifier,
+                details=f"Removed all-ledger freeze for identifier '{identifier.number}'",
+                changes={'identifier_number': identifier.number, 'period': period.name, 'deleted': deleted},
+            )
+            return Response(
+                {
+                    'message': f"Identifier '{identifier.number}' unfrozen across all ledgers.",
+                    'identifier_number': identifier.number,
+                    'scope': 'all',
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        ledger_id = request.data.get('ledger_id')
+        try:
+            ledger_id = int(ledger_id)
+        except (TypeError, ValueError):
+            return Response({"detail": "Choose a valid ledger_id."}, status=status.HTTP_400_BAD_REQUEST)
+
+        deleted, _ = IdentifierLedgerFreeze.objects.filter(
+            identifier=identifier,
+            period=period,
+            owner=request.user,
+            ledger_id=ledger_id,
+            applies_to_all=False,
+        ).delete()
+        record_audit_log(
+            request,
+            'identifier.unfreeze_ledger',
+            target=identifier,
+            details=f"Removed ledger freeze for identifier '{identifier.number}'",
+            changes={'identifier_number': identifier.number, 'ledger_id': ledger_id, 'period': period.name, 'deleted': deleted},
+        )
+        return Response(
+            {
+                'message': f"Identifier '{identifier.number}' unfrozen for that ledger.",
+                'identifier_number': identifier.number,
+                'scope': 'ledger',
+                'ledger_id': ledger_id,
+            },
+            status=status.HTTP_200_OK,
         )
 
 
