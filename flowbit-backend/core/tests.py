@@ -21,6 +21,7 @@ from core.models import (
     IdentifierLedgerFreeze,
     IdentifierCapacityAdjustment,
     Ledger,
+    LedgerAllocation,
     Overflow,
     OverflowNotification,
     AuditLog,
@@ -1876,6 +1877,45 @@ class PrivateWorkflowAPITests(APITestCase):
         self.assertTrue(identifier_row['is_frozen'])
         self.assertFalse(identifier_row['frozen_all_ledgers'])
         self.assertIn(freeze.ledger_id, identifier_row['frozen_ledger_ids'])
+
+    def test_ledger_view_includes_full_ledger_ids_for_identifier(self):
+        backup_ledger = Ledger.objects.create(
+            owner=self.approver,
+            period=self.active_period,
+            name='Full Backup Ledger',
+            end_date=self.active_period.end_date,
+            limit_per_identifier=Decimal('200.00'),
+            priority=2,
+            is_active=True,
+        )
+        LedgerAllocation.objects.create(
+            transaction=self.active_transaction,
+            ledger=self.active_ledger,
+            amount=Decimal('200.00'),
+        )
+        second_ticket = Ticket.objects.create(customer_name='Second Full Ticket', created_by=self.approver)
+        second_transaction = Transaction.objects.create(
+            ticket=second_ticket,
+            identifier=self.identifier,
+            total_amount=Decimal('10.00'),
+            created_by=self.approver,
+        )
+        second_transaction.allocations.all().delete()
+        LedgerAllocation.objects.create(
+            transaction=second_transaction,
+            ledger=backup_ledger,
+            amount=Decimal('200.00'),
+        )
+
+        response = self.client.get(f'/api/ledgers/{self.active_ledger.id}/view/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        identifier_row = next(
+            row for row in response.data['identifiers']
+            if row['number'] == self.identifier.number
+        )
+        self.assertIn(self.active_ledger.id, identifier_row['full_ledger_ids'])
+        self.assertIn(backup_ledger.id, identifier_row['full_ledger_ids'])
 
     def test_ledger_export_pdf_is_limited_to_owner(self):
         allowed_response = self.client.get(f'/api/ledgers/{self.active_ledger.id}/export-pdf/')

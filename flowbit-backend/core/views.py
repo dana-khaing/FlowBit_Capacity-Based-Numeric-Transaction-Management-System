@@ -828,13 +828,27 @@ class LedgerViewSet(viewsets.ModelViewSet):
                 owner=ledger.owner,
             ).values('identifier_id', 'ledger_id', 'applies_to_all')
         )
+        active_ledger_ids = list(
+            Ledger.objects.filter(
+                period=ledger.period,
+                owner=ledger.owner,
+                is_active=True,
+                is_capacity_reserve=False,
+            ).values_list('id', flat=True)
+        )
         allocations = list(
-            LedgerAllocation.objects.filter(ledger=ledger)
+            LedgerAllocation.objects.filter(
+                ledger__period=ledger.period,
+                ledger__owner=ledger.owner,
+                ledger__is_active=True,
+                ledger__is_capacity_reserve=False,
+            )
             .select_related('transaction__identifier', 'transaction__ticket')
-            .order_by('transaction__timestamp', 'id')
+            .order_by('ledger_id', 'transaction__timestamp', 'id')
         )
 
         allocations_by_identifier = {}
+        ledger_usage_by_identifier = {}
         freezes_by_identifier = {}
         total_allocated = Decimal('0.00')
         used_identifier_ids = set()
@@ -850,19 +864,26 @@ class LedgerViewSet(viewsets.ModelViewSet):
                 identifier_freezes['ledger_ids'].add(row['ledger_id'])
 
         for allocation in allocations:
-            used_identifier_ids.add(allocation.transaction.identifier_id)
-            total_allocated += allocation.amount or Decimal('0.00')
-            allocations_by_identifier.setdefault(allocation.transaction.identifier_id, []).append(
-                {
-                    'allocation_id': allocation.id,
-                    'amount': str(allocation.amount or Decimal('0.00')),
-                    'display_amount': str(int(allocation.amount)) if allocation.amount == allocation.amount.to_integral_value() else f"{allocation.amount}",
-                    'order_number': allocation.transaction.order_number,
-                    'ticket_number': allocation.transaction.ticket.ticket_number if allocation.transaction.ticket else None,
-                    'transaction_id': allocation.transaction.id,
-                    'created_at': allocation.transaction.timestamp,
-                }
-            )
+            identifier_id = allocation.transaction.identifier_id
+            ledger_id = allocation.ledger_id
+            amount = allocation.amount or Decimal('0.00')
+            ledger_usage = ledger_usage_by_identifier.setdefault(identifier_id, {})
+            ledger_usage[ledger_id] = ledger_usage.get(ledger_id, Decimal('0.00')) + amount
+
+            if ledger_id == ledger.id:
+                used_identifier_ids.add(identifier_id)
+                total_allocated += amount
+                allocations_by_identifier.setdefault(identifier_id, []).append(
+                    {
+                        'allocation_id': allocation.id,
+                        'amount': str(amount),
+                        'display_amount': str(int(amount)) if amount == amount.to_integral_value() else f"{amount}",
+                        'order_number': allocation.transaction.order_number,
+                        'ticket_number': allocation.transaction.ticket.ticket_number if allocation.transaction.ticket else None,
+                        'transaction_id': allocation.transaction.id,
+                        'created_at': allocation.transaction.timestamp,
+                    }
+                )
 
         identifier_rows = []
         capacity_per_identifier = ledger.limit_per_identifier or Decimal('0.00')
@@ -884,6 +905,12 @@ class LedgerViewSet(viewsets.ModelViewSet):
             if recordings:
                 recording_display = '.'.join(item['display_amount'] for item in recordings) + '.------'
 
+            full_ledger_ids = sorted(
+                ledger_id
+                for ledger_id in active_ledger_ids
+                if ledger_usage_by_identifier.get(identifier.id, {}).get(ledger_id, Decimal('0.00')) >= capacity_per_identifier
+            )
+
             identifier_rows.append(
                 {
                     'identifier_id': identifier.id,
@@ -896,6 +923,7 @@ class LedgerViewSet(viewsets.ModelViewSet):
                     'is_frozen': freeze_state['all_ledgers'] or ledger.id in freeze_state['ledger_ids'],
                     'frozen_all_ledgers': freeze_state['all_ledgers'],
                     'frozen_ledger_ids': sorted(freeze_state['ledger_ids']),
+                    'full_ledger_ids': full_ledger_ids,
                 }
             )
 
