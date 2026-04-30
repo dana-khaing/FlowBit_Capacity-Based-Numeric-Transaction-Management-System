@@ -122,7 +122,7 @@ export function TicketReceiptCard({
     <div
       className={
         className ||
-        "mx-auto max-w-[440px] rounded-[28px] border border-dashed border-stone-300 bg-stone-50 p-5 text-stone-900"
+        "receipt-print-card mx-auto max-w-[440px] rounded-[28px] border border-dashed border-stone-300 bg-stone-50 p-5 text-stone-900"
       }
     >
       <div className="border-b border-dashed border-stone-300 pb-4 text-center">
@@ -138,7 +138,7 @@ export function TicketReceiptCard({
         ) : null}
       </div>
 
-      <div className="grid gap-3 border-b border-dashed border-stone-300 py-4 text-sm md:grid-cols-4">
+      <div className="grid gap-3 border-b border-dashed border-stone-300 py-4 text-sm md:grid-cols-4 print:grid-cols-2">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">
             Ticket No

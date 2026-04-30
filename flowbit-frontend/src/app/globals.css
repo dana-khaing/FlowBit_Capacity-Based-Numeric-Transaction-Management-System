@@ -87,3 +87,30 @@ button {
 .thin-scrollbar::-webkit-scrollbar-track {
   background: rgba(255, 255, 255, 0.16);
 }
+
+@page {
+  size: 80mm auto;
+  margin: 4mm;
+}
+
+@media print {
+  html,
+  body {
+    background: #fff !important;
+    color: #111 !important;
+  }
+
+  body::before {
+    display: none !important;
+  }
+
+  .receipt-print-card {
+    margin: 0 auto !important;
+    width: 72mm !important;
+    max-width: 72mm !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+  }
+}
