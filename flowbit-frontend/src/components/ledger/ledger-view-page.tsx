@@ -14,8 +14,14 @@ import { AdminActionToast } from "@/components/admin/admin-action-toast";
 import { TicketReceiptCard } from "@/components/tickets/ticket-receipt-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { usePeriodState } from "@/components/period/use-period-state";
 import { fetchTicketDetail, type FlowBitTicketDetail } from "@/lib/ticket-client";
-import { fetchLedgerView, type FlowBitLedgerView } from "@/lib/ledger-client";
+import {
+  fetchLedgerView,
+  fetchLedgers,
+  type FlowBitLedger,
+  type FlowBitLedgerView,
+} from "@/lib/ledger-client";
 
 type ToastState = {
   type: "success" | "error";
@@ -60,13 +66,16 @@ const IDENTIFIERS_PER_PAGE = 100;
 
 export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
   const [toast, setToast] = useState<ToastState>(null);
+  const [ledgerOptions, setLedgerOptions] = useState<FlowBitLedger[]>([]);
   const [ledgerView, setLedgerView] = useState<FlowBitLedgerView | null>(null);
+  const [selectedView, setSelectedView] = useState<string>(String(ledgerId));
   const [ledgerViewSearch, setLedgerViewSearch] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageError, setPageError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedTicketDetail, setSelectedTicketDetail] = useState<FlowBitTicketDetail | null>(null);
   const [isTicketViewLoading, setIsTicketViewLoading] = useState(false);
+  const { activePeriod } = usePeriodState();
 
   useEffect(() => {
     let isActive = true;
@@ -76,10 +85,14 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
       setPageError(null);
 
       try {
-        const detail = await fetchLedgerView(ledgerId);
+        const [availableLedgers, detail] = await Promise.all([
+          activePeriod ? fetchLedgers({ period_id: activePeriod.id }) : Promise.resolve([]),
+          fetchLedgerView(ledgerId),
+        ]);
         if (!isActive) {
           return;
         }
+        setLedgerOptions(availableLedgers.filter((ledger) => ledger.is_active));
         setLedgerView(detail);
       } catch (loadError) {
         if (!isActive) {
@@ -99,6 +112,10 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
     return () => {
       isActive = false;
     };
+  }, [activePeriod?.id, ledgerId]);
+
+  useEffect(() => {
+    setSelectedView(String(ledgerId));
   }, [ledgerId]);
 
   const filteredLedgerIdentifiers = useMemo(() => {
@@ -170,6 +187,36 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
     }
   }
 
+  async function handleViewChange(nextValue: string) {
+    setSelectedView(nextValue);
+    setIsLoading(true);
+    setPageError(null);
+
+    try {
+      if (nextValue === "all") {
+        const activeLedgers = ledgerOptions.length
+          ? ledgerOptions
+          : activePeriod
+            ? (await fetchLedgers({ period_id: activePeriod.id })).filter((ledger) => ledger.is_active)
+            : [];
+
+        const views = await Promise.all(activeLedgers.map((ledger) => fetchLedgerView(ledger.id)));
+        const combinedView = buildCombinedLedgerView(views, activePeriod?.name || null);
+        setLedgerOptions(activeLedgers);
+        setLedgerView(combinedView);
+      } else {
+        const detail = await fetchLedgerView(Number(nextValue));
+        setLedgerView(detail);
+      }
+    } catch (loadError) {
+      const message = loadError instanceof Error ? loadError.message : "Request failed.";
+      setPageError(message);
+      setToast({ type: "error", message });
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
   return (
     <WorkspaceShell>
       {toast ? <AdminActionToast message={toast.message} type={toast.type} onClose={() => setToast(null)} /> : null}
@@ -205,7 +252,7 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
               <div>
                 <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Ledger view</p>
                 <h1 className="mt-2 text-2xl font-semibold text-stone-950">
-                  {ledgerView?.ledger.name || "Ledger"}
+                  {selectedView === "all" ? "All ledgers" : ledgerView?.ledger.name || "Ledger"}
                 </h1>
                 <p className="mt-2 text-sm text-stone-500">
                   Click a recorded amount to open the corresponding ticket receipt.
@@ -219,7 +266,7 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
               </Link>
             </div>
 
-            <div className="mt-5">
+            <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <Input
                 value={ledgerViewSearch}
                 onChange={(event) => setLedgerViewSearch(event.target.value.replace(/\D/g, "").slice(0, 3))}
@@ -227,6 +274,22 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
                 className="max-w-xs bg-white"
                 disabled={isLoading}
               />
+              <label className="flex flex-col gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+                Choose ledger
+                <select
+                  value={selectedView}
+                  onChange={(event) => handleViewChange(event.target.value)}
+                  className="h-11 min-w-[220px] rounded-2xl border border-stone-900/10 bg-white px-4 text-sm font-medium normal-case tracking-normal text-stone-900 shadow-sm outline-none transition focus:border-stone-400"
+                  disabled={isLoading}
+                >
+                  <option value="all">All ledgers</option>
+                  {ledgerOptions.map((ledger) => (
+                    <option key={ledger.id} value={String(ledger.id)}>
+                      {ledger.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
 
             <div className="mt-4 max-h-[820px] overflow-y-auto pr-2">
@@ -351,7 +414,7 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
               <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Ledger info</p>
               <div className="mt-3 space-y-2 text-sm text-stone-600">
                 <p><span className="font-semibold text-stone-900">Period:</span> {ledgerView?.ledger.period_name || "-"}</p>
-                <p><span className="font-semibold text-stone-900">Priority:</span> {ledgerView?.ledger?.is_capacity_reserve ? "Reserve helper" : ledgerView?.ledger.priority}</p>
+                <p><span className="font-semibold text-stone-900">Priority:</span> {selectedView === "all" ? "Combined view" : ledgerView?.ledger?.is_capacity_reserve ? "Reserve helper" : ledgerView?.ledger.priority}</p>
                 <p><span className="font-semibold text-stone-900">Status:</span> {ledgerView?.ledger.is_active ? "Active" : "Closed"}</p>
                 <p><span className="font-semibold text-stone-900">Ends:</span> {formatDateTime(ledgerView?.ledger.end_date || null)}</p>
               </div>
@@ -391,7 +454,11 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
                   </span>
                   <span className="inline-flex items-center gap-2 rounded-full bg-stone-50 px-3 py-2">
                     <FontAwesomeIcon icon={ledgerView?.ledger.is_capacity_reserve ? faLock : faLayerGroup} className="h-3.5 w-3.5" />
-                    {ledgerView?.ledger.is_capacity_reserve ? "Reserve helper" : "Priority ledger"}
+                    {selectedView === "all"
+                      ? "Combined capacity"
+                      : ledgerView?.ledger.is_capacity_reserve
+                        ? "Reserve helper"
+                        : "Priority ledger"}
                   </span>
                 </div>
               </div>
@@ -401,4 +468,95 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
       </div>
     </WorkspaceShell>
   );
+}
+
+function buildCombinedLedgerView(
+  views: FlowBitLedgerView[],
+  periodName: string | null,
+): FlowBitLedgerView {
+  const firstLedger = views[0]?.ledger;
+  const identifierMap = new Map<
+    number,
+    {
+      identifier_id: number;
+      number: string;
+      recordings: FlowBitLedgerView["identifiers"][number]["recordings"];
+      allocated_amount: number;
+      remaining_capacity: number;
+      capacity: number;
+    }
+  >();
+
+  let allocatedTotal = 0;
+  let combinedCapacityPerIdentifier = 0;
+
+  views.forEach((view) => {
+    combinedCapacityPerIdentifier += Number(view.summary.capacity_per_identifier || "0");
+    allocatedTotal += Number(view.summary.allocated_total || "0");
+
+    view.identifiers.forEach((row) => {
+      const existing = identifierMap.get(row.identifier_id);
+      if (!existing) {
+        identifierMap.set(row.identifier_id, {
+          identifier_id: row.identifier_id,
+          number: row.number,
+          recordings: [...row.recordings],
+          allocated_amount: Number(row.allocated_amount || "0"),
+          remaining_capacity: Number(row.remaining_capacity || "0"),
+          capacity: Number(row.allocated_amount || "0") + Number(row.remaining_capacity || "0"),
+        });
+        return;
+      }
+
+      existing.recordings.push(...row.recordings);
+      existing.allocated_amount += Number(row.allocated_amount || "0");
+      existing.remaining_capacity += Number(row.remaining_capacity || "0");
+      existing.capacity += Number(row.allocated_amount || "0") + Number(row.remaining_capacity || "0");
+    });
+  });
+
+  const identifiers = Array.from(identifierMap.values())
+    .sort((left, right) => left.number.localeCompare(right.number))
+    .map((row) => ({
+      identifier_id: row.identifier_id,
+      number: row.number,
+      recording_display: row.recordings.length
+        ? `${row.recordings.map((recording) => recording.display_amount).join(".")}.------`
+        : "------",
+      recordings: row.recordings.sort((left, right) => {
+        return new Date(left.created_at).getTime() - new Date(right.created_at).getTime();
+      }),
+      allocated_amount: row.allocated_amount.toFixed(2),
+      remaining_capacity: row.remaining_capacity.toFixed(2),
+    }));
+
+  const identifierCount = identifiers.length;
+  const totalCapacity = combinedCapacityPerIdentifier * identifierCount;
+  const remainingCapacity = Math.max(totalCapacity - allocatedTotal, 0);
+  const usedIdentifierCount = identifiers.filter((row) => Number(row.allocated_amount) > 0).length;
+
+  return {
+    ledger: {
+      id: firstLedger?.id || 0,
+      period: firstLedger?.period || null,
+      period_name: periodName,
+      name: "All ledgers",
+      end_date: firstLedger?.end_date || new Date().toISOString(),
+      limit_per_identifier: combinedCapacityPerIdentifier.toFixed(2),
+      priority: 0,
+      is_active: true,
+      is_capacity_reserve: false,
+      closed_at: null,
+      created_at: firstLedger?.created_at || new Date().toISOString(),
+    },
+    summary: {
+      identifier_count: identifierCount,
+      used_identifier_count: usedIdentifierCount,
+      capacity_per_identifier: combinedCapacityPerIdentifier.toFixed(2),
+      total_capacity: totalCapacity.toFixed(2),
+      allocated_total: allocatedTotal.toFixed(2),
+      remaining_capacity: remainingCapacity.toFixed(2),
+    },
+    identifiers,
+  };
 }
