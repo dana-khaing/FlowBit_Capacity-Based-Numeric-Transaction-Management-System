@@ -383,6 +383,12 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Ledger view</p>
+                <div className="mt-3 flex flex-wrap gap-2 text-sm text-stone-500">
+                  <span className="inline-flex items-center gap-2 rounded-full bg-stone-50 px-3 py-2">
+                    <FontAwesomeIcon icon={faClock} className="h-3.5 w-3.5" />
+                    {ledgerView?.ledger.is_active ? "Active" : "Closed"}
+                  </span>
+                </div>
               </div>
               <Link href="/ledgers">
                 <Button variant="outline" className="h-11 px-4">
@@ -513,7 +519,11 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
                                     <span className="font-semibold text-stone-950">{recording.display_amount}</span>
                                   )}
                                   <span className="text-stone-400">
-                                    {index === identifierRow.recordings.length - 1 ? ".------" : "."}
+                                    {index === identifierRow.recordings.length - 1
+                                      ? identifierRow.is_full
+                                        ? ""
+                                        : ".------"
+                                      : "."}
                                   </span>
                                 </span>
                               ))}
@@ -533,6 +543,7 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
                           variant="outline"
                           className="h-10 shrink-0 px-4"
                           onClick={() => setFreezeTarget(identifierRow)}
+                          disabled={identifierRow.is_full}
                         >
                           <FontAwesomeIcon icon={faSnowflake} className="h-3.5 w-3.5" />
                           {identifierRow.is_frozen ? "Manage" : "Disable"}
@@ -668,7 +679,9 @@ function buildCombinedLedgerView(
       identifier_id: row.identifier_id,
       number: row.number,
       recording_display: row.recordings.length
-        ? `${row.recordings.map((recording) => recording.display_amount).join(".")}.------`
+        ? `${row.recordings.map((recording) => recording.display_amount).join(".")}${
+            row.remaining_capacity <= 0 ? "" : ".------"
+          }`
         : "------",
       recordings: row.recordings.sort((left, right) => {
         return new Date(left.created_at).getTime() - new Date(right.created_at).getTime();
