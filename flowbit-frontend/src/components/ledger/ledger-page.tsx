@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -11,29 +12,24 @@ import {
   faLock,
   faPlus,
   faTrashCan,
-  faXmark,
 } from "@fortawesome/free-solid-svg-icons";
 import { AdminConfirmModal } from "@/components/admin/admin-confirm-modal";
 import { AdminActionToast } from "@/components/admin/admin-action-toast";
 import { WorkspaceShell } from "@/components/app/workspace-shell";
 import { ActionLoadingModal } from "@/components/app/action-loading-modal";
 import { usePeriodState } from "@/components/period/use-period-state";
-import { TicketReceiptCard } from "@/components/tickets/ticket-receipt-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { fetchCurrentUser, getStoredUser, type AuthUser } from "@/lib/auth-client";
-import { fetchTicketDetail, type FlowBitTicketDetail } from "@/lib/ticket-client";
 import {
   closeLedger,
   createLedger,
   deleteLedger,
-  fetchLedgerView,
   fetchLedgers,
   reopenLedger,
   reorderLedgerPriorities,
   updateLedger,
   type FlowBitLedger,
-  type FlowBitLedgerView,
 } from "@/lib/ledger-client";
 
 type ToastState = {
@@ -157,14 +153,6 @@ export function LedgerPage() {
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [overrideCode, setOverrideCode] = useState("");
   const [draggedLedgerId, setDraggedLedgerId] = useState<number | null>(null);
-  const [selectedLedgerForView, setSelectedLedgerForView] = useState<FlowBitLedger | null>(null);
-  const [ledgerView, setLedgerView] = useState<FlowBitLedgerView | null>(null);
-  const [ledgerViewSearch, setLedgerViewSearch] = useState("");
-  const [ledgerViewError, setLedgerViewError] = useState<string | null>(null);
-  const [isLedgerViewLoading, setIsLedgerViewLoading] = useState(false);
-  const [selectedTicketDetail, setSelectedTicketDetail] = useState<FlowBitTicketDetail | null>(null);
-  const [isTicketViewLoading, setIsTicketViewLoading] = useState(false);
-  const ledgerViewSectionRef = useRef<HTMLElement | null>(null);
 
   const { activePeriod, hasActivePeriod, error: periodError } = usePeriodState();
   const canManageLedgers = user?.role === "admin";
@@ -199,21 +187,6 @@ export function LedgerPage() {
     () => filterLedgers(archivedLedgers, searchQuery, ledgerFilter),
     [archivedLedgers, searchQuery, ledgerFilter],
   );
-  const filteredLedgerIdentifiers = useMemo(() => {
-    if (!ledgerView) {
-      return [];
-    }
-
-    const query = ledgerViewSearch.trim();
-    if (!query) {
-      return ledgerView.identifiers;
-    }
-
-    return ledgerView.identifiers.filter((identifierRow) =>
-      identifierRow.number.includes(query),
-    );
-  }, [ledgerView, ledgerViewSearch]);
-
   async function loadPageData() {
     if (!activePeriod) {
       setActiveLedgers([]);
@@ -273,54 +246,9 @@ export function LedgerPage() {
     loadPageData();
   }, [activePeriod?.id]);
 
-  useEffect(() => {
-    if (!selectedLedgerForView) {
-      return;
-    }
-
-    requestAnimationFrame(() => {
-      ledgerViewSectionRef.current?.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      });
-    });
-  }, [selectedLedgerForView, ledgerView, isLedgerViewLoading]);
-
   function openAction(action: PendingAction) {
     setOverrideCode("");
     setPendingAction(action);
-  }
-
-  async function openLedgerView(ledger: FlowBitLedger) {
-    setSelectedLedgerForView(ledger);
-    setLedgerView(null);
-    setLedgerViewSearch("");
-    setLedgerViewError(null);
-    setIsLedgerViewLoading(true);
-
-    try {
-      const detail = await fetchLedgerView(ledger.id);
-      setLedgerView(detail);
-    } catch (viewError) {
-      const message = viewError instanceof Error ? viewError.message : "Request failed.";
-      setLedgerViewError(message);
-      setToast({ type: "error", message });
-    } finally {
-      setIsLedgerViewLoading(false);
-    }
-  }
-
-  async function openTicketView(ticketNumber: string) {
-    setIsTicketViewLoading(true);
-    try {
-      const detail = await fetchTicketDetail(ticketNumber);
-      setSelectedTicketDetail(detail);
-    } catch (viewError) {
-      const message = viewError instanceof Error ? viewError.message : "Request failed.";
-      setToast({ type: "error", message });
-    } finally {
-      setIsTicketViewLoading(false);
-    }
   }
 
   async function handleConfirmAction() {
@@ -465,31 +393,6 @@ export function LedgerPage() {
         }}
         onConfirm={handleConfirmAction}
       />
-      {selectedTicketDetail || isTicketViewLoading ? (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-stone-950/35 px-4 py-6"
-          onClick={() => {
-            setSelectedTicketDetail(null);
-            setIsTicketViewLoading(false);
-          }}
-        >
-          <div
-            className="max-h-[92vh] w-full max-w-[560px] overflow-y-auto rounded-[30px] border border-stone-900/10 bg-white p-5 shadow-[0_18px_48px_rgba(24,24,24,0.18)] sm:p-6"
-            onClick={(event) => event.stopPropagation()}
-          >
-            {isTicketViewLoading ? (
-              <p className="text-sm text-stone-500">Loading ticket view...</p>
-            ) : selectedTicketDetail ? (
-              <TicketReceiptCard
-                ticket={selectedTicketDetail}
-                periodName={activePeriod?.name}
-                className="mx-auto max-w-[440px] rounded-[28px] border border-dashed border-stone-300 bg-stone-50 p-5 text-stone-900"
-              />
-            ) : null}
-          </div>
-        </div>
-      ) : null}
-
       {/*
         Drag-and-drop reorders active ledgers locally first.
         Persisted priorities are written only after explicit confirmation.
@@ -604,13 +507,12 @@ export function LedgerPage() {
                               </span>
                             </div>
                             <div>
-                              <button
-                                type="button"
+                              <Link
+                                href={`/ledgers/${ledger.id}`}
                                 className="text-left text-xl font-semibold text-stone-950 underline decoration-transparent underline-offset-4 transition hover:decoration-stone-400"
-                                onClick={() => openLedgerView(ledger)}
                               >
                                 {ledger.name}
-                              </button>
+                              </Link>
                               <p className="text-sm text-stone-500">
                                 {ledger.is_capacity_reserve ? "Reserve helper · Fixed last priority" : `Priority ${ledger.priority}`}
                               </p>
@@ -701,148 +603,6 @@ export function LedgerPage() {
                 </div>
               )}
             </div>
-
-            {selectedLedgerForView ? (
-              <section
-                ref={ledgerViewSectionRef}
-                className="mt-6 rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div>
-                    <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Ledger view</p>
-                    <h3 className="mt-2 text-2xl font-semibold text-stone-950">{selectedLedgerForView.name}</h3>
-                    <p className="mt-2 text-sm text-stone-500">
-                      Click a recorded amount to open the corresponding ticket receipt.
-                    </p>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-11 w-11 rounded-[18px] p-0"
-                    onClick={() => {
-                      setSelectedLedgerForView(null);
-                      setLedgerView(null);
-                      setLedgerViewSearch("");
-                      setLedgerViewError(null);
-                    }}
-                    aria-label="Close ledger view"
-                  >
-                    <FontAwesomeIcon icon={faXmark} className="h-4 w-4" />
-                  </Button>
-                </div>
-
-                <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.5fr)_340px]">
-                  <div className="min-w-0">
-                    <Input
-                      value={ledgerViewSearch}
-                      onChange={(event) => setLedgerViewSearch(event.target.value.replace(/\D/g, "").slice(0, 3))}
-                      placeholder="Search identifier"
-                      className="max-w-xs bg-white"
-                    />
-                    <div className="mt-4 max-h-[720px] overflow-y-auto pr-2">
-                      {isLedgerViewLoading ? (
-                        <p className="text-sm text-stone-500">Loading ledger view...</p>
-                      ) : ledgerViewError ? (
-                        <div className="rounded-[22px] border border-red-200 bg-red-50 px-4 py-4 text-sm text-red-700">
-                          {ledgerViewError}
-                        </div>
-                      ) : filteredLedgerIdentifiers.length ? (
-                        <div className="space-y-3">
-                          {filteredLedgerIdentifiers.map((identifierRow) => (
-                            <div
-                              key={identifierRow.identifier_id}
-                              className="rounded-[22px] border border-stone-900/8 bg-[#f7f4ef] px-4 py-3"
-                            >
-                              <div className="flex flex-wrap items-center gap-3 text-sm xl:flex-nowrap">
-                                <span className="w-[54px] shrink-0 font-mono text-base font-semibold tracking-[0.2em] text-stone-950">
-                                  {identifierRow.number}
-                                </span>
-                                <span className="shrink-0 font-mono text-stone-400">-&gt;</span>
-                                <div className="min-w-[180px] flex-1 break-words font-mono text-sm text-stone-700">
-                                  {identifierRow.recordings.length ? (
-                                    <>
-                                      {identifierRow.recordings.map((recording, index) => (
-                                        <span key={recording.allocation_id}>
-                                          {recording.ticket_number ? (
-                                            <button
-                                              type="button"
-                                              className="font-semibold text-stone-950 underline decoration-dotted underline-offset-4 hover:text-stone-600"
-                                              onClick={() => openTicketView(recording.ticket_number!)}
-                                            >
-                                              {recording.display_amount}
-                                            </button>
-                                          ) : (
-                                            <span className="font-semibold text-stone-950">{recording.display_amount}</span>
-                                          )}
-                                          <span className="text-stone-400">
-                                            {index === identifierRow.recordings.length - 1 ? ".------" : "."}
-                                          </span>
-                                        </span>
-                                      ))}
-                                    </>
-                                  ) : (
-                                    <span className="text-stone-400">------</span>
-                                  )}
-                                </div>
-                                <span className="inline-flex shrink-0 items-center gap-2 rounded-full bg-white px-3 py-2 text-xs font-semibold text-stone-700">
-                                  Usage {formatCompactAmount(identifierRow.allocated_amount)}/{ledgerView ? formatCompactAmount(ledgerView.summary.capacity_per_identifier) : formatCompactAmount(selectedLedgerForView.limit_per_identifier)}
-                                </span>
-                                <span className="inline-flex shrink-0 items-center gap-2 rounded-full bg-white px-3 py-2 text-xs font-semibold text-stone-700">
-                                  Left {formatCompactAmount(identifierRow.remaining_capacity)}
-                                </span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="rounded-[22px] border border-dashed border-stone-300 bg-stone-50 px-4 py-4 text-sm text-stone-500">
-                          No identifiers matched "{ledgerViewSearch}".
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <aside className="space-y-4">
-                    <div className="rounded-[22px] border border-stone-900/8 bg-[#f7f4ef] px-4 py-4">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Ledger info</p>
-                      <div className="mt-3 space-y-2 text-sm text-stone-600">
-                        <p><span className="font-semibold text-stone-900">Period:</span> {ledgerView?.ledger.period_name || "-"}</p>
-                        <p><span className="font-semibold text-stone-900">Priority:</span> {ledgerView?.ledger.is_capacity_reserve ? "Reserve helper" : ledgerView?.ledger.priority}</p>
-                        <p><span className="font-semibold text-stone-900">Status:</span> {ledgerView?.ledger.is_active ? "Active" : "Closed"}</p>
-                        <p><span className="font-semibold text-stone-900">Ends:</span> {formatDateTime(ledgerView?.ledger.end_date || selectedLedgerForView.end_date)}</p>
-                      </div>
-                    </div>
-
-                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-                      <div className="rounded-[22px] border border-stone-900/8 bg-[#f7f4ef] px-4 py-4">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Capacity / identifier</p>
-                        <p className="mt-2 text-2xl font-semibold text-stone-950">
-                          {ledgerView ? formatCompactAmount(ledgerView.summary.capacity_per_identifier) : formatCompactAmount(selectedLedgerForView.limit_per_identifier)}
-                        </p>
-                      </div>
-                      <div className="rounded-[22px] border border-stone-900/8 bg-[#f7f4ef] px-4 py-4">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Identifiers used</p>
-                        <p className="mt-2 text-2xl font-semibold text-stone-950">
-                          {ledgerView?.summary.used_identifier_count ?? 0}
-                        </p>
-                      </div>
-                      <div className="rounded-[22px] border border-stone-900/8 bg-[#f7f4ef] px-4 py-4">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Allocated total</p>
-                        <p className="mt-2 text-2xl font-semibold text-stone-950">
-                          {ledgerView ? formatCompactAmount(ledgerView.summary.allocated_total) : "0"}
-                        </p>
-                      </div>
-                      <div className="rounded-[22px] border border-stone-900/8 bg-[#f7f4ef] px-4 py-4">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Remaining total</p>
-                        <p className="mt-2 text-2xl font-semibold text-stone-950">
-                          {ledgerView ? formatCompactAmount(ledgerView.summary.remaining_capacity) : "0"}
-                        </p>
-                      </div>
-                    </div>
-                  </aside>
-                </div>
-              </section>
-            ) : null}
 
             {standardActiveLedgers.length > 1 ? (
               <div className="mt-6 flex justify-end">
@@ -937,13 +697,12 @@ export function LedgerPage() {
                     <div key={ledger.id} className="rounded-[22px] border border-stone-900/8 bg-[#f7f4ef] px-4 py-4">
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
-                          <button
-                            type="button"
+                          <Link
+                            href={`/ledgers/${ledger.id}`}
                             className="text-left text-base font-semibold text-stone-900 underline decoration-transparent underline-offset-4 transition hover:decoration-stone-400"
-                            onClick={() => openLedgerView(ledger)}
                           >
                             {ledger.name}
-                          </button>
+                          </Link>
                           <p className="mt-1 text-sm text-stone-500">
                             Closed {formatDateTime(ledger.closed_at)} · Priority {ledger.priority}
                           </p>
