@@ -349,7 +349,7 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
                   <p className="font-semibold text-stone-950">All ledgers</p>
                   <p className="mt-1 text-sm text-stone-500">
                     {isEffectivelyFrozenAllLedgers
-                      ? "This identifier is frozen across all ledgers."
+                      ? "This will unfreeze every currently frozen ledger. Any ledger that is already full stays full."
                       : "Force this identifier straight into spill over when tickets are submitted."}
                   </p>
                 </div>
