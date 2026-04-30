@@ -366,13 +366,13 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
                                   {recording.ticket_number ? (
                                     <button
                                       type="button"
-                                      className="text-base font-semibold text-stone-950 underline decoration-dotted underline-offset-4 hover:text-stone-600"
+                                      className="text-lg font-semibold text-stone-950 underline decoration-dotted underline-offset-4 hover:text-stone-600"
                                       onClick={() => openTicketView(recording.ticket_number!)}
                                     >
                                       {recording.display_amount}
                                     </button>
                                   ) : (
-                                    <span className="text-base font-semibold text-stone-950">{recording.display_amount}</span>
+                                    <span className="text-lg font-semibold text-stone-950">{recording.display_amount}</span>
                                   )}
                                   <span className="text-stone-400">
                                     {index === identifierRow.recordings.length - 1 ? ".------" : "."}
