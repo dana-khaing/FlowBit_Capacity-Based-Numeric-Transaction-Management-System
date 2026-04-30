@@ -32,6 +32,10 @@ export type FlowBitLedgerIdentifierRow = {
   recordings: FlowBitLedgerRecording[];
   allocated_amount: string;
   remaining_capacity: string;
+  is_full: boolean;
+  is_frozen: boolean;
+  frozen_all_ledgers: boolean;
+  frozen_ledger_ids: number[];
 };
 
 export type FlowBitLedgerView = {
@@ -74,6 +78,36 @@ export async function fetchLedgerView(ledgerId: number) {
   return apiRequest<FlowBitLedgerView>(`/ledgers/${ledgerId}/view/`, {
     method: "GET",
     headers: authHeaders(),
+  });
+}
+
+export async function freezeIdentifier(payload: {
+  identifierId: number;
+  scope: "all" | "ledger";
+  ledgerId?: number;
+}) {
+  return apiRequest<{ message: string }>(`/identifiers/${payload.identifierId}/freeze/`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({
+      scope: payload.scope,
+      ...(payload.ledgerId ? { ledger_id: payload.ledgerId } : {}),
+    }),
+  });
+}
+
+export async function unfreezeIdentifier(payload: {
+  identifierId: number;
+  scope: "all" | "ledger";
+  ledgerId?: number;
+}) {
+  return apiRequest<{ message: string }>(`/identifiers/${payload.identifierId}/unfreeze/`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({
+      scope: payload.scope,
+      ...(payload.ledgerId ? { ledger_id: payload.ledgerId } : {}),
+    }),
   });
 }
 
