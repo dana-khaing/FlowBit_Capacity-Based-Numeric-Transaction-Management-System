@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faArrowDownWideShort,
@@ -164,6 +164,7 @@ export function LedgerPage() {
   const [isLedgerViewLoading, setIsLedgerViewLoading] = useState(false);
   const [selectedTicketDetail, setSelectedTicketDetail] = useState<FlowBitTicketDetail | null>(null);
   const [isTicketViewLoading, setIsTicketViewLoading] = useState(false);
+  const ledgerViewSectionRef = useRef<HTMLElement | null>(null);
 
   const { activePeriod, hasActivePeriod, error: periodError } = usePeriodState();
   const canManageLedgers = user?.role === "admin";
@@ -271,6 +272,19 @@ export function LedgerPage() {
   useEffect(() => {
     loadPageData();
   }, [activePeriod?.id]);
+
+  useEffect(() => {
+    if (!selectedLedgerForView) {
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      ledgerViewSectionRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  }, [selectedLedgerForView, ledgerView, isLedgerViewLoading]);
 
   function openAction(action: PendingAction) {
     setOverrideCode("");
@@ -689,7 +703,10 @@ export function LedgerPage() {
             </div>
 
             {selectedLedgerForView ? (
-              <section className="mt-6 rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6">
+              <section
+                ref={ledgerViewSectionRef}
+                className="mt-6 rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6"
+              >
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
                     <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Ledger view</p>
