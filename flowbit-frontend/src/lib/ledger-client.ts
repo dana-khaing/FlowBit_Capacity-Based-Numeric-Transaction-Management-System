@@ -15,6 +15,43 @@ export type FlowBitLedger = {
   created_at: string;
 };
 
+export type FlowBitLedgerRecording = {
+  allocation_id: number;
+  amount: string;
+  display_amount: string;
+  order_number: string;
+  ticket_number: string | null;
+  transaction_id: number;
+  created_at: string;
+};
+
+export type FlowBitLedgerIdentifierRow = {
+  identifier_id: number;
+  number: string;
+  recording_display: string;
+  recordings: FlowBitLedgerRecording[];
+  allocated_amount: string;
+  remaining_capacity: string;
+  is_full: boolean;
+  is_frozen: boolean;
+  frozen_all_ledgers: boolean;
+  frozen_ledger_ids: number[];
+  full_ledger_ids: number[];
+};
+
+export type FlowBitLedgerView = {
+  ledger: FlowBitLedger;
+  summary: {
+    identifier_count: number;
+    used_identifier_count: number;
+    capacity_per_identifier: string;
+    total_capacity: string;
+    allocated_total: string;
+    remaining_capacity: string;
+  };
+  identifiers: FlowBitLedgerIdentifierRow[];
+};
+
 function authHeaders() {
   const token = getStoredToken();
   if (!token) {
@@ -35,6 +72,43 @@ export async function fetchLedgers(params?: Record<string, string | number | und
   return apiRequest<FlowBitLedger[]>(path, {
     method: "GET",
     headers: authHeaders(),
+  });
+}
+
+export async function fetchLedgerView(ledgerId: number) {
+  return apiRequest<FlowBitLedgerView>(`/ledgers/${ledgerId}/view/`, {
+    method: "GET",
+    headers: authHeaders(),
+  });
+}
+
+export async function freezeIdentifier(payload: {
+  identifierId: number;
+  scope: "all" | "ledger";
+  ledgerId?: number;
+}) {
+  return apiRequest<{ message: string }>(`/identifiers/${payload.identifierId}/freeze/`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({
+      scope: payload.scope,
+      ...(payload.ledgerId ? { ledger_id: payload.ledgerId } : {}),
+    }),
+  });
+}
+
+export async function unfreezeIdentifier(payload: {
+  identifierId: number;
+  scope: "all" | "ledger";
+  ledgerId?: number;
+}) {
+  return apiRequest<{ message: string }>(`/identifiers/${payload.identifierId}/unfreeze/`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({
+      scope: payload.scope,
+      ...(payload.ledgerId ? { ledger_id: payload.ledgerId } : {}),
+    }),
   });
 }
 
