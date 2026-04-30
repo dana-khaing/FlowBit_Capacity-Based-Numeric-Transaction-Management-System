@@ -233,11 +233,21 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
       return;
     }
 
+    const standardLedgerIds = ledgerOptions
+      .filter((ledger) => !ledger.is_capacity_reserve)
+      .map((ledger) => ledger.id);
+    const isEffectivelyFrozenAllLedgers =
+      freezeTarget.frozen_all_ledgers ||
+      (
+        standardLedgerIds.length > 0 &&
+        standardLedgerIds.every((id) => freezeTarget.frozen_ledger_ids.includes(id))
+      );
+
     setIsFreezeSaving(true);
     try {
       const shouldUnfreeze =
         scope === "all"
-          ? freezeTarget.frozen_all_ledgers
+          ? isEffectivelyFrozenAllLedgers
           : Boolean(ledgerIdValue && freezeTarget.frozen_ledger_ids.includes(ledgerIdValue));
 
       if (shouldUnfreeze) {
@@ -301,6 +311,18 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
             </p>
 
             <div className="mt-5 space-y-3">
+              {(() => {
+                const standardLedgerIds = ledgerOptions
+                  .filter((ledger) => !ledger.is_capacity_reserve)
+                  .map((ledger) => ledger.id);
+                const isEffectivelyFrozenAllLedgers =
+                  freezeTarget.frozen_all_ledgers ||
+                  (
+                    standardLedgerIds.length > 0 &&
+                    standardLedgerIds.every((id) => freezeTarget.frozen_ledger_ids.includes(id))
+                  );
+
+                return (
               <button
                 type="button"
                 className="flex w-full items-center justify-between rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4 text-left transition hover:border-stone-900/20"
@@ -310,15 +332,19 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
                 <div>
                   <p className="font-semibold text-stone-950">All ledgers</p>
                   <p className="mt-1 text-sm text-stone-500">
-                    Force this identifier straight into spill over when tickets are submitted.
+                    {isEffectivelyFrozenAllLedgers
+                      ? "This identifier is frozen across all ledgers."
+                      : "Force this identifier straight into spill over when tickets are submitted."}
                   </p>
                 </div>
                 <span className={`inline-flex rounded-full px-3 py-2 text-xs font-semibold ${
-                  freezeTarget.frozen_all_ledgers ? "bg-red-100 text-red-700" : "bg-stone-900 text-white"
+                  isEffectivelyFrozenAllLedgers ? "bg-sky-100 text-sky-700" : "bg-stone-900 text-white"
                 }`}>
-                  {freezeTarget.frozen_all_ledgers ? "Unfreeze" : "Freeze"}
+                  {isEffectivelyFrozenAllLedgers ? "Unfreeze" : "Freeze"}
                 </span>
               </button>
+                );
+              })()}
 
               <div className="space-y-2">
                 {ledgerOptions
@@ -326,7 +352,16 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
                   .map((ledger) => {
                     const isLedgerFrozen = freezeTarget.frozen_ledger_ids.includes(ledger.id);
                     const isLedgerAlreadyFull = freezeTarget.full_ledger_ids.includes(ledger.id);
-                    const isFrozenByAll = freezeTarget.frozen_all_ledgers && !isLedgerAlreadyFull;
+                    const standardLedgerIds = ledgerOptions
+                      .filter((item) => !item.is_capacity_reserve)
+                      .map((item) => item.id);
+                    const isEffectivelyFrozenAllLedgers =
+                      freezeTarget.frozen_all_ledgers ||
+                      (
+                        standardLedgerIds.length > 0 &&
+                        standardLedgerIds.every((id) => freezeTarget.frozen_ledger_ids.includes(id))
+                      );
+                    const isFrozenByAll = isEffectivelyFrozenAllLedgers && !isLedgerAlreadyFull;
                     return (
                       <button
                         key={ledger.id}

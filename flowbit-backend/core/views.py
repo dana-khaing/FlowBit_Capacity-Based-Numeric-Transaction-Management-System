@@ -1354,7 +1354,6 @@ class IdentifierViewSet(viewsets.ModelViewSet):
                 identifier=identifier,
                 period=period,
                 owner=request.user,
-                applies_to_all=True,
             ).delete()
             record_audit_log(
                 request,
