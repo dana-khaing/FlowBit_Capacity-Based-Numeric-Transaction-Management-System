@@ -128,18 +128,33 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
 
   const visiblePageIndicators = useMemo(() => {
     if (totalPages <= 5) {
-      return Array.from({ length: totalPages }, (_, index) => index + 1);
+      return Array.from({ length: totalPages }, (_, index) => String(index + 1));
     }
 
     if (currentPage <= 3) {
-      return [1, 2, 3, 4, 5];
+      return ["1", "2", "3", "4", "…", String(totalPages)];
     }
 
     if (currentPage >= totalPages - 2) {
-      return [totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
+      return [
+        "1",
+        "…",
+        String(totalPages - 3),
+        String(totalPages - 2),
+        String(totalPages - 1),
+        String(totalPages),
+      ];
     }
 
-    return [currentPage - 2, currentPage - 1, currentPage, currentPage + 1, currentPage + 2];
+    return [
+      "1",
+      "…",
+      String(currentPage - 1),
+      String(currentPage),
+      String(currentPage + 1),
+      "…",
+      String(totalPages),
+    ];
   }, [currentPage, totalPages]);
 
   async function openTicketView(ticketNumber: string) {
@@ -242,17 +257,26 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
                       >
                         Previous
                       </Button>
-                      {visiblePageIndicators.map((pageNumber) => (
-                        <Button
-                          key={pageNumber}
-                          type="button"
-                          variant={pageNumber === currentPage ? "default" : "outline"}
-                          className="h-10 min-w-10 px-3"
-                          onClick={() => setCurrentPage(pageNumber)}
-                        >
-                          {pageNumber}
-                        </Button>
-                      ))}
+                      {visiblePageIndicators.map((pageNumber, index) =>
+                        pageNumber === "…" ? (
+                          <span
+                            key={`ellipsis-${index}`}
+                            className="inline-flex h-10 min-w-10 items-center justify-center px-2 text-sm font-medium text-stone-400"
+                          >
+                            …
+                          </span>
+                        ) : (
+                          <Button
+                            key={pageNumber}
+                            type="button"
+                            variant={Number(pageNumber) === currentPage ? "default" : "outline"}
+                            className="h-10 min-w-10 px-3"
+                            onClick={() => setCurrentPage(Number(pageNumber))}
+                          >
+                            {pageNumber}
+                          </Button>
+                        ),
+                      )}
                       <Button
                         type="button"
                         variant="outline"
