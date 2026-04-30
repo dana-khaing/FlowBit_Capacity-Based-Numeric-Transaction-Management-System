@@ -61,6 +61,10 @@ function formatCompactAmount(value: string) {
   });
 }
 
+function formatPageLabel(pageNumber: number) {
+  return String(pageNumber - 1);
+}
+
 type LedgerViewPageProps = {
   ledgerId: number;
 };
@@ -151,32 +155,42 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
 
   const visiblePageIndicators = useMemo(() => {
     if (totalPages <= 5) {
-      return Array.from({ length: totalPages }, (_, index) => String(index + 1));
+      return Array.from({ length: totalPages }, (_, index) => ({
+        value: index + 1,
+        label: formatPageLabel(index + 1),
+      }));
     }
 
     if (currentPage <= 3) {
-      return ["1", "2", "3", "4", "…", String(totalPages)];
+      return [
+        { value: 1, label: formatPageLabel(1) },
+        { value: 2, label: formatPageLabel(2) },
+        { value: 3, label: formatPageLabel(3) },
+        { value: 4, label: formatPageLabel(4) },
+        { value: null, label: "…" },
+        { value: totalPages, label: formatPageLabel(totalPages) },
+      ];
     }
 
     if (currentPage >= totalPages - 2) {
       return [
-        "1",
-        "…",
-        String(totalPages - 3),
-        String(totalPages - 2),
-        String(totalPages - 1),
-        String(totalPages),
+        { value: 1, label: formatPageLabel(1) },
+        { value: null, label: "…" },
+        { value: totalPages - 3, label: formatPageLabel(totalPages - 3) },
+        { value: totalPages - 2, label: formatPageLabel(totalPages - 2) },
+        { value: totalPages - 1, label: formatPageLabel(totalPages - 1) },
+        { value: totalPages, label: formatPageLabel(totalPages) },
       ];
     }
 
     return [
-      "1",
-      "…",
-      String(currentPage - 1),
-      String(currentPage),
-      String(currentPage + 1),
-      "…",
-      String(totalPages),
+      { value: 1, label: formatPageLabel(1) },
+      { value: null, label: "…" },
+      { value: currentPage - 1, label: formatPageLabel(currentPage - 1) },
+      { value: currentPage, label: formatPageLabel(currentPage) },
+      { value: currentPage + 1, label: formatPageLabel(currentPage + 1) },
+      { value: null, label: "…" },
+      { value: totalPages, label: formatPageLabel(totalPages) },
     ];
   }, [currentPage, totalPages]);
 
@@ -510,23 +524,23 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
                       >
                         Previous
                       </Button>
-                      {visiblePageIndicators.map((pageNumber, index) =>
-                        pageNumber === "…" ? (
+                      {visiblePageIndicators.map((pageIndicator, index) =>
+                        pageIndicator.value === null ? (
                           <span
                             key={`ellipsis-${index}`}
                             className="inline-flex h-10 min-w-10 items-center justify-center px-2 text-sm font-medium text-stone-400"
                           >
-                            …
+                            {pageIndicator.label}
                           </span>
                         ) : (
                           <Button
-                            key={pageNumber}
+                            key={pageIndicator.value}
                             type="button"
-                            variant={Number(pageNumber) === currentPage ? "default" : "outline"}
+                            variant={pageIndicator.value === currentPage ? "default" : "outline"}
                             className="h-10 min-w-10 px-3"
-                            onClick={() => setCurrentPage(Number(pageNumber))}
+                            onClick={() => setCurrentPage(pageIndicator.value)}
                           >
-                            {pageNumber}
+                            {pageIndicator.label}
                           </Button>
                         ),
                       )}
