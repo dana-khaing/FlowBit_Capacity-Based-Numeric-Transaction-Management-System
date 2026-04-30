@@ -94,6 +94,17 @@ function formatCurrencyLike(value: string) {
   });
 }
 
+function formatCompactAmount(value: string) {
+  const amount = Number(value);
+  if (Number.isNaN(amount)) {
+    return value;
+  }
+  return amount.toLocaleString("en-GB", {
+    minimumFractionDigits: Number.isInteger(amount) ? 0 : 2,
+    maximumFractionDigits: 2,
+  });
+}
+
 function formatTimeValue(value: string) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
@@ -440,161 +451,6 @@ export function LedgerPage() {
         }}
         onConfirm={handleConfirmAction}
       />
-      {selectedLedgerForView ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/35 px-4 py-6"
-          onClick={() => {
-            setSelectedLedgerForView(null);
-            setLedgerView(null);
-            setLedgerViewSearch("");
-            setLedgerViewError(null);
-          }}
-        >
-          <div
-            className="flex max-h-[92vh] w-full max-w-[1400px] flex-col overflow-hidden rounded-[30px] border border-stone-900/10 bg-white shadow-[0_18px_48px_rgba(24,24,24,0.18)]"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="flex flex-wrap items-start justify-between gap-4 border-b border-stone-900/8 px-5 py-5 sm:px-6">
-              <div>
-                <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Ledger view</p>
-                <h2 className="mt-2 text-2xl font-semibold text-stone-950">{selectedLedgerForView.name}</h2>
-                <p className="mt-2 text-sm text-stone-500">
-                  Click a recorded amount to open the corresponding ticket receipt.
-                </p>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                className="h-11 w-11 rounded-[18px] p-0"
-                onClick={() => {
-                  setSelectedLedgerForView(null);
-                  setLedgerView(null);
-                  setLedgerViewSearch("");
-                  setLedgerViewError(null);
-                }}
-                aria-label="Close ledger view"
-              >
-                <FontAwesomeIcon icon={faXmark} className="h-4 w-4" />
-              </Button>
-            </div>
-
-            <div className="grid min-h-0 flex-1 gap-0 xl:grid-cols-[minmax(0,1.45fr)_360px]">
-              <div className="flex min-h-0 flex-col border-b border-stone-900/8 xl:border-b-0 xl:border-r">
-                <div className="border-b border-stone-900/8 px-5 py-4 sm:px-6">
-                  <Input
-                    value={ledgerViewSearch}
-                    onChange={(event) => setLedgerViewSearch(event.target.value.replace(/\D/g, "").slice(0, 3))}
-                    placeholder="Search identifier"
-                    className="max-w-xs bg-white"
-                  />
-                </div>
-                <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 sm:px-6">
-                  {isLedgerViewLoading ? (
-                    <p className="text-sm text-stone-500">Loading ledger view...</p>
-                  ) : ledgerViewError ? (
-                    <div className="rounded-[22px] border border-red-200 bg-red-50 px-4 py-4 text-sm text-red-700">
-                      {ledgerViewError}
-                    </div>
-                  ) : filteredLedgerIdentifiers.length ? (
-                    <div className="space-y-3">
-                      {filteredLedgerIdentifiers.map((identifierRow) => (
-                        <div
-                          key={identifierRow.identifier_id}
-                          className="rounded-[22px] border border-stone-900/8 bg-[#f7f4ef] px-4 py-4"
-                        >
-                          <div className="grid gap-3 xl:grid-cols-[72px_20px_minmax(0,1fr)_180px] xl:items-start">
-                            <span className="font-mono text-base font-semibold tracking-[0.2em] text-stone-950">
-                              {identifierRow.number}
-                            </span>
-                            <span className="font-mono text-stone-400">-&gt;</span>
-                            <div className="min-w-0 break-words font-mono text-sm text-stone-700">
-                              {identifierRow.recordings.length ? (
-                                <>
-                                  {identifierRow.recordings.map((recording, index) => (
-                                    <span key={recording.allocation_id}>
-                                      {recording.ticket_number ? (
-                                        <button
-                                          type="button"
-                                          className="font-semibold text-stone-950 underline decoration-dotted underline-offset-4 hover:text-stone-600"
-                                          onClick={() => openTicketView(recording.ticket_number!)}
-                                        >
-                                          {recording.display_amount}
-                                        </button>
-                                      ) : (
-                                        <span className="font-semibold text-stone-950">{recording.display_amount}</span>
-                                      )}
-                                      <span className="text-stone-400">
-                                        {index === identifierRow.recordings.length - 1 ? ".------" : "."}
-                                      </span>
-                                    </span>
-                                  ))}
-                                </>
-                              ) : (
-                                <span className="text-stone-400">------</span>
-                              )}
-                            </div>
-                            <div className="rounded-[18px] bg-white px-3 py-3 text-right text-sm">
-                              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Used</p>
-                              <p className="mt-1 font-medium text-stone-900">{formatCurrencyLike(identifierRow.allocated_amount)}</p>
-                              <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Left</p>
-                              <p className="mt-1 font-medium text-stone-900">{formatCurrencyLike(identifierRow.remaining_capacity)}</p>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="rounded-[22px] border border-dashed border-stone-300 bg-stone-50 px-4 py-4 text-sm text-stone-500">
-                      No identifiers matched "{ledgerViewSearch}".
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <aside className="min-h-0 overflow-y-auto px-5 py-5 sm:px-6">
-                <div className="space-y-4">
-                  <div className="rounded-[22px] border border-stone-900/8 bg-[#f7f4ef] px-4 py-4">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Ledger info</p>
-                    <div className="mt-3 space-y-2 text-sm text-stone-600">
-                      <p><span className="font-semibold text-stone-900">Period:</span> {ledgerView?.ledger.period_name || "-"}</p>
-                      <p><span className="font-semibold text-stone-900">Priority:</span> {ledgerView?.ledger.is_capacity_reserve ? "Reserve helper" : ledgerView?.ledger.priority}</p>
-                      <p><span className="font-semibold text-stone-900">Status:</span> {ledgerView?.ledger.is_active ? "Active" : "Closed"}</p>
-                      <p><span className="font-semibold text-stone-900">Ends:</span> {formatDateTime(ledgerView?.ledger.end_date || selectedLedgerForView.end_date)}</p>
-                    </div>
-                  </div>
-
-                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-                    <div className="rounded-[22px] border border-stone-900/8 bg-[#f7f4ef] px-4 py-4">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Capacity / identifier</p>
-                      <p className="mt-2 text-2xl font-semibold text-stone-950">
-                        {ledgerView ? formatCurrencyLike(ledgerView.summary.capacity_per_identifier) : formatCurrencyLike(selectedLedgerForView.limit_per_identifier)}
-                      </p>
-                    </div>
-                    <div className="rounded-[22px] border border-stone-900/8 bg-[#f7f4ef] px-4 py-4">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Identifiers used</p>
-                      <p className="mt-2 text-2xl font-semibold text-stone-950">
-                        {ledgerView?.summary.used_identifier_count ?? 0}
-                      </p>
-                    </div>
-                    <div className="rounded-[22px] border border-stone-900/8 bg-[#f7f4ef] px-4 py-4">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Allocated total</p>
-                      <p className="mt-2 text-2xl font-semibold text-stone-950">
-                        {ledgerView ? formatCurrencyLike(ledgerView.summary.allocated_total) : "0.00"}
-                      </p>
-                    </div>
-                    <div className="rounded-[22px] border border-stone-900/8 bg-[#f7f4ef] px-4 py-4">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Remaining total</p>
-                      <p className="mt-2 text-2xl font-semibold text-stone-950">
-                        {ledgerView ? formatCurrencyLike(ledgerView.summary.remaining_capacity) : "0.00"}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </aside>
-            </div>
-          </div>
-        </div>
-      ) : null}
       {selectedTicketDetail || isTicketViewLoading ? (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center bg-stone-950/35 px-4 py-6"
@@ -831,6 +687,145 @@ export function LedgerPage() {
                 </div>
               )}
             </div>
+
+            {selectedLedgerForView ? (
+              <section className="mt-6 rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Ledger view</p>
+                    <h3 className="mt-2 text-2xl font-semibold text-stone-950">{selectedLedgerForView.name}</h3>
+                    <p className="mt-2 text-sm text-stone-500">
+                      Click a recorded amount to open the corresponding ticket receipt.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-11 w-11 rounded-[18px] p-0"
+                    onClick={() => {
+                      setSelectedLedgerForView(null);
+                      setLedgerView(null);
+                      setLedgerViewSearch("");
+                      setLedgerViewError(null);
+                    }}
+                    aria-label="Close ledger view"
+                  >
+                    <FontAwesomeIcon icon={faXmark} className="h-4 w-4" />
+                  </Button>
+                </div>
+
+                <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.5fr)_340px]">
+                  <div className="min-w-0">
+                    <Input
+                      value={ledgerViewSearch}
+                      onChange={(event) => setLedgerViewSearch(event.target.value.replace(/\D/g, "").slice(0, 3))}
+                      placeholder="Search identifier"
+                      className="max-w-xs bg-white"
+                    />
+                    <div className="mt-4 max-h-[720px] overflow-y-auto pr-2">
+                      {isLedgerViewLoading ? (
+                        <p className="text-sm text-stone-500">Loading ledger view...</p>
+                      ) : ledgerViewError ? (
+                        <div className="rounded-[22px] border border-red-200 bg-red-50 px-4 py-4 text-sm text-red-700">
+                          {ledgerViewError}
+                        </div>
+                      ) : filteredLedgerIdentifiers.length ? (
+                        <div className="space-y-3">
+                          {filteredLedgerIdentifiers.map((identifierRow) => (
+                            <div
+                              key={identifierRow.identifier_id}
+                              className="rounded-[22px] border border-stone-900/8 bg-[#f7f4ef] px-4 py-3"
+                            >
+                              <div className="flex flex-wrap items-center gap-3 text-sm xl:flex-nowrap">
+                                <span className="w-[54px] shrink-0 font-mono text-base font-semibold tracking-[0.2em] text-stone-950">
+                                  {identifierRow.number}
+                                </span>
+                                <span className="shrink-0 font-mono text-stone-400">-&gt;</span>
+                                <div className="min-w-[180px] flex-1 break-words font-mono text-sm text-stone-700">
+                                  {identifierRow.recordings.length ? (
+                                    <>
+                                      {identifierRow.recordings.map((recording, index) => (
+                                        <span key={recording.allocation_id}>
+                                          {recording.ticket_number ? (
+                                            <button
+                                              type="button"
+                                              className="font-semibold text-stone-950 underline decoration-dotted underline-offset-4 hover:text-stone-600"
+                                              onClick={() => openTicketView(recording.ticket_number!)}
+                                            >
+                                              {recording.display_amount}
+                                            </button>
+                                          ) : (
+                                            <span className="font-semibold text-stone-950">{recording.display_amount}</span>
+                                          )}
+                                          <span className="text-stone-400">
+                                            {index === identifierRow.recordings.length - 1 ? ".------" : "."}
+                                          </span>
+                                        </span>
+                                      ))}
+                                    </>
+                                  ) : (
+                                    <span className="text-stone-400">------</span>
+                                  )}
+                                </div>
+                                <span className="inline-flex shrink-0 items-center gap-2 rounded-full bg-white px-3 py-2 text-xs font-semibold text-stone-700">
+                                  Usage {formatCompactAmount(identifierRow.allocated_amount)}/{ledgerView ? formatCompactAmount(ledgerView.summary.capacity_per_identifier) : formatCompactAmount(selectedLedgerForView.limit_per_identifier)}
+                                </span>
+                                <span className="inline-flex shrink-0 items-center gap-2 rounded-full bg-white px-3 py-2 text-xs font-semibold text-stone-700">
+                                  Left {formatCompactAmount(identifierRow.remaining_capacity)}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="rounded-[22px] border border-dashed border-stone-300 bg-stone-50 px-4 py-4 text-sm text-stone-500">
+                          No identifiers matched "{ledgerViewSearch}".
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <aside className="space-y-4">
+                    <div className="rounded-[22px] border border-stone-900/8 bg-[#f7f4ef] px-4 py-4">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Ledger info</p>
+                      <div className="mt-3 space-y-2 text-sm text-stone-600">
+                        <p><span className="font-semibold text-stone-900">Period:</span> {ledgerView?.ledger.period_name || "-"}</p>
+                        <p><span className="font-semibold text-stone-900">Priority:</span> {ledgerView?.ledger.is_capacity_reserve ? "Reserve helper" : ledgerView?.ledger.priority}</p>
+                        <p><span className="font-semibold text-stone-900">Status:</span> {ledgerView?.ledger.is_active ? "Active" : "Closed"}</p>
+                        <p><span className="font-semibold text-stone-900">Ends:</span> {formatDateTime(ledgerView?.ledger.end_date || selectedLedgerForView.end_date)}</p>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+                      <div className="rounded-[22px] border border-stone-900/8 bg-[#f7f4ef] px-4 py-4">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Capacity / identifier</p>
+                        <p className="mt-2 text-2xl font-semibold text-stone-950">
+                          {ledgerView ? formatCompactAmount(ledgerView.summary.capacity_per_identifier) : formatCompactAmount(selectedLedgerForView.limit_per_identifier)}
+                        </p>
+                      </div>
+                      <div className="rounded-[22px] border border-stone-900/8 bg-[#f7f4ef] px-4 py-4">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Identifiers used</p>
+                        <p className="mt-2 text-2xl font-semibold text-stone-950">
+                          {ledgerView?.summary.used_identifier_count ?? 0}
+                        </p>
+                      </div>
+                      <div className="rounded-[22px] border border-stone-900/8 bg-[#f7f4ef] px-4 py-4">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Allocated total</p>
+                        <p className="mt-2 text-2xl font-semibold text-stone-950">
+                          {ledgerView ? formatCompactAmount(ledgerView.summary.allocated_total) : "0"}
+                        </p>
+                      </div>
+                      <div className="rounded-[22px] border border-stone-900/8 bg-[#f7f4ef] px-4 py-4">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Remaining total</p>
+                        <p className="mt-2 text-2xl font-semibold text-stone-950">
+                          {ledgerView ? formatCompactAmount(ledgerView.summary.remaining_capacity) : "0"}
+                        </p>
+                      </div>
+                    </div>
+                  </aside>
+                </div>
+              </section>
+            ) : null}
 
             {standardActiveLedgers.length > 1 ? (
               <div className="mt-6 flex justify-end">
