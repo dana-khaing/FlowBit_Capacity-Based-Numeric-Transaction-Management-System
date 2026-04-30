@@ -294,7 +294,7 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
             className="w-full max-w-[560px] rounded-[30px] border border-stone-900/10 bg-white p-5 shadow-[0_18px_48px_rgba(24,24,24,0.18)] sm:p-6"
             onClick={(event) => event.stopPropagation()}
           >
-            <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Disable identifier</p>
+            <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Freeze identifier</p>
             <h2 className="mt-2 text-2xl font-semibold text-stone-950">{freezeTarget.number}</h2>
             <p className="mt-2 text-sm leading-6 text-stone-500">
               Freeze this identifier across all ledgers or only in selected ledgers.
@@ -316,7 +316,7 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
                 <span className={`inline-flex rounded-full px-3 py-2 text-xs font-semibold ${
                   freezeTarget.frozen_all_ledgers ? "bg-red-100 text-red-700" : "bg-stone-900 text-white"
                 }`}>
-                  {freezeTarget.frozen_all_ledgers ? "Enable" : "Disable"}
+                  {freezeTarget.frozen_all_ledgers ? "Unfreeze" : "Freeze"}
                 </span>
               </button>
 
@@ -325,24 +325,42 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
                   .filter((ledger) => !ledger.is_capacity_reserve)
                   .map((ledger) => {
                     const isLedgerFrozen = freezeTarget.frozen_ledger_ids.includes(ledger.id);
+                    const capacityPerIdentifier = Number(
+                      selectedView === "all"
+                        ? ledger.limit_per_identifier
+                        : ledgerView?.summary.capacity_per_identifier || ledger.limit_per_identifier,
+                    );
+                    const currentAllocated = Number(freezeTarget.allocated_amount || "0");
+                    const isLedgerAlreadyFull =
+                      selectedView === "all"
+                        ? false
+                        : freezeTarget.frozen_ledger_ids.includes(ledger.id)
+                          ? false
+                          : ledger.id === ledgerView?.ledger.id && currentAllocated >= capacityPerIdentifier;
                     return (
                       <button
                         key={ledger.id}
                         type="button"
-                        className="flex w-full items-center justify-between rounded-[22px] border border-stone-900/8 bg-white px-4 py-4 text-left transition hover:border-stone-900/20"
+                        className="flex w-full items-center justify-between rounded-[22px] border border-stone-900/8 bg-white px-4 py-4 text-left transition hover:border-stone-900/20 disabled:cursor-not-allowed disabled:opacity-55"
                         onClick={() => handleFreezeScope("ledger", ledger.id)}
-                        disabled={isFreezeSaving}
+                        disabled={isFreezeSaving || isLedgerAlreadyFull}
                       >
                         <div>
                           <p className="font-semibold text-stone-950">{ledger.name}</p>
                           <p className="mt-1 text-sm text-stone-500">
-                            This identifier can still use other ledgers if needed.
+                            {isLedgerAlreadyFull
+                              ? "Already full in this ledger."
+                              : "This identifier can still use other ledgers if needed."}
                           </p>
                         </div>
                         <span className={`inline-flex rounded-full px-3 py-2 text-xs font-semibold ${
-                          isLedgerFrozen ? "bg-red-100 text-red-700" : "bg-stone-100 text-stone-700"
+                          isLedgerAlreadyFull
+                            ? "bg-stone-100 text-stone-400"
+                            : isLedgerFrozen
+                              ? "bg-red-100 text-red-700"
+                              : "bg-stone-100 text-stone-700"
                         }`}>
-                          {isLedgerFrozen ? "Enable" : "Disable"}
+                          {isLedgerAlreadyFull ? "Full" : isLedgerFrozen ? "Unfreeze" : "Freeze"}
                         </span>
                       </button>
                     );
@@ -493,7 +511,7 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
                         identifierRow.is_full
                           ? "border-red-200 bg-red-50/80"
                           : identifierRow.is_frozen
-                            ? "border-amber-200 bg-amber-50/80"
+                            ? "border-sky-200 bg-sky-50/80"
                             : "border-stone-900/8 bg-[#f7f4ef]"
                       }`}
                     >
@@ -538,6 +556,12 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
                         <span className="inline-flex shrink-0 items-center gap-2 rounded-full bg-white px-3 py-2 text-xs font-semibold text-stone-700">
                           Left {formatCompactAmount(identifierRow.remaining_capacity)}
                         </span>
+                        {identifierRow.is_frozen ? (
+                          <span className="inline-flex shrink-0 items-center gap-2 rounded-full bg-sky-100 px-3 py-2 text-xs font-semibold text-sky-700">
+                            <FontAwesomeIcon icon={faSnowflake} className="h-3 w-3" />
+                            Frozen
+                          </span>
+                        ) : null}
                         <Button
                           type="button"
                           variant="outline"
@@ -546,7 +570,7 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
                           disabled={identifierRow.is_full}
                         >
                           <FontAwesomeIcon icon={faSnowflake} className="h-3.5 w-3.5" />
-                          {identifierRow.is_frozen ? "Manage" : "Disable"}
+                          {identifierRow.is_frozen ? "Manage" : "Freeze"}
                         </Button>
                       </div>
                     </div>
