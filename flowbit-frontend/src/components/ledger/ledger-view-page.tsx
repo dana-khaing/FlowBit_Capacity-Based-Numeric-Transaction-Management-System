@@ -326,30 +326,41 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
                   .map((ledger) => {
                     const isLedgerFrozen = freezeTarget.frozen_ledger_ids.includes(ledger.id);
                     const isLedgerAlreadyFull = freezeTarget.full_ledger_ids.includes(ledger.id);
+                    const isFrozenByAll = freezeTarget.frozen_all_ledgers && !isLedgerAlreadyFull;
                     return (
                       <button
                         key={ledger.id}
                         type="button"
                         className="flex w-full items-center justify-between rounded-[22px] border border-stone-900/8 bg-white px-4 py-4 text-left transition hover:border-stone-900/20 disabled:cursor-not-allowed disabled:opacity-55"
                         onClick={() => handleFreezeScope("ledger", ledger.id)}
-                        disabled={isFreezeSaving || isLedgerAlreadyFull}
+                        disabled={isFreezeSaving || isLedgerAlreadyFull || isFrozenByAll}
                       >
                         <div>
                           <p className="font-semibold text-stone-950">{ledger.name}</p>
                           <p className="mt-1 text-sm text-stone-500">
                             {isLedgerAlreadyFull
                               ? "Already full in this ledger."
+                              : isFrozenByAll
+                                ? "Already frozen across all ledgers. Unfreeze all first."
                               : "This identifier can still use other ledgers if needed."}
                           </p>
                         </div>
                         <span className={`inline-flex rounded-full px-3 py-2 text-xs font-semibold ${
                           isLedgerAlreadyFull
                             ? "bg-stone-100 text-stone-400"
+                            : isFrozenByAll
+                              ? "bg-sky-100 text-sky-700"
                             : isLedgerFrozen
-                              ? "bg-red-100 text-red-700"
+                              ? "bg-sky-100 text-sky-700"
                               : "bg-stone-100 text-stone-700"
                         }`}>
-                          {isLedgerAlreadyFull ? "Full" : isLedgerFrozen ? "Unfreeze" : "Freeze"}
+                          {isLedgerAlreadyFull
+                            ? "Full"
+                            : isFrozenByAll
+                              ? "Frozen"
+                              : isLedgerFrozen
+                                ? "Unfreeze"
+                                : "Freeze"}
                         </span>
                       </button>
                     );
@@ -501,7 +512,7 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
                           ? "border-red-200 bg-red-50/80"
                           : identifierRow.is_frozen
                             ? "border-sky-200 bg-sky-50/80"
-                            : "border-stone-900/8 bg-[#f7f4ef]"
+                            : "border-emerald-200 bg-emerald-50/70"
                       }`}
                     >
                       <div className="flex flex-wrap items-center gap-3 text-sm xl:flex-nowrap">
