@@ -191,7 +191,7 @@ export function TicketReceiptCard({
             </div>
 
             {transaction.allocations.length ? (
-              <div className="mt-3 rounded-[18px] bg-white px-3 py-3 text-sm text-stone-600">
+              <div className="mt-3 rounded-[18px] bg-white px-3 py-3 text-sm text-stone-600 print:hidden">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">
                   Ledger allocation
                 </p>
