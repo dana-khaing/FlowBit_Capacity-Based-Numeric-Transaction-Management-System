@@ -56,10 +56,13 @@ type LedgerViewPageProps = {
   ledgerId: number;
 };
 
+const IDENTIFIERS_PER_PAGE = 20;
+
 export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
   const [toast, setToast] = useState<ToastState>(null);
   const [ledgerView, setLedgerView] = useState<FlowBitLedgerView | null>(null);
   const [ledgerViewSearch, setLedgerViewSearch] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
   const [pageError, setPageError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedTicketDetail, setSelectedTicketDetail] = useState<FlowBitTicketDetail | null>(null);
@@ -112,6 +115,32 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
       identifierRow.number.includes(query),
     );
   }, [ledgerView, ledgerViewSearch]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [ledgerViewSearch, ledgerId]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredLedgerIdentifiers.length / IDENTIFIERS_PER_PAGE));
+  const paginatedIdentifiers = useMemo(() => {
+    const startIndex = (currentPage - 1) * IDENTIFIERS_PER_PAGE;
+    return filteredLedgerIdentifiers.slice(startIndex, startIndex + IDENTIFIERS_PER_PAGE);
+  }, [currentPage, filteredLedgerIdentifiers]);
+
+  const visiblePageIndicators = useMemo(() => {
+    if (totalPages <= 5) {
+      return Array.from({ length: totalPages }, (_, index) => index + 1);
+    }
+
+    if (currentPage <= 3) {
+      return [1, 2, 3, 4, 5];
+    }
+
+    if (currentPage >= totalPages - 2) {
+      return [totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
+    }
+
+    return [currentPage - 2, currentPage - 1, currentPage, currentPage + 1, currentPage + 2];
+  }, [currentPage, totalPages]);
 
   async function openTicketView(ticketNumber: string) {
     setIsTicketViewLoading(true);
@@ -193,8 +222,50 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
                   {pageError}
                 </div>
               ) : filteredLedgerIdentifiers.length ? (
-                <div className="space-y-3">
-                  {filteredLedgerIdentifiers.map((identifierRow) => (
+                <div className="space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-stone-500">
+                    <p>
+                      Showing {(currentPage - 1) * IDENTIFIERS_PER_PAGE + 1}
+                      {" "}to{" "}
+                      {Math.min(currentPage * IDENTIFIERS_PER_PAGE, filteredLedgerIdentifiers.length)}
+                      {" "}of{" "}
+                      {filteredLedgerIdentifiers.length} identifiers
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-10 px-3"
+                        onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                        disabled={currentPage === 1}
+                      >
+                        Previous
+                      </Button>
+                      {visiblePageIndicators.map((pageNumber) => (
+                        <Button
+                          key={pageNumber}
+                          type="button"
+                          variant={pageNumber === currentPage ? "default" : "outline"}
+                          className="h-10 min-w-10 px-3"
+                          onClick={() => setCurrentPage(pageNumber)}
+                        >
+                          {pageNumber}
+                        </Button>
+                      ))}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-10 px-3"
+                        onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                        disabled={currentPage === totalPages}
+                      >
+                        Next
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                  {paginatedIdentifiers.map((identifierRow) => (
                     <div
                       key={identifierRow.identifier_id}
                       className="rounded-[22px] border border-stone-900/8 bg-[#f7f4ef] px-4 py-3"
@@ -239,6 +310,7 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
                       </div>
                     </div>
                   ))}
+                  </div>
                 </div>
               ) : (
                 <div className="rounded-[22px] border border-dashed border-stone-300 bg-stone-50 px-4 py-4 text-sm text-stone-500">
