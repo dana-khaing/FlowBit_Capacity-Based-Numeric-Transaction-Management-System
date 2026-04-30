@@ -836,6 +836,15 @@ class LedgerViewSet(viewsets.ModelViewSet):
                 is_capacity_reserve=False,
             ).values_list('id', flat=True)
         )
+        active_ledger_capacities = {
+            item['id']: item['limit_per_identifier']
+            for item in Ledger.objects.filter(
+                period=ledger.period,
+                owner=ledger.owner,
+                is_active=True,
+                is_capacity_reserve=False,
+            ).values('id', 'limit_per_identifier')
+        }
         allocations = list(
             LedgerAllocation.objects.filter(
                 ledger__period=ledger.period,
@@ -908,7 +917,8 @@ class LedgerViewSet(viewsets.ModelViewSet):
             full_ledger_ids = sorted(
                 ledger_id
                 for ledger_id in active_ledger_ids
-                if ledger_usage_by_identifier.get(identifier.id, {}).get(ledger_id, Decimal('0.00')) >= capacity_per_identifier
+                if ledger_usage_by_identifier.get(identifier.id, {}).get(ledger_id, Decimal('0.00'))
+                >= Decimal(str(active_ledger_capacities.get(ledger_id, Decimal('0.00'))))
             )
 
             identifier_rows.append(
