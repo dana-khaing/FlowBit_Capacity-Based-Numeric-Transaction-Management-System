@@ -1793,6 +1793,31 @@ class PrivateWorkflowAPITests(APITestCase):
         allowed_response = self.client.get(f'/api/ledgers/{self.active_ledger.id}/export-pdf/')
         self.assertEqual(allowed_response.status_code, status.HTTP_200_OK)
 
+    def test_ledger_view_returns_identifier_rows_and_ticket_links_for_owner(self):
+        ticket = Ticket.objects.create(customer_name='Ledger View Ticket', created_by=self.approver)
+        transaction_obj = Transaction.objects.create(
+            ticket=ticket,
+            identifier=self.identifier,
+            total_amount=Decimal('120.00'),
+            created_by=self.approver,
+        )
+
+        response = self.client.get(f'/api/ledgers/{self.active_ledger.id}/view/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['ledger']['id'], self.active_ledger.id)
+        self.assertIn('summary', response.data)
+        identifier_row = next(
+            row for row in response.data['identifiers']
+            if row['number'] == self.identifier.number
+        )
+        self.assertTrue(identifier_row['recordings'])
+        ticket_numbers = {recording['ticket_number'] for recording in identifier_row['recordings']}
+        order_numbers = {recording['order_number'] for recording in identifier_row['recordings']}
+        self.assertIn(ticket.ticket_number, ticket_numbers)
+        self.assertIn(transaction_obj.order_number, order_numbers)
+        self.assertIn('remaining_capacity', identifier_row)
+
     def test_identifier_options_returns_lightweight_number_list(self):
         response = self.client.get('/api/identifiers/options/')
 
@@ -1804,3 +1829,5 @@ class PrivateWorkflowAPITests(APITestCase):
         self.client.force_authenticate(user=self.other_user)
         blocked_response = self.client.get(f'/api/ledgers/{self.active_ledger.id}/export-pdf/')
         self.assertEqual(blocked_response.status_code, status.HTTP_404_NOT_FOUND)
+        blocked_view_response = self.client.get(f'/api/ledgers/{self.active_ledger.id}/view/')
+        self.assertEqual(blocked_view_response.status_code, status.HTTP_404_NOT_FOUND)

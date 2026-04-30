@@ -817,6 +817,84 @@ class LedgerViewSet(viewsets.ModelViewSet):
             "ledgers": updated_ledgers
         }, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['get'], url_path='view')
+    def view_ledger(self, request, pk=None):
+        ledger = self.get_object()
+        identifiers = list(Identifier.objects.all().order_by('number'))
+        allocations = list(
+            LedgerAllocation.objects.filter(ledger=ledger)
+            .select_related('transaction__identifier', 'transaction__ticket')
+            .order_by('transaction__timestamp', 'id')
+        )
+
+        allocations_by_identifier = {}
+        total_allocated = Decimal('0.00')
+        used_identifier_ids = set()
+
+        for allocation in allocations:
+            used_identifier_ids.add(allocation.transaction.identifier_id)
+            total_allocated += allocation.amount or Decimal('0.00')
+            allocations_by_identifier.setdefault(allocation.transaction.identifier_id, []).append(
+                {
+                    'allocation_id': allocation.id,
+                    'amount': str(allocation.amount or Decimal('0.00')),
+                    'display_amount': str(int(allocation.amount)) if allocation.amount == allocation.amount.to_integral_value() else f"{allocation.amount}",
+                    'order_number': allocation.transaction.order_number,
+                    'ticket_number': allocation.transaction.ticket.ticket_number if allocation.transaction.ticket else None,
+                    'transaction_id': allocation.transaction.id,
+                    'created_at': allocation.transaction.timestamp,
+                }
+            )
+
+        identifier_rows = []
+        capacity_per_identifier = ledger.limit_per_identifier or Decimal('0.00')
+        for identifier in identifiers:
+            recordings = allocations_by_identifier.get(identifier.id, [])
+            allocated_amount = sum(
+                (Decimal(item['amount']) for item in recordings),
+                Decimal('0.00'),
+            )
+            remaining_amount = capacity_per_identifier - allocated_amount
+            if remaining_amount < Decimal('0.00'):
+                remaining_amount = Decimal('0.00')
+
+            recording_display = '------'
+            if recordings:
+                recording_display = '.'.join(item['display_amount'] for item in recordings) + '.------'
+
+            identifier_rows.append(
+                {
+                    'identifier_id': identifier.id,
+                    'number': identifier.number,
+                    'recording_display': recording_display,
+                    'recordings': recordings,
+                    'allocated_amount': str(allocated_amount),
+                    'remaining_capacity': str(remaining_amount),
+                }
+            )
+
+        identifier_count = len(identifiers)
+        total_capacity = capacity_per_identifier * identifier_count
+        remaining_capacity = total_capacity - total_allocated
+        if remaining_capacity < Decimal('0.00'):
+            remaining_capacity = Decimal('0.00')
+
+        return Response(
+            {
+                'ledger': self.get_serializer(ledger).data,
+                'summary': {
+                    'identifier_count': identifier_count,
+                    'used_identifier_count': len(used_identifier_ids),
+                    'capacity_per_identifier': str(capacity_per_identifier),
+                    'total_capacity': str(total_capacity),
+                    'allocated_total': str(total_allocated),
+                    'remaining_capacity': str(remaining_capacity),
+                },
+                'identifiers': identifier_rows,
+            },
+            status=status.HTTP_200_OK,
+        )
+
 
     # =============================================================================
     # METHOD 1: CSV EXPORT WITH IDENTIFIER VISUAL REPRESENTATION
