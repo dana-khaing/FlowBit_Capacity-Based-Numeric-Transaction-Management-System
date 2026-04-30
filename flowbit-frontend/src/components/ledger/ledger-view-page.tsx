@@ -56,7 +56,7 @@ type LedgerViewPageProps = {
   ledgerId: number;
 };
 
-const IDENTIFIERS_PER_PAGE = 20;
+const IDENTIFIERS_PER_PAGE = 100;
 
 export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
   const [toast, setToast] = useState<ToastState>(null);
@@ -223,7 +223,8 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
                 </div>
               ) : filteredLedgerIdentifiers.length ? (
                 <div className="space-y-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-stone-500">
+                  <div className="sticky top-0 z-10 -mx-1 rounded-[22px] border border-stone-900/8 bg-white/95 px-3 py-3 backdrop-blur supports-[backdrop-filter]:bg-white/85">
+                    <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-stone-500">
                     <p>
                       Showing {(currentPage - 1) * IDENTIFIERS_PER_PAGE + 1}
                       {" "}to{" "}
@@ -261,6 +262,7 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
                       >
                         Next
                       </Button>
+                    </div>
                     </div>
                   </div>
 
