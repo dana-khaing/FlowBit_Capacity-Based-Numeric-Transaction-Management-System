@@ -8,6 +8,7 @@ import {
   faClock,
   faLayerGroup,
   faLock,
+  faSnowflake,
 } from "@fortawesome/free-solid-svg-icons";
 import { WorkspaceShell } from "@/components/app/workspace-shell";
 import { AdminActionToast } from "@/components/admin/admin-action-toast";
@@ -19,8 +20,10 @@ import { fetchTicketDetail, type FlowBitTicketDetail } from "@/lib/ticket-client
 import {
   fetchLedgerView,
   fetchLedgers,
+  freezeIdentifier,
   type FlowBitLedger,
   type FlowBitLedgerView,
+  unfreezeIdentifier,
 } from "@/lib/ledger-client";
 
 type ToastState = {
@@ -63,6 +66,7 @@ type LedgerViewPageProps = {
 };
 
 const IDENTIFIERS_PER_PAGE = 100;
+type FreezeTargetRow = FlowBitLedgerView["identifiers"][number] | null;
 
 export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
   const [toast, setToast] = useState<ToastState>(null);
@@ -71,6 +75,8 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
   const [selectedView, setSelectedView] = useState<string>(String(ledgerId));
   const [ledgerViewSearch, setLedgerViewSearch] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  const [freezeTarget, setFreezeTarget] = useState<FreezeTargetRow>(null);
+  const [isFreezeSaving, setIsFreezeSaving] = useState(false);
   const [pageError, setPageError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedTicketDetail, setSelectedTicketDetail] = useState<FlowBitTicketDetail | null>(null);
@@ -187,27 +193,32 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
     }
   }
 
+  async function loadSelectedView(nextValue: string) {
+    if (nextValue === "all") {
+      const activeLedgers = ledgerOptions.length
+        ? ledgerOptions
+        : activePeriod
+          ? (await fetchLedgers({ period_id: activePeriod.id })).filter((ledger) => ledger.is_active)
+          : [];
+
+      const views = await Promise.all(activeLedgers.map((ledger) => fetchLedgerView(ledger.id)));
+      const combinedView = buildCombinedLedgerView(views, activePeriod?.name || null);
+      setLedgerOptions(activeLedgers);
+      setLedgerView(combinedView);
+      return;
+    }
+
+    const detail = await fetchLedgerView(Number(nextValue));
+    setLedgerView(detail);
+  }
+
   async function handleViewChange(nextValue: string) {
     setSelectedView(nextValue);
     setIsLoading(true);
     setPageError(null);
 
     try {
-      if (nextValue === "all") {
-        const activeLedgers = ledgerOptions.length
-          ? ledgerOptions
-          : activePeriod
-            ? (await fetchLedgers({ period_id: activePeriod.id })).filter((ledger) => ledger.is_active)
-            : [];
-
-        const views = await Promise.all(activeLedgers.map((ledger) => fetchLedgerView(ledger.id)));
-        const combinedView = buildCombinedLedgerView(views, activePeriod?.name || null);
-        setLedgerOptions(activeLedgers);
-        setLedgerView(combinedView);
-      } else {
-        const detail = await fetchLedgerView(Number(nextValue));
-        setLedgerView(detail);
-      }
+      await loadSelectedView(nextValue);
     } catch (loadError) {
       const message = loadError instanceof Error ? loadError.message : "Request failed.";
       setPageError(message);
@@ -217,9 +228,130 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
     }
   }
 
+  async function handleFreezeScope(scope: "all" | "ledger", ledgerIdValue?: number) {
+    if (!freezeTarget) {
+      return;
+    }
+
+    setIsFreezeSaving(true);
+    try {
+      const shouldUnfreeze =
+        scope === "all"
+          ? freezeTarget.frozen_all_ledgers
+          : Boolean(ledgerIdValue && freezeTarget.frozen_ledger_ids.includes(ledgerIdValue));
+
+      if (shouldUnfreeze) {
+        await unfreezeIdentifier({
+          identifierId: freezeTarget.identifier_id,
+          scope,
+          ledgerId: ledgerIdValue,
+        });
+        setToast({
+          type: "success",
+          message:
+            scope === "all"
+              ? `Identifier ${freezeTarget.number} is enabled across all ledgers.`
+              : `Identifier ${freezeTarget.number} is enabled for that ledger.`,
+        });
+      } else {
+        await freezeIdentifier({
+          identifierId: freezeTarget.identifier_id,
+          scope,
+          ledgerId: ledgerIdValue,
+        });
+        setToast({
+          type: "success",
+          message:
+            scope === "all"
+              ? `Identifier ${freezeTarget.number} is disabled across all ledgers.`
+              : `Identifier ${freezeTarget.number} is disabled for that ledger.`,
+        });
+      }
+
+      await loadSelectedView(selectedView);
+      setFreezeTarget(null);
+    } catch (freezeError) {
+      const message = freezeError instanceof Error ? freezeError.message : "Request failed.";
+      setToast({ type: "error", message });
+    } finally {
+      setIsFreezeSaving(false);
+    }
+  }
+
   return (
     <WorkspaceShell>
       {toast ? <AdminActionToast message={toast.message} type={toast.type} onClose={() => setToast(null)} /> : null}
+      {freezeTarget ? (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-stone-950/35 px-4 py-6"
+          onClick={() => {
+            if (!isFreezeSaving) {
+              setFreezeTarget(null);
+            }
+          }}
+        >
+          <div
+            className="w-full max-w-[560px] rounded-[30px] border border-stone-900/10 bg-white p-5 shadow-[0_18px_48px_rgba(24,24,24,0.18)] sm:p-6"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Disable identifier</p>
+            <h2 className="mt-2 text-2xl font-semibold text-stone-950">{freezeTarget.number}</h2>
+            <p className="mt-2 text-sm leading-6 text-stone-500">
+              Freeze this identifier across all ledgers or only in selected ledgers.
+            </p>
+
+            <div className="mt-5 space-y-3">
+              <button
+                type="button"
+                className="flex w-full items-center justify-between rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4 text-left transition hover:border-stone-900/20"
+                onClick={() => handleFreezeScope("all")}
+                disabled={isFreezeSaving}
+              >
+                <div>
+                  <p className="font-semibold text-stone-950">All ledgers</p>
+                  <p className="mt-1 text-sm text-stone-500">
+                    Force this identifier straight into spill over when tickets are submitted.
+                  </p>
+                </div>
+                <span className={`inline-flex rounded-full px-3 py-2 text-xs font-semibold ${
+                  freezeTarget.frozen_all_ledgers ? "bg-red-100 text-red-700" : "bg-stone-900 text-white"
+                }`}>
+                  {freezeTarget.frozen_all_ledgers ? "Enable" : "Disable"}
+                </span>
+              </button>
+
+              <div className="space-y-2">
+                {ledgerOptions
+                  .filter((ledger) => !ledger.is_capacity_reserve)
+                  .map((ledger) => {
+                    const isLedgerFrozen = freezeTarget.frozen_ledger_ids.includes(ledger.id);
+                    return (
+                      <button
+                        key={ledger.id}
+                        type="button"
+                        className="flex w-full items-center justify-between rounded-[22px] border border-stone-900/8 bg-white px-4 py-4 text-left transition hover:border-stone-900/20"
+                        onClick={() => handleFreezeScope("ledger", ledger.id)}
+                        disabled={isFreezeSaving}
+                      >
+                        <div>
+                          <p className="font-semibold text-stone-950">{ledger.name}</p>
+                          <p className="mt-1 text-sm text-stone-500">
+                            This identifier can still use other ledgers if needed.
+                          </p>
+                        </div>
+                        <span className={`inline-flex rounded-full px-3 py-2 text-xs font-semibold ${
+                          isLedgerFrozen ? "bg-red-100 text-red-700" : "bg-stone-100 text-stone-700"
+                        }`}>
+                          {isLedgerFrozen ? "Enable" : "Disable"}
+                        </span>
+                      </button>
+                    );
+                  })}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {selectedTicketDetail || isTicketViewLoading ? (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center bg-stone-950/35 px-4 py-6"
@@ -351,7 +483,13 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
                   {paginatedIdentifiers.map((identifierRow) => (
                     <div
                       key={identifierRow.identifier_id}
-                      className="rounded-[22px] border border-stone-900/8 bg-[#f7f4ef] px-4 py-3"
+                      className={`rounded-[22px] border px-4 py-3 ${
+                        identifierRow.is_full
+                          ? "border-red-200 bg-red-50/80"
+                          : identifierRow.is_frozen
+                            ? "border-amber-200 bg-amber-50/80"
+                            : "border-stone-900/8 bg-[#f7f4ef]"
+                      }`}
                     >
                       <div className="flex flex-wrap items-center gap-3 text-sm xl:flex-nowrap">
                         <span className="w-[64px] shrink-0 font-mono text-xl font-semibold tracking-[0.2em] text-stone-950">
@@ -390,6 +528,15 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
                         <span className="inline-flex shrink-0 items-center gap-2 rounded-full bg-white px-3 py-2 text-xs font-semibold text-stone-700">
                           Left {formatCompactAmount(identifierRow.remaining_capacity)}
                         </span>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-10 shrink-0 px-4"
+                          onClick={() => setFreezeTarget(identifierRow)}
+                        >
+                          <FontAwesomeIcon icon={faSnowflake} className="h-3.5 w-3.5" />
+                          {identifierRow.is_frozen ? "Manage" : "Disable"}
+                        </Button>
                       </div>
                     </div>
                   ))}
@@ -478,6 +625,8 @@ function buildCombinedLedgerView(
       allocated_amount: number;
       remaining_capacity: number;
       capacity: number;
+      all_ledgers: boolean;
+      ledger_ids: Set<number>;
     }
   >();
 
@@ -498,6 +647,8 @@ function buildCombinedLedgerView(
           allocated_amount: Number(row.allocated_amount || "0"),
           remaining_capacity: Number(row.remaining_capacity || "0"),
           capacity: Number(row.allocated_amount || "0") + Number(row.remaining_capacity || "0"),
+          all_ledgers: row.frozen_all_ledgers,
+          ledger_ids: new Set(row.frozen_ledger_ids),
         });
         return;
       }
@@ -506,6 +657,8 @@ function buildCombinedLedgerView(
       existing.allocated_amount += Number(row.allocated_amount || "0");
       existing.remaining_capacity += Number(row.remaining_capacity || "0");
       existing.capacity += Number(row.allocated_amount || "0") + Number(row.remaining_capacity || "0");
+      existing.all_ledgers = existing.all_ledgers || row.frozen_all_ledgers;
+      row.frozen_ledger_ids.forEach((ledgerId) => existing.ledger_ids.add(ledgerId));
     });
   });
 
@@ -522,6 +675,10 @@ function buildCombinedLedgerView(
       }),
       allocated_amount: row.allocated_amount.toFixed(2),
       remaining_capacity: row.remaining_capacity.toFixed(2),
+      is_full: row.remaining_capacity <= 0,
+      is_frozen: row.all_ledgers || row.ledger_ids.size > 0,
+      frozen_all_ledgers: row.all_ledgers,
+      frozen_ledger_ids: Array.from(row.ledger_ids).sort((left, right) => left - right),
     }));
 
   const identifierCount = identifiers.length;
