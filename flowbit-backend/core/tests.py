@@ -1879,19 +1879,22 @@ class PrivateWorkflowAPITests(APITestCase):
         self.assertIn(freeze.ledger_id, identifier_row['frozen_ledger_ids'])
 
     def test_ledger_view_includes_full_ledger_ids_for_identifier(self):
+        self.active_ledger.limit_per_identifier = Decimal('50.00')
+        self.active_ledger.save(update_fields=['limit_per_identifier'])
         backup_ledger = Ledger.objects.create(
             owner=self.approver,
             period=self.active_period,
             name='Full Backup Ledger',
             end_date=self.active_period.end_date,
-            limit_per_identifier=Decimal('200.00'),
+            limit_per_identifier=Decimal('100.00'),
             priority=2,
             is_active=True,
         )
+        self.active_transaction.allocations.all().delete()
         LedgerAllocation.objects.create(
             transaction=self.active_transaction,
             ledger=self.active_ledger,
-            amount=Decimal('200.00'),
+            amount=Decimal('50.00'),
         )
         second_ticket = Ticket.objects.create(customer_name='Second Full Ticket', created_by=self.approver)
         second_transaction = Transaction.objects.create(
@@ -1904,7 +1907,7 @@ class PrivateWorkflowAPITests(APITestCase):
         LedgerAllocation.objects.create(
             transaction=second_transaction,
             ledger=backup_ledger,
-            amount=Decimal('200.00'),
+            amount=Decimal('100.00'),
         )
 
         response = self.client.get(f'/api/ledgers/{self.active_ledger.id}/view/')
