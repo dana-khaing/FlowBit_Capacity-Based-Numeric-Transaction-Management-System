@@ -233,14 +233,15 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
       return;
     }
 
-    const standardLedgerIds = ledgerOptions
+    const freezableLedgerIds = ledgerOptions
       .filter((ledger) => !ledger.is_capacity_reserve)
+      .filter((ledger) => !freezeTarget.full_ledger_ids.includes(ledger.id))
       .map((ledger) => ledger.id);
     const isEffectivelyFrozenAllLedgers =
       freezeTarget.frozen_all_ledgers ||
       (
-        standardLedgerIds.length > 0 &&
-        standardLedgerIds.every((id) => freezeTarget.frozen_ledger_ids.includes(id))
+        freezableLedgerIds.length > 0 &&
+        freezableLedgerIds.every((id) => freezeTarget.frozen_ledger_ids.includes(id))
       );
 
     setIsFreezeSaving(true);
@@ -312,14 +313,15 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
 
             <div className="mt-5 space-y-3">
               {(() => {
-                const standardLedgerIds = ledgerOptions
+                const freezableLedgerIds = ledgerOptions
                   .filter((ledger) => !ledger.is_capacity_reserve)
+                  .filter((ledger) => !freezeTarget.full_ledger_ids.includes(ledger.id))
                   .map((ledger) => ledger.id);
                 const isEffectivelyFrozenAllLedgers =
                   freezeTarget.frozen_all_ledgers ||
                   (
-                    standardLedgerIds.length > 0 &&
-                    standardLedgerIds.every((id) => freezeTarget.frozen_ledger_ids.includes(id))
+                    freezableLedgerIds.length > 0 &&
+                    freezableLedgerIds.every((id) => freezeTarget.frozen_ledger_ids.includes(id))
                   );
 
                 return (
@@ -352,38 +354,41 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
                   .map((ledger) => {
                     const isLedgerFrozen = freezeTarget.frozen_ledger_ids.includes(ledger.id);
                     const isLedgerAlreadyFull = freezeTarget.full_ledger_ids.includes(ledger.id);
-                    const standardLedgerIds = ledgerOptions
+                    const freezableLedgerIds = ledgerOptions
                       .filter((item) => !item.is_capacity_reserve)
+                      .filter((item) => !freezeTarget.full_ledger_ids.includes(item.id))
                       .map((item) => item.id);
                     const isEffectivelyFrozenAllLedgers =
                       freezeTarget.frozen_all_ledgers ||
                       (
-                        standardLedgerIds.length > 0 &&
-                        standardLedgerIds.every((id) => freezeTarget.frozen_ledger_ids.includes(id))
+                        freezableLedgerIds.length > 0 &&
+                        freezableLedgerIds.every((id) => freezeTarget.frozen_ledger_ids.includes(id))
                       );
-                    const isFrozenByAll = isEffectivelyFrozenAllLedgers && !isLedgerAlreadyFull;
+                    const isFrozenByActualAll = freezeTarget.frozen_all_ledgers && !isLedgerAlreadyFull;
                     return (
                       <button
                         key={ledger.id}
                         type="button"
                         className="flex w-full items-center justify-between rounded-[22px] border border-stone-900/8 bg-white px-4 py-4 text-left transition hover:border-stone-900/20 disabled:cursor-not-allowed disabled:opacity-55"
                         onClick={() => handleFreezeScope("ledger", ledger.id)}
-                        disabled={isFreezeSaving || isLedgerAlreadyFull || isFrozenByAll}
+                        disabled={isFreezeSaving || isLedgerAlreadyFull || isFrozenByActualAll}
                       >
                         <div>
                           <p className="font-semibold text-stone-950">{ledger.name}</p>
                           <p className="mt-1 text-sm text-stone-500">
                             {isLedgerAlreadyFull
                               ? "Already full in this ledger."
-                              : isFrozenByAll
+                              : isFrozenByActualAll
                                 ? "Already frozen across all ledgers. Unfreeze all first."
+                              : isLedgerFrozen
+                                ? "Unfreeze this ledger only. Other frozen ledgers stay unchanged."
                               : "This identifier can still use other ledgers if needed."}
                           </p>
                         </div>
                         <span className={`inline-flex rounded-full px-3 py-2 text-xs font-semibold ${
                           isLedgerAlreadyFull
                             ? "bg-stone-100 text-stone-400"
-                            : isFrozenByAll
+                            : isFrozenByActualAll
                               ? "bg-sky-100 text-sky-700"
                             : isLedgerFrozen
                               ? "bg-sky-100 text-sky-700"
@@ -391,7 +396,7 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
                         }`}>
                           {isLedgerAlreadyFull
                             ? "Full"
-                            : isFrozenByAll
+                            : isFrozenByActualAll
                               ? "Frozen"
                               : isLedgerFrozen
                                 ? "Unfreeze"
