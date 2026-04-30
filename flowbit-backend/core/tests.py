@@ -18,6 +18,7 @@ from rest_framework.authtoken.models import Token
 from core.models import (
     Period,
     Identifier,
+    IdentifierLedgerFreeze,
     IdentifierCapacityAdjustment,
     Ledger,
     Overflow,
@@ -1788,6 +1789,93 @@ class PrivateWorkflowAPITests(APITestCase):
         self.assertTrue(tx.allocations.filter(ledger=self.active_ledger, amount=Decimal('100.00')).exists())
         self.assertTrue(tx.allocations.filter(ledger=backup_ledger, amount=Decimal('80.00')).exists())
         self.assertEqual(Overflow.objects.get(transaction=tx).excess_amount, Decimal('107.50'))
+
+    def test_freezing_identifier_in_one_ledger_moves_usage_to_other_ledgers(self):
+        backup_ledger = Ledger.objects.create(
+            owner=self.approver,
+            period=self.active_period,
+            name='Backup Ledger',
+            end_date=self.active_period.end_date,
+            limit_per_identifier=Decimal('200.00'),
+            priority=2,
+            is_active=True,
+        )
+
+        freeze_response = self.client.post(
+            f'/api/identifiers/{self.identifier.id}/freeze/',
+            {
+                'scope': 'ledger',
+                'ledger_id': self.active_ledger.id,
+            },
+            format='json',
+        )
+        self.assertEqual(freeze_response.status_code, status.HTTP_200_OK)
+
+        preview_response = self.client.post('/api/transactions/allocation-preview/', {
+            'identifier': self.identifier.id,
+            'total_amount': '120.00',
+        }, format='json')
+
+        self.assertEqual(preview_response.status_code, status.HTTP_200_OK)
+        allocations = preview_response.data['ledger_allocations']
+        self.assertEqual(len(allocations), 1)
+        self.assertEqual(allocations[0]['ledger_id'], backup_ledger.id)
+        self.assertEqual(allocations[0]['allocated_amount'], '150.00')
+        self.assertEqual(preview_response.data['overflow_amount'], '0.00')
+
+    def test_freezing_identifier_across_all_ledgers_sends_whole_amount_to_overflow(self):
+        Ledger.objects.create(
+            owner=self.approver,
+            period=self.active_period,
+            name='Backup Ledger',
+            end_date=self.active_period.end_date,
+            limit_per_identifier=Decimal('200.00'),
+            priority=2,
+            is_active=True,
+        )
+        IdentifierCapacityAdjustment.objects.create(
+            identifier=self.identifier,
+            period=self.active_period,
+            owner=self.approver,
+            amount=Decimal('50.00'),
+        )
+
+        freeze_response = self.client.post(
+            f'/api/identifiers/{self.identifier.id}/freeze/',
+            {'scope': 'all'},
+            format='json',
+        )
+        self.assertEqual(freeze_response.status_code, status.HTTP_200_OK)
+
+        preview_response = self.client.post('/api/transactions/allocation-preview/', {
+            'identifier': self.identifier.id,
+            'total_amount': '100.00',
+        }, format='json')
+
+        self.assertEqual(preview_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(preview_response.data['reserve_allocated'], '0.00')
+        self.assertEqual(preview_response.data['overflow_amount'], '125.00')
+        self.assertTrue(all(item['allocated_amount'] == '0.00' for item in preview_response.data['ledger_allocations']))
+
+    def test_ledger_view_includes_identifier_freeze_state(self):
+        freeze = IdentifierLedgerFreeze.objects.create(
+            identifier=self.identifier,
+            period=self.active_period,
+            owner=self.approver,
+            ledger=self.active_ledger,
+            applies_to_all=False,
+        )
+
+        response = self.client.get(f'/api/ledgers/{self.active_ledger.id}/view/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        identifier_row = next(
+            row for row in response.data['identifiers']
+            if row['number'] == self.identifier.number
+        )
+        self.assertTrue(identifier_row['is_frozen'])
+        self.assertFalse(identifier_row['frozen_all_ledgers'])
+        self.assertIn(freeze.ledger_id, identifier_row['frozen_ledger_ids'])
 
     def test_ledger_export_pdf_is_limited_to_owner(self):
         allowed_response = self.client.get(f'/api/ledgers/{self.active_ledger.id}/export-pdf/')
