@@ -354,7 +354,7 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
                       className="rounded-[22px] border border-stone-900/8 bg-[#f7f4ef] px-4 py-3"
                     >
                       <div className="flex flex-wrap items-center gap-3 text-sm xl:flex-nowrap">
-                        <span className="w-[54px] shrink-0 font-mono text-base font-semibold tracking-[0.2em] text-stone-950">
+                        <span className="w-[54px] shrink-0 font-mono text-lg font-semibold tracking-[0.2em] text-stone-950">
                           {identifierRow.number}
                         </span>
                         <span className="shrink-0 font-mono text-stone-400">-&gt;</span>
@@ -366,13 +366,13 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
                                   {recording.ticket_number ? (
                                     <button
                                       type="button"
-                                      className="font-semibold text-stone-950 underline decoration-dotted underline-offset-4 hover:text-stone-600"
+                                      className="text-base font-semibold text-stone-950 underline decoration-dotted underline-offset-4 hover:text-stone-600"
                                       onClick={() => openTicketView(recording.ticket_number!)}
                                     >
                                       {recording.display_amount}
                                     </button>
                                   ) : (
-                                    <span className="font-semibold text-stone-950">{recording.display_amount}</span>
+                                    <span className="text-base font-semibold text-stone-950">{recording.display_amount}</span>
                                   )}
                                   <span className="text-stone-400">
                                     {index === identifierRow.recordings.length - 1 ? ".------" : "."}
