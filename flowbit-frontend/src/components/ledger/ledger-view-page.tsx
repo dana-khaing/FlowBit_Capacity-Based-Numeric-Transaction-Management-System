@@ -325,18 +325,7 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
                   .filter((ledger) => !ledger.is_capacity_reserve)
                   .map((ledger) => {
                     const isLedgerFrozen = freezeTarget.frozen_ledger_ids.includes(ledger.id);
-                    const capacityPerIdentifier = Number(
-                      selectedView === "all"
-                        ? ledger.limit_per_identifier
-                        : ledgerView?.summary.capacity_per_identifier || ledger.limit_per_identifier,
-                    );
-                    const currentAllocated = Number(freezeTarget.allocated_amount || "0");
-                    const isLedgerAlreadyFull =
-                      selectedView === "all"
-                        ? false
-                        : freezeTarget.frozen_ledger_ids.includes(ledger.id)
-                          ? false
-                          : ledger.id === ledgerView?.ledger.id && currentAllocated >= capacityPerIdentifier;
+                    const isLedgerAlreadyFull = freezeTarget.full_ledger_ids.includes(ledger.id);
                     return (
                       <button
                         key={ledger.id}
@@ -662,6 +651,7 @@ function buildCombinedLedgerView(
       capacity: number;
       all_ledgers: boolean;
       ledger_ids: Set<number>;
+      full_ledger_ids: Set<number>;
     }
   >();
 
@@ -684,6 +674,7 @@ function buildCombinedLedgerView(
           capacity: Number(row.allocated_amount || "0") + Number(row.remaining_capacity || "0"),
           all_ledgers: row.frozen_all_ledgers,
           ledger_ids: new Set(row.frozen_ledger_ids),
+          full_ledger_ids: new Set(row.full_ledger_ids),
         });
         return;
       }
@@ -694,6 +685,7 @@ function buildCombinedLedgerView(
       existing.capacity += Number(row.allocated_amount || "0") + Number(row.remaining_capacity || "0");
       existing.all_ledgers = existing.all_ledgers || row.frozen_all_ledgers;
       row.frozen_ledger_ids.forEach((ledgerId) => existing.ledger_ids.add(ledgerId));
+      row.full_ledger_ids.forEach((ledgerId) => existing.full_ledger_ids.add(ledgerId));
     });
   });
 
@@ -716,6 +708,7 @@ function buildCombinedLedgerView(
       is_frozen: row.all_ledgers || row.ledger_ids.size > 0,
       frozen_all_ledgers: row.all_ledgers,
       frozen_ledger_ids: Array.from(row.ledger_ids).sort((left, right) => left - right),
+      full_ledger_ids: Array.from(row.full_ledger_ids).sort((left, right) => left - right),
     }));
 
   const identifierCount = identifiers.length;

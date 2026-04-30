@@ -36,6 +36,7 @@ export type FlowBitLedgerIdentifierRow = {
   is_frozen: boolean;
   frozen_all_ledgers: boolean;
   frozen_ledger_ids: number[];
+  full_ledger_ids: number[];
 };
 
 export type FlowBitLedgerView = {
