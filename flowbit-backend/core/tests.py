@@ -1920,6 +1920,46 @@ class PrivateWorkflowAPITests(APITestCase):
         self.assertIn(self.active_ledger.id, identifier_row['full_ledger_ids'])
         self.assertIn(backup_ledger.id, identifier_row['full_ledger_ids'])
 
+    def test_unfreeze_all_clears_individual_ledger_freezes(self):
+        backup_ledger = Ledger.objects.create(
+            owner=self.approver,
+            period=self.active_period,
+            name='Second Freeze Ledger',
+            end_date=self.active_period.end_date,
+            limit_per_identifier=Decimal('100.00'),
+            priority=2,
+            is_active=True,
+        )
+        IdentifierLedgerFreeze.objects.create(
+            identifier=self.identifier,
+            period=self.active_period,
+            owner=self.approver,
+            ledger=self.active_ledger,
+            applies_to_all=False,
+        )
+        IdentifierLedgerFreeze.objects.create(
+            identifier=self.identifier,
+            period=self.active_period,
+            owner=self.approver,
+            ledger=backup_ledger,
+            applies_to_all=False,
+        )
+
+        response = self.client.post(
+            f'/api/identifiers/{self.identifier.id}/unfreeze/',
+            {'scope': 'all'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(
+            IdentifierLedgerFreeze.objects.filter(
+                identifier=self.identifier,
+                period=self.active_period,
+                owner=self.approver,
+            ).exists()
+        )
+
     def test_ledger_export_pdf_is_limited_to_owner(self):
         allowed_response = self.client.get(f'/api/ledgers/{self.active_ledger.id}/export-pdf/')
         self.assertEqual(allowed_response.status_code, status.HTTP_200_OK)
