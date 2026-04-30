@@ -481,10 +481,10 @@ export function TicketHistoryPage() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">
-                Ticket view
+                Receipt preview
               </p>
               <p className="mt-2 text-lg font-semibold text-stone-950">
-                Receipt layout
+                Print-ready
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2 print:hidden">
@@ -553,13 +553,12 @@ export function TicketHistoryPage() {
               <TicketReceiptCard
                 ticket={selectedTicket}
                 periodName={activePeriod?.name}
-                className="mx-auto max-w-[440px] rounded-[28px] border border-dashed border-stone-300 bg-stone-50 p-5 text-stone-900 print:max-w-none print:rounded-none print:border-0 print:bg-white print:p-0"
+                className="receipt-print-card mx-auto max-w-[440px] rounded-[28px] border border-dashed border-stone-300 bg-stone-50 p-5 text-stone-900 print:max-w-none print:rounded-none print:border-0 print:bg-white print:p-0"
               />
             </div>
           ) : (
             <div className="mt-5 rounded-[22px] border border-dashed border-stone-300 bg-stone-50 px-4 py-4 text-sm text-stone-500">
-              Select a ticket from the workspace list to open its receipt view
-              here.
+              Select a ticket from the history list to open its receipt here.
             </div>
           )}
         </section>
