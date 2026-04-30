@@ -251,12 +251,6 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Ledger view</p>
-                <h1 className="mt-2 text-2xl font-semibold text-stone-950">
-                  {selectedView === "all" ? "All ledgers" : ledgerView?.ledger.name || "Ledger"}
-                </h1>
-                <p className="mt-2 text-sm text-stone-500">
-                  Click a recorded amount to open the corresponding ticket receipt.
-                </p>
               </div>
               <Link href="/ledgers">
                 <Button variant="outline" className="h-11 px-4">
