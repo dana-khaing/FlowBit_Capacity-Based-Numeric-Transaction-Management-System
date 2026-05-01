@@ -1,4 +1,4 @@
-import { apiRequest } from "@/lib/api";
+import { apiRequest, getApiBaseUrl } from "@/lib/api";
 import { getStoredToken } from "@/lib/auth-client";
 
 export type FlowBitLedger = {
@@ -60,6 +60,37 @@ function authHeaders() {
   return { Authorization: `Token ${token}` };
 }
 
+async function downloadLedgerAsset(path: string, filenameFallback: string) {
+  const response = await fetch(`${getApiBaseUrl()}${path}`, {
+    method: "GET",
+    headers: authHeaders(),
+  });
+
+  if (!response.ok) {
+    let detail = "Request failed.";
+    try {
+      const data = await response.json();
+      detail =
+        typeof data?.detail === "string"
+          ? data.detail
+          : typeof data?.message === "string"
+            ? data.message
+            : detail;
+    } catch {
+      // Ignore non-JSON error bodies.
+    }
+    throw new Error(detail);
+  }
+
+  const blob = await response.blob();
+  const contentDisposition = response.headers.get("Content-Disposition") || "";
+  const matchedFilename = contentDisposition.match(/filename=\"?([^"]+)\"?/i)?.[1];
+  return {
+    blob,
+    filename: matchedFilename || filenameFallback,
+  };
+}
+
 export async function fetchLedgers(params?: Record<string, string | number | undefined>) {
   const search = new URLSearchParams();
   Object.entries(params || {}).forEach(([key, value]) => {
@@ -80,6 +111,14 @@ export async function fetchLedgerView(ledgerId: number) {
     method: "GET",
     headers: authHeaders(),
   });
+}
+
+export async function exportLedgerCsv(ledgerId: number) {
+  return downloadLedgerAsset(`/ledgers/${ledgerId}/export-csv/`, `ledger-${ledgerId}.csv`);
+}
+
+export async function exportLedgerPdf(ledgerId: number) {
+  return downloadLedgerAsset(`/ledgers/${ledgerId}/export-pdf/`, `ledger-${ledgerId}.pdf`);
 }
 
 export async function freezeIdentifier(payload: {
