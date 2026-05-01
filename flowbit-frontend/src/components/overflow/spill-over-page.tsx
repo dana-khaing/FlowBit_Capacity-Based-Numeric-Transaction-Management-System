@@ -15,7 +15,6 @@ import { AdminConfirmModal } from "@/components/admin/admin-confirm-modal";
 import { ActionLoadingModal } from "@/components/app/action-loading-modal";
 import { PeriodRequiredPage } from "@/components/period/period-required-page";
 import { TicketReceiptCard } from "@/components/tickets/ticket-receipt-card";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { fetchCurrentUser, getStoredUser, type AuthUser } from "@/lib/auth-client";
@@ -199,7 +198,8 @@ export function SpillOverPage() {
   function openApproveModal(overflow: FlowBitOverflow) {
     setApproveTarget(overflow);
     setApproveAmount(formatWholeAmount(overflow.amount_to_approve || overflow.excess_amount || ""));
-    setSelectedCollaboratorIds(overflow.collaborators || []);
+    const initialCollaboratorId = overflow.collaborators[0];
+    setSelectedCollaboratorIds(initialCollaboratorId ? [initialCollaboratorId] : []);
     setCollaboratorDraft({
       username: "",
       full_name: "",
@@ -208,12 +208,8 @@ export function SpillOverPage() {
     });
   }
 
-  function toggleCollaborator(collaboratorId: number) {
-    setSelectedCollaboratorIds((current) =>
-      current.includes(collaboratorId)
-        ? current.filter((id) => id !== collaboratorId)
-        : [...current, collaboratorId],
-    );
+  function selectCollaborator(collaboratorId: number) {
+    setSelectedCollaboratorIds([collaboratorId]);
   }
 
   async function handleApproveOverflow() {
@@ -249,7 +245,7 @@ export function SpillOverPage() {
         phone_number: collaboratorDraft.phone_number.trim(),
       });
       setCollaborators((current) => [...current, collaborator].sort((left, right) => left.username.localeCompare(right.username)));
-      setSelectedCollaboratorIds((current) => [...current, collaborator.id]);
+      setSelectedCollaboratorIds([collaborator.id]);
       setCollaboratorDraft({
         username: "",
         full_name: "",
@@ -474,7 +470,7 @@ export function SpillOverPage() {
             <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-500">Approve spill over</p>
             <h2 className="mt-2 text-2xl font-semibold text-stone-950">{approveTarget.identifier_number}</h2>
             <p className="mt-2 text-sm leading-6 text-stone-500">
-              Confirm how much should be approved and which collaborators helped with this spill-over.
+              Confirm how much should be approved and choose the collaborator who will approve this spill-over.
             </p>
 
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
@@ -495,7 +491,7 @@ export function SpillOverPage() {
             </div>
 
             <div className="mt-5 space-y-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Collaborators</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Approving collaborator</p>
               {collaborators.length === 0 ? (
                 <div className="rounded-[22px] border border-dashed border-stone-300 bg-stone-50 px-4 py-4 text-sm text-stone-500">
                   No collaborators available yet.
@@ -504,20 +500,37 @@ export function SpillOverPage() {
                 <div className="space-y-3">
                   {collaborators.map((collaborator) => {
                     const label = collaborator.full_name.trim() || collaborator.username;
+                    const isSelected = selectedCollaboratorIds.includes(collaborator.id);
                     return (
-                      <label
+                      <button
                         key={collaborator.id}
-                        className="flex items-start gap-3 rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4"
+                        type="button"
+                        onClick={() => selectCollaborator(collaborator.id)}
+                        className={`flex w-full items-start gap-3 rounded-[22px] border px-4 py-4 text-left transition ${
+                          isSelected
+                            ? "border-stone-950 bg-stone-100"
+                            : "border-stone-900/8 bg-stone-50 hover:border-stone-300 hover:bg-white"
+                        }`}
                       >
-                        <Checkbox
-                          checked={selectedCollaboratorIds.includes(collaborator.id)}
-                          onCheckedChange={() => toggleCollaborator(collaborator.id)}
-                        />
+                        <span
+                          className={`mt-0.5 flex h-5 w-5 flex-none items-center justify-center rounded-full border transition ${
+                            isSelected
+                              ? "border-stone-950"
+                              : "border-stone-300 bg-white"
+                          }`}
+                          aria-hidden="true"
+                        >
+                          <span
+                            className={`h-2.5 w-2.5 rounded-full transition ${
+                              isSelected ? "bg-stone-950" : "bg-transparent"
+                            }`}
+                          />
+                        </span>
                         <div className="min-w-0">
                           <p className="text-sm font-semibold text-stone-900">{label}</p>
                           <p className="mt-1 text-sm text-stone-500">{collaborator.email || collaborator.phone_number || collaborator.username}</p>
                         </div>
-                      </label>
+                      </button>
                     );
                   })}
                 </div>
