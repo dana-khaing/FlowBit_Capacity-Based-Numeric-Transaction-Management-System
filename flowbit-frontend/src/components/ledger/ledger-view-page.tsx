@@ -266,30 +266,24 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
           : Boolean(ledgerIdValue && freezeTarget.frozen_ledger_ids.includes(ledgerIdValue));
 
       if (shouldUnfreeze) {
-        await unfreezeIdentifier({
+        const result = await unfreezeIdentifier({
           identifierId: freezeTarget.identifier_id,
           scope,
           ledgerId: ledgerIdValue,
         });
         setToast({
           type: "success",
-          message:
-            scope === "all"
-              ? `Identifier ${freezeTarget.number} is enabled across all ledgers.`
-              : `Identifier ${freezeTarget.number} is enabled for that ledger.`,
+          message: result.message,
         });
       } else {
-        await freezeIdentifier({
+        const result = await freezeIdentifier({
           identifierId: freezeTarget.identifier_id,
           scope,
           ledgerId: ledgerIdValue,
         });
         setToast({
           type: "success",
-          message:
-            scope === "all"
-              ? `Identifier ${freezeTarget.number} is disabled across all ledgers.`
-              : `Identifier ${freezeTarget.number} is disabled for that ledger.`,
+          message: result.message,
         });
       }
 
