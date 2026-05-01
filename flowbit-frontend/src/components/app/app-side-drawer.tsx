@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faLock, faXmark } from "@fortawesome/free-solid-svg-icons";
 import { primaryNavItems } from "@/components/app/app-nav";
 import { usePeriodState } from "@/components/period/use-period-state";
 import { Button } from "@/components/ui/button";
+import { fetchCurrentUser, getStoredUser, type AuthUser } from "@/lib/auth-client";
 
 type AppSideDrawerProps = {
   open: boolean;
@@ -15,10 +17,21 @@ type AppSideDrawerProps = {
 
 export function AppSideDrawer({ open, onClose }: AppSideDrawerProps) {
   const pathname = usePathname();
+  const [user, setUser] = useState<AuthUser | null>(getStoredUser());
   const { hasActivePeriod } = usePeriodState();
   const periodLockedRoutes = new Set(["/tickets/create", "/ledgers", "/spill-over", "/tickets"]);
+  const visibleNavItems = primaryNavItems.filter(
+    (item) => item.href !== "/periods" || user?.role === "admin",
+  );
 
-  const activeHref = primaryNavItems
+  useEffect(() => {
+    setUser(getStoredUser());
+    fetchCurrentUser().then(setUser).catch(() => {
+      // Session guard handles invalid sessions.
+    });
+  }, []);
+
+  const activeHref = visibleNavItems
     .filter((item) => {
       if (item.href === "/") {
         return pathname === "/";
@@ -48,7 +61,7 @@ export function AppSideDrawer({ open, onClose }: AppSideDrawerProps) {
         </div>
 
         <nav className="thin-scrollbar mt-8 flex-1 space-y-2 overflow-y-auto pr-1">
-          {primaryNavItems.map((item) => {
+          {visibleNavItems.map((item) => {
             const isActive = activeHref === item.href;
             const isLocked = !hasActivePeriod && periodLockedRoutes.has(item.href);
 
