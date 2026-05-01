@@ -315,8 +315,8 @@ export function SpillOverPage() {
                           </span>
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-2 xl:justify-end">
-                          <p className="text-sm font-semibold text-stone-700">
+                        <div className="flex flex-wrap items-center gap-3 xl:justify-end">
+                          <p className="mr-2 text-base font-semibold text-stone-700">
                             Amount: <span className="text-stone-950">{formatAmount(overflow.excess_amount)}</span>
                           </p>
                           {overflow.ticket_number ? (
