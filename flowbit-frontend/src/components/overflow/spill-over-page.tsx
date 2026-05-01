@@ -101,6 +101,7 @@ export function SpillOverPage() {
   const [toast, setToast] = useState<ToastState>(null);
   const [activeTab, setActiveTab] = useState<"pending" | "approved">("pending");
   const [searchQuery, setSearchQuery] = useState("");
+  const [collaboratorFilter, setCollaboratorFilter] = useState("all");
   const [approveTarget, setApproveTarget] = useState<FlowBitOverflow | null>(null);
   const [approveAmount, setApproveAmount] = useState("");
   const [selectedCollaboratorIds, setSelectedCollaboratorIds] = useState<number[]>([]);
@@ -156,26 +157,44 @@ export function SpillOverPage() {
     loadPageData();
   }, []);
 
+  const collaboratorFilterOptions = useMemo(() => {
+    const names = new Set<string>();
+    approvedOverflows.forEach((overflow) => {
+      overflow.collaborator_names.forEach((name) => {
+        const trimmed = name.trim();
+        if (trimmed) {
+          names.add(trimmed);
+        }
+      });
+    });
+    return Array.from(names).sort((left, right) => left.localeCompare(right));
+  }, [approvedOverflows]);
+
   const visibleOverflows = useMemo(() => {
     const source = activeTab === "pending" ? pendingOverflows : approvedOverflows;
     const query = searchQuery.trim().toLowerCase();
-    if (!query) {
-      return source;
-    }
-    return source.filter((overflow) =>
-      [
-        overflow.identifier_number,
-        overflow.order_number,
-        overflow.ticket_number || "",
-        overflow.customer_name || "",
-        overflow.helper_name || "",
-        overflow.collaborator_names.join(" "),
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(query),
-    );
-  }, [activeTab, approvedOverflows, pendingOverflows, searchQuery]);
+    return source.filter((overflow) => {
+      const matchesQuery = !query
+        ? true
+        : [
+            overflow.identifier_number,
+            overflow.order_number,
+            overflow.ticket_number || "",
+            overflow.customer_name || "",
+            overflow.collaborator_names.join(" "),
+          ]
+            .join(" ")
+            .toLowerCase()
+            .includes(query);
+
+      const matchesCollaborator =
+        collaboratorFilter === "all"
+          ? true
+          : overflow.collaborator_names.includes(collaboratorFilter);
+
+      return matchesQuery && matchesCollaborator;
+    });
+  }, [activeTab, approvedOverflows, collaboratorFilter, pendingOverflows, searchQuery]);
 
   const pendingAmount = useMemo(
     () =>
@@ -343,9 +362,21 @@ export function SpillOverPage() {
                 <Input
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
-                  placeholder="Search by identifier, ticket, order, customer, or helper"
+                  placeholder="Search by identifier, ticket, order, customer, or collaborator"
                   className="min-w-[260px] flex-1"
                 />
+                <select
+                  value={collaboratorFilter}
+                  onChange={(event) => setCollaboratorFilter(event.target.value)}
+                  className="h-11 min-w-[220px] rounded-[18px] border border-stone-900/8 bg-white px-4 text-sm font-medium text-stone-700 outline-none transition focus:border-stone-950"
+                >
+                  <option value="all">All collaborators</option>
+                  {collaboratorFilterOptions.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               {visibleOverflows.length === 0 ? (
@@ -409,12 +440,6 @@ export function SpillOverPage() {
 
                       {overflow.status !== "TCSO" ? (
                         <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-stone-900/8 pt-3 text-sm">
-                          <p className="text-stone-500">
-                            Helper:{" "}
-                            <span className="font-medium text-stone-900">
-                              {overflow.helper_name || "-"}
-                            </span>
-                          </p>
                           <p className="text-stone-500">
                             Collaborators:{" "}
                             <span className="font-medium text-stone-900">
