@@ -11,6 +11,7 @@ from .models import (
     Period,
     Ledger,
     Identifier,
+    IdentifierLedgerFreeze,
     Transaction,
     LedgerAllocation,
     Overflow,
@@ -281,6 +282,7 @@ class TicketRefundActionSerializer(serializers.Serializer):
 class IdentifierSerializer(serializers.ModelSerializer):
     current_utilization = serializers.SerializerMethodField()
     remaining_capacity = serializers.SerializerMethodField()
+    is_frozen_all_ledgers = serializers.SerializerMethodField()
     current_overflow_amount = serializers.SerializerMethodField()
     total_overflow_amount = serializers.SerializerMethodField()
     confirmed_overflow_amount = serializers.SerializerMethodField()
@@ -291,6 +293,7 @@ class IdentifierSerializer(serializers.ModelSerializer):
             'id', 'number',
             'current_utilization',
             'remaining_capacity',
+            'is_frozen_all_ledgers',
             'current_overflow_amount',
             'confirmed_overflow_amount',
             'total_overflow_amount',
@@ -318,6 +321,14 @@ class IdentifierSerializer(serializers.ModelSerializer):
         user = self._request_user()
         open_period = Period.get_open_period()
         if user is None or open_period is None:
+            return Decimal('0.00')
+
+        if IdentifierLedgerFreeze.objects.filter(
+            identifier=obj,
+            period=open_period,
+            owner=user,
+            applies_to_all=True,
+        ).exists():
             return Decimal('0.00')
 
         total_limit = Ledger.objects.filter(
@@ -349,6 +360,19 @@ class IdentifierSerializer(serializers.ModelSerializer):
         ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
 
         return total_limit + reserve_granted - normal_usage - reserve_used
+
+    def get_is_frozen_all_ledgers(self, obj):
+        user = self._request_user()
+        open_period = Period.get_open_period()
+        if user is None or open_period is None:
+            return False
+
+        return IdentifierLedgerFreeze.objects.filter(
+            identifier=obj,
+            period=open_period,
+            owner=user,
+            applies_to_all=True,
+        ).exists()
 
     def get_current_overflow_amount(self, obj):
         user = self._request_user()
