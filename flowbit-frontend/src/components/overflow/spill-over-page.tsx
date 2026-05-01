@@ -340,25 +340,35 @@ export function SpillOverPage() {
                             <span>{formatDateTime(overflow.timestamp)}</span>
                           </div>
 
-                          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                          <div
+                            className={`mt-4 grid gap-3 ${
+                              overflow.status === "TCSO"
+                                ? "sm:grid-cols-1 xl:grid-cols-1"
+                                : "sm:grid-cols-2 xl:grid-cols-4"
+                            }`}
+                          >
                             <div className="rounded-[18px] bg-stone-50 px-4 py-3">
                               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Spill over</p>
                               <p className="mt-1 text-lg font-semibold text-stone-950">{formatAmount(overflow.excess_amount)}</p>
                             </div>
-                            <div className="rounded-[18px] bg-stone-50 px-4 py-3">
-                              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Approved</p>
-                              <p className="mt-1 text-lg font-semibold text-stone-950">{formatAmount(getOverflowApprovedAmount(overflow))}</p>
-                            </div>
-                            <div className="rounded-[18px] bg-stone-50 px-4 py-3">
-                              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Helper</p>
-                              <p className="mt-1 text-sm font-medium text-stone-900">{overflow.helper_name || "-"}</p>
-                            </div>
-                            <div className="rounded-[18px] bg-stone-50 px-4 py-3">
-                              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Collaborators</p>
-                              <p className="mt-1 text-sm font-medium text-stone-900">
-                                {overflow.collaborator_names.length ? overflow.collaborator_names.join(", ") : "-"}
-                              </p>
-                            </div>
+                            {overflow.status !== "TCSO" ? (
+                              <>
+                                <div className="rounded-[18px] bg-stone-50 px-4 py-3">
+                                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Approved</p>
+                                  <p className="mt-1 text-lg font-semibold text-stone-950">{formatAmount(getOverflowApprovedAmount(overflow))}</p>
+                                </div>
+                                <div className="rounded-[18px] bg-stone-50 px-4 py-3">
+                                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Helper</p>
+                                  <p className="mt-1 text-sm font-medium text-stone-900">{overflow.helper_name || "-"}</p>
+                                </div>
+                                <div className="rounded-[18px] bg-stone-50 px-4 py-3">
+                                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Collaborators</p>
+                                  <p className="mt-1 text-sm font-medium text-stone-900">
+                                    {overflow.collaborator_names.length ? overflow.collaborator_names.join(", ") : "-"}
+                                  </p>
+                                </div>
+                              </>
+                            ) : null}
                           </div>
                         </div>
 
