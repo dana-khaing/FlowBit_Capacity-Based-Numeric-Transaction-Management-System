@@ -13,14 +13,21 @@ type PeriodRequiredPageProps = {
   title: string;
   description: string;
   children: ReactNode;
+  showDefaultAside?: boolean;
 };
 
-export function PeriodRequiredPage({ eyebrow, title, description, children }: PeriodRequiredPageProps) {
+export function PeriodRequiredPage({
+  eyebrow,
+  title,
+  description,
+  children,
+  showDefaultAside = true,
+}: PeriodRequiredPageProps) {
   const { activePeriod, hasActivePeriod, isLoading, error } = usePeriodState();
 
   if (isLoading) {
     return (
-      <AppSectionPage eyebrow={eyebrow} title={title} description={description}>
+      <AppSectionPage eyebrow={eyebrow} title={title} description={description} showDefaultAside={showDefaultAside}>
         <div className="space-y-4 text-sm leading-6 text-stone-500">
           <p>Checking for an active period before opening this workspace.</p>
         </div>
@@ -34,6 +41,7 @@ export function PeriodRequiredPage({ eyebrow, title, description, children }: Pe
         eyebrow={eyebrow}
         title={`${title} is locked`}
         description="Create an active period first. Ticket entry, ledgers, spill-over, and ticket history stay locked until a period is in place."
+        showDefaultAside={showDefaultAside}
       >
         <div className="rounded-[24px] border border-amber-200 bg-amber-50 px-5 py-5 text-stone-700">
           <div className="flex items-start gap-3">
@@ -62,6 +70,7 @@ export function PeriodRequiredPage({ eyebrow, title, description, children }: Pe
       eyebrow={eyebrow}
       title={title}
       description={`${description} Active period: ${activePeriod?.name}.`}
+      showDefaultAside={showDefaultAside}
     >
       {children}
     </AppSectionPage>
