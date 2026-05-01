@@ -313,12 +313,12 @@ export function SpillOverPage() {
                           <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${getOverflowStatusTone(overflow.status)}`}>
                             {getOverflowStatusLabel(overflow.status)}
                           </span>
-                          <p className="text-xl font-semibold text-stone-950">
-                            {formatAmount(overflow.excess_amount)}
-                          </p>
                         </div>
 
                         <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+                          <p className="text-sm font-semibold text-stone-700">
+                            Amount: <span className="text-stone-950">{formatAmount(overflow.excess_amount)}</span>
+                          </p>
                           {overflow.ticket_number ? (
                             <Button
                               variant="outline"
