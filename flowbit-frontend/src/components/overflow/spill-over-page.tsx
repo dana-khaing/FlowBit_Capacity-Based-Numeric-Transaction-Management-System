@@ -6,6 +6,7 @@ import {
   faArrowTrendUp,
   faCircleCheck,
   faClock,
+  faReceipt,
   faRotateLeft,
   faTriangleExclamation,
 } from "@fortawesome/free-solid-svg-icons";
@@ -13,10 +14,12 @@ import { AdminActionToast } from "@/components/admin/admin-action-toast";
 import { AdminConfirmModal } from "@/components/admin/admin-confirm-modal";
 import { ActionLoadingModal } from "@/components/app/action-loading-modal";
 import { PeriodRequiredPage } from "@/components/period/period-required-page";
+import { TicketReceiptCard } from "@/components/tickets/ticket-receipt-card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { fetchCurrentUser, getStoredUser, type AuthUser } from "@/lib/auth-client";
+import { fetchTicketDetail, type FlowBitTicketDetail } from "@/lib/ticket-client";
 import {
   approveOverflow,
   fetchApprovedOverflows,
@@ -105,6 +108,8 @@ export function SpillOverPage() {
   } | null>(null);
   const [overrideCode, setOverrideCode] = useState("");
   const [busyLabel, setBusyLabel] = useState<string | null>(null);
+  const [selectedTicketDetail, setSelectedTicketDetail] = useState<FlowBitTicketDetail | null>(null);
+  const [isTicketViewLoading, setIsTicketViewLoading] = useState(false);
 
   const requiresOverride = user?.role !== "admin";
 
@@ -242,6 +247,22 @@ export function SpillOverPage() {
     }
   }
 
+  async function openTicketView(ticketNumber: string | null) {
+    if (!ticketNumber) {
+      return;
+    }
+    setIsTicketViewLoading(true);
+    try {
+      const detail = await fetchTicketDetail(ticketNumber);
+      setSelectedTicketDetail(detail);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Request failed.";
+      setToast({ type: "error", message });
+    } finally {
+      setIsTicketViewLoading(false);
+    }
+  }
+
   return (
     <>
       <PeriodRequiredPage
@@ -297,7 +318,7 @@ export function SpillOverPage() {
                   {visibleOverflows.map((overflow) => (
                     <div
                       key={overflow.id}
-                      className="rounded-[24px] border border-stone-900/8 bg-white px-5 py-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)]"
+                      className="rounded-[24px] border border-stone-900/8 bg-white px-5 py-4 shadow-[0_8px_24px_rgba(28,24,20,0.04)]"
                     >
                       <div className="flex flex-wrap items-start gap-4">
                         <div className="min-w-0 flex-1">
@@ -340,15 +361,25 @@ export function SpillOverPage() {
                         </div>
 
                         <div className="flex flex-wrap items-center gap-2">
+                          {overflow.ticket_number ? (
+                            <Button
+                              variant="outline"
+                              className="h-11 min-w-[124px] rounded-[18px]"
+                              onClick={() => openTicketView(overflow.ticket_number)}
+                            >
+                              <FontAwesomeIcon icon={faReceipt} className="h-3.5 w-3.5" />
+                              Ticket
+                            </Button>
+                          ) : null}
                           {overflow.status === "TCSO" ? (
-                            <Button variant="outline" className="rounded-[18px]" onClick={() => openApproveModal(overflow)}>
+                            <Button variant="outline" className="h-11 min-w-[124px] rounded-[18px]" onClick={() => openApproveModal(overflow)}>
                               <FontAwesomeIcon icon={faCircleCheck} className="h-3.5 w-3.5" />
                               Approve
                             </Button>
                           ) : null}
                           <Button
                             variant="outline"
-                            className="rounded-[18px]"
+                            className="h-11 min-w-[124px] rounded-[18px]"
                             onClick={() => setRefundTarget({ overflow, action: "refund_overflow_only" })}
                           >
                             <FontAwesomeIcon icon={faRotateLeft} className="h-3.5 w-3.5" />
@@ -356,14 +387,14 @@ export function SpillOverPage() {
                           </Button>
                           <Button
                             variant="outline"
-                            className="rounded-[18px]"
+                            className="h-11 min-w-[124px] rounded-[18px]"
                             onClick={() => setRefundTarget({ overflow, action: "refund_transaction" })}
                           >
                             <FontAwesomeIcon icon={faRotateLeft} className="h-3.5 w-3.5" />
                             Refund transaction
                           </Button>
                           <Button
-                            className="rounded-[18px]"
+                            className="h-11 min-w-[124px] rounded-[18px]"
                             onClick={() => setRefundTarget({ overflow, action: "refund_ticket" })}
                           >
                             <FontAwesomeIcon icon={faRotateLeft} className="h-3.5 w-3.5" />
@@ -513,6 +544,32 @@ export function SpillOverPage() {
         title={busyLabel || "Processing"}
         description="FlowBit is updating the spill-over queue. This will close automatically when the action finishes."
       />
+      {selectedTicketDetail || isTicketViewLoading ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/30 px-4 py-6"
+          onClick={() => {
+            if (!isTicketViewLoading) {
+              setSelectedTicketDetail(null);
+            }
+          }}
+        >
+          <div
+            className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_18px_48px_rgba(24,24,24,0.18)] sm:p-6"
+            onClick={(event) => event.stopPropagation()}
+          >
+            {isTicketViewLoading || !selectedTicketDetail ? (
+              <div className="rounded-[22px] border border-dashed border-stone-300 bg-stone-50 px-4 py-10 text-sm text-stone-500">
+                Loading ticket receipt.
+              </div>
+            ) : (
+              <TicketReceiptCard
+                ticket={selectedTicketDetail}
+                className="receipt-print-card mx-auto max-w-[440px] rounded-[28px] border border-dashed border-stone-300 bg-stone-50 p-5 text-stone-900"
+              />
+            )}
+          </div>
+        </div>
+      ) : null}
       {toast ? <AdminActionToast message={toast.message} type={toast.type} onClose={() => setToast(null)} /> : null}
     </>
   );
