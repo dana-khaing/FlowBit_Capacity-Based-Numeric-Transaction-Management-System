@@ -305,50 +305,21 @@ export function SpillOverPage() {
                       key={overflow.id}
                       className="rounded-[24px] border border-stone-900/8 bg-white px-5 py-4 shadow-[0_8px_24px_rgba(28,24,20,0.04)]"
                     >
-                      <div className="flex flex-wrap items-start gap-4">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-3">
-                            <p className="text-xl font-semibold text-stone-950">
-                              {overflow.identifier_number}
-                            </p>
-                            <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${getOverflowStatusTone(overflow.status)}`}>
-                              {getOverflowStatusLabel(overflow.status)}
-                            </span>
-                          </div>
-
-                          <div
-                            className={`mt-4 grid gap-3 ${
-                              overflow.status === "TCSO"
-                                ? "sm:grid-cols-1 xl:grid-cols-1"
-                                : "sm:grid-cols-2 xl:grid-cols-4"
-                            }`}
-                          >
-                            <div className="rounded-[18px] bg-stone-50 px-4 py-3">
-                              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Amount</p>
-                              <p className="mt-1 text-lg font-semibold text-stone-950">{formatAmount(overflow.excess_amount)}</p>
-                            </div>
-                            {overflow.status !== "TCSO" ? (
-                              <>
-                                <div className="rounded-[18px] bg-stone-50 px-4 py-3">
-                                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Approved</p>
-                                  <p className="mt-1 text-lg font-semibold text-stone-950">{formatAmount(getOverflowApprovedAmount(overflow))}</p>
-                                </div>
-                                <div className="rounded-[18px] bg-stone-50 px-4 py-3">
-                                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Helper</p>
-                                  <p className="mt-1 text-sm font-medium text-stone-900">{overflow.helper_name || "-"}</p>
-                                </div>
-                                <div className="rounded-[18px] bg-stone-50 px-4 py-3">
-                                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Collaborators</p>
-                                  <p className="mt-1 text-sm font-medium text-stone-900">
-                                    {overflow.collaborator_names.length ? overflow.collaborator_names.join(", ") : "-"}
-                                  </p>
-                                </div>
-                              </>
-                            ) : null}
+                      <div className="flex flex-wrap items-center gap-3 xl:flex-nowrap">
+                        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
+                          <p className="text-xl font-semibold text-stone-950">
+                            {overflow.identifier_number}
+                          </p>
+                          <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${getOverflowStatusTone(overflow.status)}`}>
+                            {getOverflowStatusLabel(overflow.status)}
+                          </span>
+                          <div className="rounded-[18px] bg-stone-50 px-4 py-3">
+                            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Amount</p>
+                            <p className="mt-1 text-lg font-semibold text-stone-950">{formatAmount(overflow.excess_amount)}</p>
                           </div>
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2 xl:justify-end">
                           {overflow.ticket_number ? (
                             <Button
                               variant="outline"
@@ -375,6 +346,25 @@ export function SpillOverPage() {
                           </Button>
                         </div>
                       </div>
+
+                      {overflow.status !== "TCSO" ? (
+                        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                          <div className="rounded-[18px] bg-stone-50 px-4 py-3">
+                            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Approved</p>
+                            <p className="mt-1 text-lg font-semibold text-stone-950">{formatAmount(getOverflowApprovedAmount(overflow))}</p>
+                          </div>
+                          <div className="rounded-[18px] bg-stone-50 px-4 py-3">
+                            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Helper</p>
+                            <p className="mt-1 text-sm font-medium text-stone-900">{overflow.helper_name || "-"}</p>
+                          </div>
+                          <div className="rounded-[18px] bg-stone-50 px-4 py-3">
+                            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Collaborators</p>
+                            <p className="mt-1 text-sm font-medium text-stone-900">
+                              {overflow.collaborator_names.length ? overflow.collaborator_names.join(", ") : "-"}
+                            </p>
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   ))}
                 </div>
