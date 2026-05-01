@@ -56,6 +56,14 @@ function formatAmount(value: string | null | undefined) {
   });
 }
 
+function formatWholeAmount(value: string | null | undefined) {
+  const amount = Number(value || "0");
+  if (Number.isNaN(amount)) {
+    return value || "0";
+  }
+  return Math.trunc(amount).toLocaleString("en-GB");
+}
+
 function sanitizeWholeNumberInput(value: string) {
   return value.replace(/[^\d]/g, "");
 }
@@ -190,7 +198,7 @@ export function SpillOverPage() {
 
   function openApproveModal(overflow: FlowBitOverflow) {
     setApproveTarget(overflow);
-    setApproveAmount(sanitizeWholeNumberInput(overflow.amount_to_approve || overflow.excess_amount || ""));
+    setApproveAmount(formatWholeAmount(overflow.amount_to_approve || overflow.excess_amount || ""));
     setSelectedCollaboratorIds(overflow.collaborators || []);
     setCollaboratorDraft({
       username: "",
@@ -472,7 +480,7 @@ export function SpillOverPage() {
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
               <label className="space-y-2">
                 <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Overflow amount</span>
-                <Input value={formatAmount(approveTarget.excess_amount)} disabled />
+                <Input value={formatWholeAmount(approveTarget.excess_amount)} disabled />
               </label>
               <label className="space-y-2">
                 <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Amount to approve</span>
@@ -493,7 +501,7 @@ export function SpillOverPage() {
                   No collaborators available yet.
                 </div>
               ) : (
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-3">
                   {collaborators.map((collaborator) => {
                     const label = collaborator.full_name.trim() || collaborator.username;
                     return (
