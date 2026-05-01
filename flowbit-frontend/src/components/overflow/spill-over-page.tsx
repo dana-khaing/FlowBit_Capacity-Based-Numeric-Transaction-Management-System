@@ -269,6 +269,7 @@ export function SpillOverPage() {
         eyebrow="Spill over"
         title="Spill-over review"
         description="Review pending TCSO items, confirm approved CSO items, and move quickly into refund actions."
+        showDefaultAside={false}
       >
         {isLoading ? (
           <div className="rounded-[24px] border border-dashed border-stone-300 bg-stone-50 px-5 py-10 text-sm text-stone-500">
