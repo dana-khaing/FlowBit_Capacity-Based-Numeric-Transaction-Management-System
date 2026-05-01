@@ -1666,7 +1666,8 @@ class OverflowViewSet(viewsets.ModelViewSet):
         try:
             collaborators = resolve_collaborators_for_approval(request, collaborator_ids)
         except ValidationError as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            detail = exc.messages[0] if getattr(exc, 'messages', None) else str(exc)
+            return Response({"detail": detail}, status=status.HTTP_400_BAD_REQUEST)
 
         if amount_str:
             try:

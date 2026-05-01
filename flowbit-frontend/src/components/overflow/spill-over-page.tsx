@@ -22,6 +22,7 @@ import { fetchCurrentUser, getStoredUser, type AuthUser } from "@/lib/auth-clien
 import { fetchTicketDetail, type FlowBitTicketDetail } from "@/lib/ticket-client";
 import {
   approveOverflow,
+  createCollaborator,
   fetchApprovedOverflows,
   fetchCollaborators,
   fetchPendingOverflows,
@@ -37,6 +38,13 @@ type ToastState = {
 
 type RefundAction = "refund_overflow_only" | "refund_transaction" | "refund_ticket";
 
+type CollaboratorDraft = {
+  username: string;
+  full_name: string;
+  email: string;
+  phone_number: string;
+};
+
 function formatAmount(value: string | null | undefined) {
   const amount = Number(value || "0");
   if (Number.isNaN(amount)) {
@@ -46,6 +54,10 @@ function formatAmount(value: string | null | undefined) {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   });
+}
+
+function sanitizeWholeNumberInput(value: string) {
+  return value.replace(/[^\d]/g, "");
 }
 
 function getOverflowApprovedAmount(overflow: FlowBitOverflow) {
@@ -85,6 +97,12 @@ export function SpillOverPage() {
   const [approveTarget, setApproveTarget] = useState<FlowBitOverflow | null>(null);
   const [approveAmount, setApproveAmount] = useState("");
   const [selectedCollaboratorIds, setSelectedCollaboratorIds] = useState<number[]>([]);
+  const [collaboratorDraft, setCollaboratorDraft] = useState<CollaboratorDraft>({
+    username: "",
+    full_name: "",
+    email: "",
+    phone_number: "",
+  });
   const [refundTarget, setRefundTarget] = useState<{
     overflow: FlowBitOverflow;
     action: RefundAction;
@@ -172,8 +190,14 @@ export function SpillOverPage() {
 
   function openApproveModal(overflow: FlowBitOverflow) {
     setApproveTarget(overflow);
-    setApproveAmount(overflow.amount_to_approve || overflow.excess_amount || "");
+    setApproveAmount(sanitizeWholeNumberInput(overflow.amount_to_approve || overflow.excess_amount || ""));
     setSelectedCollaboratorIds(overflow.collaborators || []);
+    setCollaboratorDraft({
+      username: "",
+      full_name: "",
+      email: "",
+      phone_number: "",
+    });
   }
 
   function toggleCollaborator(collaboratorId: number) {
@@ -199,6 +223,32 @@ export function SpillOverPage() {
       setToast({ type: "success", message: response.message });
       setApproveTarget(null);
       await loadPageData();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Request failed.";
+      setToast({ type: "error", message });
+    } finally {
+      setBusyLabel(null);
+    }
+  }
+
+  async function handleCreateCollaborator() {
+    setBusyLabel("Creating collaborator");
+    try {
+      const collaborator = await createCollaborator({
+        username: collaboratorDraft.username.trim(),
+        full_name: collaboratorDraft.full_name.trim(),
+        email: collaboratorDraft.email.trim(),
+        phone_number: collaboratorDraft.phone_number.trim(),
+      });
+      setCollaborators((current) => [...current, collaborator].sort((left, right) => left.username.localeCompare(right.username)));
+      setSelectedCollaboratorIds((current) => [...current, collaborator.id]);
+      setCollaboratorDraft({
+        username: "",
+        full_name: "",
+        email: "",
+        phone_number: "",
+      });
+      setToast({ type: "success", message: `Collaborator '${collaborator.username}' created.` });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Request failed.";
       setToast({ type: "error", message });
@@ -422,15 +472,16 @@ export function SpillOverPage() {
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
               <label className="space-y-2">
                 <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Overflow amount</span>
-                <Input value={approveTarget.excess_amount} disabled />
+                <Input value={formatAmount(approveTarget.excess_amount)} disabled />
               </label>
               <label className="space-y-2">
                 <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Amount to approve</span>
                 <Input
-                  inputMode="decimal"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   value={approveAmount}
-                  onChange={(event) => setApproveAmount(event.target.value)}
-                  placeholder={approveTarget.excess_amount}
+                  onChange={(event) => setApproveAmount(sanitizeWholeNumberInput(event.target.value))}
+                  placeholder={formatAmount(approveTarget.excess_amount)}
                 />
               </label>
             </div>
@@ -463,6 +514,55 @@ export function SpillOverPage() {
                   })}
                 </div>
               )}
+            </div>
+
+            <div className="mt-5 rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Create collaborator</p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <Input
+                  value={collaboratorDraft.full_name}
+                  onChange={(event) =>
+                    setCollaboratorDraft((current) => ({ ...current, full_name: event.target.value }))
+                  }
+                  placeholder="Full name"
+                />
+                <Input
+                  value={collaboratorDraft.username}
+                  onChange={(event) =>
+                    setCollaboratorDraft((current) => ({ ...current, username: event.target.value }))
+                  }
+                  placeholder="Username"
+                />
+                <Input
+                  value={collaboratorDraft.email}
+                  onChange={(event) =>
+                    setCollaboratorDraft((current) => ({ ...current, email: event.target.value }))
+                  }
+                  placeholder="Email"
+                />
+                <Input
+                  value={collaboratorDraft.phone_number}
+                  onChange={(event) =>
+                    setCollaboratorDraft((current) => ({ ...current, phone_number: event.target.value }))
+                  }
+                  placeholder="Phone number"
+                />
+              </div>
+              <div className="mt-3 flex justify-end">
+                <Button
+                  variant="outline"
+                  onClick={handleCreateCollaborator}
+                  disabled={
+                    Boolean(busyLabel) ||
+                    !collaboratorDraft.username.trim() ||
+                    !collaboratorDraft.full_name.trim() ||
+                    !collaboratorDraft.email.trim() ||
+                    !collaboratorDraft.phone_number.trim()
+                  }
+                >
+                  Create collaborator
+                </Button>
+              </div>
             </div>
 
             <div className="mt-5 flex justify-end gap-3">
