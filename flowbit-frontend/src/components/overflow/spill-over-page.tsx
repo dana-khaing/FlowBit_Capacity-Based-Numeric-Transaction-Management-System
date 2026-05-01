@@ -365,18 +365,20 @@ export function SpillOverPage() {
                   placeholder="Search by identifier, ticket, order, customer, or collaborator"
                   className="min-w-[260px] flex-1"
                 />
-                <select
-                  value={collaboratorFilter}
-                  onChange={(event) => setCollaboratorFilter(event.target.value)}
-                  className="h-11 min-w-[220px] rounded-[18px] border border-stone-900/8 bg-white px-4 text-sm font-medium text-stone-700 outline-none transition focus:border-stone-950"
-                >
-                  <option value="all">All collaborators</option>
-                  {collaboratorFilterOptions.map((name) => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
+                {activeTab === "approved" ? (
+                  <select
+                    value={collaboratorFilter}
+                    onChange={(event) => setCollaboratorFilter(event.target.value)}
+                    className="h-11 min-w-[220px] rounded-[18px] border border-stone-900/8 bg-white px-4 text-sm font-medium text-stone-700 outline-none transition focus:border-stone-950"
+                  >
+                    <option value="all">All collaborators</option>
+                    {collaboratorFilterOptions.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
               </div>
 
               {visibleOverflows.length === 0 ? (
