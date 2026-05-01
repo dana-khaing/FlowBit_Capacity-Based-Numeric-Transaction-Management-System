@@ -323,20 +323,35 @@ class IdentifierSerializer(serializers.ModelSerializer):
         if user is None or open_period is None:
             return Decimal('0.00')
 
-        if IdentifierLedgerFreeze.objects.filter(
+        all_ledgers_frozen = IdentifierLedgerFreeze.objects.filter(
             identifier=obj,
             period=open_period,
             owner=user,
             applies_to_all=True,
-        ).exists():
+        ).exists()
+        if all_ledgers_frozen:
             return Decimal('0.00')
 
-        total_limit = Ledger.objects.filter(
+        frozen_ledger_ids = list(
+            IdentifierLedgerFreeze.objects.filter(
+                identifier=obj,
+                period=open_period,
+                owner=user,
+                applies_to_all=False,
+                ledger__isnull=False,
+            ).values_list('ledger_id', flat=True)
+        )
+
+        usable_standard_ledgers = Ledger.objects.filter(
             owner=user,
             is_active=True,
             period=open_period,
             is_capacity_reserve=False,
-        ).aggregate(total=Sum('limit_per_identifier'))['total'] or Decimal('0.00')
+        )
+        if frozen_ledger_ids:
+            usable_standard_ledgers = usable_standard_ledgers.exclude(id__in=frozen_ledger_ids)
+
+        total_limit = usable_standard_ledgers.aggregate(total=Sum('limit_per_identifier'))['total'] or Decimal('0.00')
 
         normal_usage = LedgerAllocation.objects.filter(
             transaction__identifier=obj,
@@ -344,7 +359,10 @@ class IdentifierSerializer(serializers.ModelSerializer):
             ledger__period=open_period,
             ledger__is_active=True,
             ledger__is_capacity_reserve=False,
-        ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+        )
+        if frozen_ledger_ids:
+            normal_usage = normal_usage.exclude(ledger_id__in=frozen_ledger_ids)
+        normal_usage = normal_usage.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
 
         reserve_granted = IdentifierCapacityAdjustment.objects.filter(
             identifier=obj,
