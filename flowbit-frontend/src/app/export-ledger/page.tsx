@@ -9,6 +9,7 @@ import {
   faFilePdf,
   faLayerGroup,
 } from "@fortawesome/free-solid-svg-icons";
+import { ActionLoadingModal } from "@/components/app/action-loading-modal";
 import { AppSectionPage } from "@/components/app/app-section-page";
 import { AdminActionToast } from "@/components/admin/admin-action-toast";
 import { usePeriodState } from "@/components/period/use-period-state";
@@ -23,6 +24,11 @@ import {
 type ToastState = {
   type: "success" | "error";
   message: string;
+} | null;
+
+type DownloadState = {
+  ledgerName: string;
+  format: "csv" | "pdf";
 } | null;
 
 function formatAmount(value: string) {
@@ -73,6 +79,7 @@ export default function ExportLedgerPage() {
   const [pageError, setPageError] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastState>(null);
   const [downloadingKey, setDownloadingKey] = useState<string | null>(null);
+  const [downloadState, setDownloadState] = useState<DownloadState>(null);
   const [exportFilter, setExportFilter] = useState<"all" | "active" | "closed">("all");
 
   const { activePeriod, hasActivePeriod, isLoading: isPeriodLoading, error: periodError } = usePeriodState();
@@ -145,6 +152,10 @@ export default function ExportLedgerPage() {
     event.stopPropagation();
     const key = `${ledger.id}:${format}`;
     setDownloadingKey(key);
+    setDownloadState({
+      ledgerName: ledger.name,
+      format,
+    });
     try {
       const file =
         format === "csv"
@@ -160,6 +171,7 @@ export default function ExportLedgerPage() {
       setToast({ type: "error", message });
     } finally {
       setDownloadingKey(null);
+      setDownloadState(null);
     }
   }
 
@@ -324,6 +336,19 @@ export default function ExportLedgerPage() {
         )}
       </AppSectionPage>
 
+      <ActionLoadingModal
+        open={downloadState !== null}
+        title={
+          downloadState?.format === "csv"
+            ? "Preparing CSV export"
+            : "Preparing PDF export"
+        }
+        description={
+          downloadState
+            ? `${downloadState.ledgerName} is being prepared for download. PDF exports can take a little longer.`
+            : ""
+        }
+      />
       {toast ? <AdminActionToast message={toast.message} type={toast.type} onClose={() => setToast(null)} /> : null}
     </>
   );
