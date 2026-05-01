@@ -565,10 +565,17 @@ export function SpillOverPage() {
                     const label = collaborator.full_name.trim() || collaborator.username;
                     const isSelected = selectedCollaboratorIds.includes(collaborator.id);
                     return (
-                      <button
+                      <div
                         key={collaborator.id}
-                        type="button"
                         onClick={() => selectCollaborator(collaborator.id)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            selectCollaborator(collaborator.id);
+                          }
+                        }}
+                        role="button"
+                        tabIndex={0}
                         className={`flex w-full items-start gap-3 rounded-[22px] border px-4 py-4 text-left transition ${
                           isSelected
                             ? "border-stone-950 bg-stone-100"
@@ -604,7 +611,7 @@ export function SpillOverPage() {
                         >
                           Edit
                         </Button>
-                      </button>
+                      </div>
                     );
                   })}
                 </div>
