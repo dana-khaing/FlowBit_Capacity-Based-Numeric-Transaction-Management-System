@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { type MouseEvent, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faDownload,
@@ -43,7 +44,7 @@ function downloadBlob(blob: Blob, filename: string) {
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
-  URL.revokeObjectURL(url);
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function formatDateTime(value: string | null) {
@@ -66,6 +67,7 @@ function formatDateTime(value: string | null) {
 }
 
 export default function ExportLedgerPage() {
+  const router = useRouter();
   const [ledgers, setLedgers] = useState<FlowBitLedger[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [pageError, setPageError] = useState<string | null>(null);
@@ -135,7 +137,12 @@ export default function ExportLedgerPage() {
     [ledgers],
   );
 
-  async function handleDownload(ledger: FlowBitLedger, format: "csv" | "pdf") {
+  async function handleDownload(
+    event: MouseEvent<HTMLButtonElement>,
+    ledger: FlowBitLedger,
+    format: "csv" | "pdf",
+  ) {
+    event.stopPropagation();
     const key = `${ledger.id}:${format}`;
     setDownloadingKey(key);
     try {
@@ -245,9 +252,11 @@ export default function ExportLedgerPage() {
                   const isPdfLoading = downloadingKey === pdfKey;
 
                   return (
-                    <div
+                    <button
                       key={ledger.id}
-                      className="rounded-[24px] border border-stone-900/8 bg-white px-5 py-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)]"
+                      type="button"
+                      onClick={() => router.push(`/ledgers/${ledger.id}`)}
+                      className="w-full rounded-[24px] border border-stone-900/8 bg-white px-5 py-5 text-left shadow-[0_8px_24px_rgba(28,24,20,0.04)] transition hover:border-stone-900/16 hover:shadow-[0_12px_28px_rgba(28,24,20,0.08)]"
                     >
                       <div className="flex flex-wrap items-start gap-3">
                         <div className="min-w-0 flex-1">
@@ -274,7 +283,7 @@ export default function ExportLedgerPage() {
                           <Button
                             variant="outline"
                             className="rounded-[18px]"
-                            onClick={() => handleDownload(ledger, "csv")}
+                            onClick={(event) => handleDownload(event, ledger, "csv")}
                             disabled={isCsvLoading || isPdfLoading}
                           >
                             <FontAwesomeIcon icon={faFileCsv} className="h-3.5 w-3.5" />
@@ -283,7 +292,7 @@ export default function ExportLedgerPage() {
                           <Button
                             variant="outline"
                             className="rounded-[18px]"
-                            onClick={() => handleDownload(ledger, "pdf")}
+                            onClick={(event) => handleDownload(event, ledger, "pdf")}
                             disabled={isCsvLoading || isPdfLoading}
                           >
                             <FontAwesomeIcon icon={faFilePdf} className="h-3.5 w-3.5" />
@@ -291,7 +300,7 @@ export default function ExportLedgerPage() {
                           </Button>
                           <Button
                             className="rounded-[18px]"
-                            onClick={() => handleDownload(ledger, "pdf")}
+                            onClick={(event) => handleDownload(event, ledger, "pdf")}
                             disabled={isCsvLoading || isPdfLoading}
                           >
                             <FontAwesomeIcon icon={faDownload} className="h-3.5 w-3.5" />
@@ -299,7 +308,7 @@ export default function ExportLedgerPage() {
                           </Button>
                         </div>
                       </div>
-                    </div>
+                    </button>
                   );
                 })}
               </div>
