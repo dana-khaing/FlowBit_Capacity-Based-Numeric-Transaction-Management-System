@@ -238,7 +238,15 @@ export function TicketCreationPage() {
   const [items, setItems] = useState<TicketDraftItem[]>([createDraftItem()]);
   const [identifiers, setIdentifiers] = useState<FlowBitIdentifierOption[]>([]);
   const [activeLedgers, setActiveLedgers] = useState<FlowBitLedger[]>([]);
-  const [identifierCapacityMap, setIdentifierCapacityMap] = useState<Record<number, string>>({});
+  const [identifierCapacityMap, setIdentifierCapacityMap] = useState<
+    Record<
+      number,
+      {
+        remainingCapacity: string;
+        isFrozenAllLedgers: boolean;
+      }
+    >
+  >({});
   const [recentTickets, setRecentTickets] = useState<FlowBitTicketListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRecentTicketsLoading, setIsRecentTicketsLoading] = useState(true);
@@ -430,7 +438,13 @@ export function TicketCreationPage() {
     Promise.all(
       uniqueIdentifiers.map(async (identifier) => {
         const capacity = await fetchIdentifierCapacity(identifier.id);
-        return [identifier.id, formatWholeAmount(capacity.remaining_capacity)] as const;
+        return [
+          identifier.id,
+          {
+            remainingCapacity: formatWholeAmount(capacity.remaining_capacity),
+            isFrozenAllLedgers: capacity.is_frozen_all_ledgers,
+          },
+        ] as const;
       }),
     )
       .then((results) => {
@@ -546,6 +560,18 @@ export function TicketCreationPage() {
 
     try {
       const capacity = await fetchIdentifierCapacity(identifier.id);
+      if (capacity.is_frozen_all_ledgers) {
+        setToast({
+          type: "error",
+          message: `Identifier ${identifier.number} is frozen across all ledgers and will spill over.`,
+        });
+        setItemState(itemId, (item) => ({
+          ...item,
+          isTakingAll: false,
+          previewError: null,
+        }));
+        return;
+      }
       const nextAmount = draft.amountUsesAllocationBasis
         ? String(Math.floor(Number(capacity.remaining_capacity) || 0))
         : toTakeAllAmount(capacity.remaining_capacity);
@@ -1159,8 +1185,15 @@ export function TicketCreationPage() {
                       identifier={item.matchedIdentifier}
                       remainingCapacity={
                         item.matchedIdentifier
-                          ? identifierCapacityMap[item.matchedIdentifier.id] ?? null
+                          ? identifierCapacityMap[item.matchedIdentifier.id]
+                              ?.remainingCapacity ?? null
                           : null
+                      }
+                      isFrozenAllLedgers={
+                        item.matchedIdentifier
+                          ? identifierCapacityMap[item.matchedIdentifier.id]
+                              ?.isFrozenAllLedgers ?? false
+                          : false
                       }
                       identifierError={item.identifierError}
                       amountError={item.amountError}

@@ -1514,6 +1514,20 @@ class PrivateWorkflowAPITests(APITestCase):
         self.assertTrue(self.active_ticket.is_refunded)
         self.assertTrue(self.active_transaction.is_refunded)
 
+    def test_identifier_detail_reports_zero_remaining_capacity_when_frozen_for_all_ledgers(self):
+        IdentifierLedgerFreeze.objects.create(
+            identifier=self.identifier,
+            period=self.active_period,
+            owner=self.approver,
+            applies_to_all=True,
+        )
+
+        response = self.client.get(f'/api/identifiers/{self.identifier.id}/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['remaining_capacity'], Decimal('0.00'))
+        self.assertTrue(response.data['is_frozen_all_ledgers'])
+
     def test_ticket_transaction_refund_can_succeed_without_spill_over(self):
         response = self.client.post(
             f'/api/tickets/{self.active_ticket.ticket_number}/refund/',

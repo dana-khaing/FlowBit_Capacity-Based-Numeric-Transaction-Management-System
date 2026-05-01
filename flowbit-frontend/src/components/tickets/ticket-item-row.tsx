@@ -5,6 +5,7 @@ import {
   faCircleCheck,
   faCircleExclamation,
   faPlus,
+  faSnowflake,
   faTrashCan,
 } from "@fortawesome/free-solid-svg-icons";
 import { Button } from "@/components/ui/button";
@@ -38,6 +39,7 @@ type TicketItemRowProps = {
   index: number;
   identifier: FlowBitIdentifierOption | null;
   remainingCapacity?: string | null;
+  isFrozenAllLedgers?: boolean;
   identifierError?: string | null;
   amountError?: string | null;
   activeLedgers: FlowBitLedger[];
@@ -63,6 +65,7 @@ export function TicketItemRow({
   index,
   identifier,
   remainingCapacity,
+  isFrozenAllLedgers = false,
   identifierError,
   amountError,
   activeLedgers,
@@ -228,16 +231,21 @@ export function TicketItemRow({
           <button
             type="button"
             onClick={() => onTakeAll(item.id)}
-            disabled={!identifier || item.isTakingAll}
+            disabled={!identifier || item.isTakingAll || isFrozenAllLedgers}
             className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] transition ${
-              !identifier || item.isTakingAll
+              !identifier || item.isTakingAll || isFrozenAllLedgers
                 ? "cursor-not-allowed bg-stone-200 text-stone-400"
                 : "bg-white text-stone-600 hover:bg-stone-100"
             }`}
           >
             {item.isTakingAll ? "Taking" : "Take all"}
           </button>
-          {identifier ? (
+          {identifier && isFrozenAllLedgers ? (
+            <span className="inline-flex items-center gap-2 rounded-full bg-sky-100 px-3 py-1 text-sky-800">
+              <FontAwesomeIcon icon={faSnowflake} className="h-3 w-3" />
+              Frozen · will overflow
+            </span>
+          ) : identifier ? (
             <span className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1">
               <FontAwesomeIcon icon={faCircleCheck} className="h-3 w-3 text-emerald-600" />
               Left {remainingCapacity ?? "Loading..."}

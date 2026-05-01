@@ -10,6 +10,7 @@ export type FlowBitIdentifierCapacity = {
   id: number;
   number: string;
   remaining_capacity: string;
+  is_frozen_all_ledgers: boolean;
 };
 
 export type TicketManualAllocation = {
