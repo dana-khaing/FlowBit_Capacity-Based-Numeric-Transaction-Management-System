@@ -106,6 +106,7 @@ export function SpillOverPage() {
     overflow: FlowBitOverflow;
     action: RefundAction;
   } | null>(null);
+  const [refundPickerTarget, setRefundPickerTarget] = useState<FlowBitOverflow | null>(null);
   const [overrideCode, setOverrideCode] = useState("");
   const [busyLabel, setBusyLabel] = useState<string | null>(null);
   const [selectedTicketDetail, setSelectedTicketDetail] = useState<FlowBitTicketDetail | null>(null);
@@ -373,7 +374,7 @@ export function SpillOverPage() {
                             </Button>
                           ) : null}
                           {overflow.status === "TCSO" ? (
-                            <Button variant="outline" className="h-11 min-w-[124px] rounded-[18px]" onClick={() => openApproveModal(overflow)}>
+                            <Button className="h-11 min-w-[124px] rounded-[18px]" onClick={() => openApproveModal(overflow)}>
                               <FontAwesomeIcon icon={faCircleCheck} className="h-3.5 w-3.5" />
                               Approve
                             </Button>
@@ -381,25 +382,10 @@ export function SpillOverPage() {
                           <Button
                             variant="outline"
                             className="h-11 min-w-[124px] rounded-[18px]"
-                            onClick={() => setRefundTarget({ overflow, action: "refund_overflow_only" })}
+                            onClick={() => setRefundPickerTarget(overflow)}
                           >
                             <FontAwesomeIcon icon={faRotateLeft} className="h-3.5 w-3.5" />
-                            Refund overflow
-                          </Button>
-                          <Button
-                            variant="outline"
-                            className="h-11 min-w-[124px] rounded-[18px]"
-                            onClick={() => setRefundTarget({ overflow, action: "refund_transaction" })}
-                          >
-                            <FontAwesomeIcon icon={faRotateLeft} className="h-3.5 w-3.5" />
-                            Refund transaction
-                          </Button>
-                          <Button
-                            className="h-11 min-w-[124px] rounded-[18px]"
-                            onClick={() => setRefundTarget({ overflow, action: "refund_ticket" })}
-                          >
-                            <FontAwesomeIcon icon={faRotateLeft} className="h-3.5 w-3.5" />
-                            Refund ticket
+                            Refund
                           </Button>
                         </div>
                       </div>
@@ -539,6 +525,77 @@ export function SpillOverPage() {
         }}
         onConfirm={handleRefundAction}
       />
+      {refundPickerTarget ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/30 px-4"
+          onClick={() => setRefundPickerTarget(null)}
+        >
+          <div
+            className="w-full max-w-xl rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_18px_48px_rgba(24,24,24,0.18)] sm:p-6"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-500">Refund options</p>
+            <h2 className="mt-2 text-2xl font-semibold text-stone-950">{refundPickerTarget.identifier_number}</h2>
+            <p className="mt-2 text-sm leading-6 text-stone-500">
+              Choose how you want to refund this spill-over record.
+            </p>
+
+            <div className="mt-5 space-y-3">
+              <button
+                type="button"
+                className="flex w-full items-center justify-between rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4 text-left transition hover:border-stone-900/20"
+                onClick={() => {
+                  setRefundPickerTarget(null);
+                  setRefundTarget({ overflow: refundPickerTarget, action: "refund_overflow_only" });
+                }}
+              >
+                <div>
+                  <p className="font-semibold text-stone-950">Refund overflow only</p>
+                  <p className="mt-1 text-sm text-stone-500">
+                    Refund just the spill-over amount of {formatAmount(refundPickerTarget.excess_amount)}.
+                  </p>
+                </div>
+              </button>
+              <button
+                type="button"
+                className="flex w-full items-center justify-between rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4 text-left transition hover:border-stone-900/20"
+                onClick={() => {
+                  setRefundPickerTarget(null);
+                  setRefundTarget({ overflow: refundPickerTarget, action: "refund_transaction" });
+                }}
+              >
+                <div>
+                  <p className="font-semibold text-stone-950">Refund transaction</p>
+                  <p className="mt-1 text-sm text-stone-500">
+                    Refund the full transaction that created this spill over.
+                  </p>
+                </div>
+              </button>
+              <button
+                type="button"
+                className="flex w-full items-center justify-between rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4 text-left transition hover:border-stone-900/20"
+                onClick={() => {
+                  setRefundPickerTarget(null);
+                  setRefundTarget({ overflow: refundPickerTarget, action: "refund_ticket" });
+                }}
+              >
+                <div>
+                  <p className="font-semibold text-stone-950">Refund ticket</p>
+                  <p className="mt-1 text-sm text-stone-500">
+                    Refund the full ticket linked to {refundPickerTarget.order_number}.
+                  </p>
+                </div>
+              </button>
+            </div>
+
+            <div className="mt-5 flex justify-end">
+              <Button variant="outline" onClick={() => setRefundPickerTarget(null)}>
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <ActionLoadingModal
         open={Boolean(busyLabel)}
