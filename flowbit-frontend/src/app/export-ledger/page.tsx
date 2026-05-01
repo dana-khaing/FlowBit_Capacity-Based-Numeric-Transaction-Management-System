@@ -252,11 +252,18 @@ export default function ExportLedgerPage() {
                   const isPdfLoading = downloadingKey === pdfKey;
 
                   return (
-                    <button
+                    <div
                       key={ledger.id}
-                      type="button"
+                      role="button"
+                      tabIndex={0}
                       onClick={() => router.push(`/ledgers/${ledger.id}`)}
-                      className="w-full rounded-[24px] border border-stone-900/8 bg-white px-5 py-5 text-left shadow-[0_8px_24px_rgba(28,24,20,0.04)] transition hover:border-stone-900/16 hover:shadow-[0_12px_28px_rgba(28,24,20,0.08)]"
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          router.push(`/ledgers/${ledger.id}`);
+                        }
+                      }}
+                      className="w-full cursor-pointer rounded-[24px] border border-stone-900/8 bg-white px-5 py-5 text-left shadow-[0_8px_24px_rgba(28,24,20,0.04)] transition hover:border-stone-900/16 hover:shadow-[0_12px_28px_rgba(28,24,20,0.08)] focus:outline-none focus-visible:ring-2 focus-visible:ring-stone-950/20"
                     >
                       <div className="flex flex-wrap items-start gap-3">
                         <div className="min-w-0 flex-1">
@@ -308,7 +315,7 @@ export default function ExportLedgerPage() {
                           </Button>
                         </div>
                       </div>
-                    </button>
+                    </div>
                   );
                 })}
               </div>
