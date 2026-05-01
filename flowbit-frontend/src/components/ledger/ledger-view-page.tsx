@@ -599,10 +599,10 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
                           )}
                         </div>
                         <span className="inline-flex shrink-0 items-center gap-2 rounded-full bg-white px-3 py-2 text-xs font-semibold text-stone-700">
-                          Usage {formatCompactAmount(identifierRow.allocated_amount)}/{ledgerView ? formatCompactAmount(ledgerView.summary.capacity_per_identifier) : "0"}
+                          Left {formatCompactAmount(identifierRow.remaining_capacity)}
                         </span>
                         <span className="inline-flex shrink-0 items-center gap-2 rounded-full bg-white px-3 py-2 text-xs font-semibold text-stone-700">
-                          Left {formatCompactAmount(identifierRow.remaining_capacity)}
+                          Usage {formatCompactAmount(identifierRow.allocated_amount)}/{ledgerView ? formatCompactAmount(ledgerView.summary.capacity_per_identifier) : "0"}
                         </span>
                         {identifierRow.is_frozen ? (
                           <span className="inline-flex shrink-0 items-center gap-2 rounded-full bg-sky-100 px-3 py-2 text-xs font-semibold text-sky-700">
