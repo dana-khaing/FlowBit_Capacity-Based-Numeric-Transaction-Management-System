@@ -89,3 +89,16 @@ export async function fetchCollaborators() {
     headers: authHeaders(),
   });
 }
+
+export async function createCollaborator(payload: {
+  username: string;
+  full_name: string;
+  email: string;
+  phone_number: string;
+}) {
+  return apiRequest<FlowBitCollaborator>("/collaborators/", {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify(payload),
+  });
+}
