@@ -371,7 +371,14 @@ export function SpillOverPage() {
 
                         <div className="flex flex-wrap items-center gap-3 xl:justify-end">
                           <p className="mr-2 text-base font-semibold text-stone-700">
-                            Amount: <span className="text-stone-950">{formatAmount(overflow.excess_amount)}</span>
+                            Amount:{" "}
+                            <span className="text-stone-950">
+                              {formatAmount(
+                                overflow.status === "TCSO"
+                                  ? overflow.excess_amount
+                                  : getOverflowApprovedAmount(overflow),
+                              )}
+                            </span>
                           </p>
                           {overflow.ticket_number ? (
                             <Button
@@ -401,21 +408,19 @@ export function SpillOverPage() {
                       </div>
 
                       {overflow.status !== "TCSO" ? (
-                        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                          <div className="rounded-[18px] bg-stone-50 px-4 py-3">
-                            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Approved</p>
-                            <p className="mt-1 text-lg font-semibold text-stone-950">{formatAmount(getOverflowApprovedAmount(overflow))}</p>
-                          </div>
-                          <div className="rounded-[18px] bg-stone-50 px-4 py-3">
-                            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Helper</p>
-                            <p className="mt-1 text-sm font-medium text-stone-900">{overflow.helper_name || "-"}</p>
-                          </div>
-                          <div className="rounded-[18px] bg-stone-50 px-4 py-3">
-                            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Collaborators</p>
-                            <p className="mt-1 text-sm font-medium text-stone-900">
+                        <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-stone-900/8 pt-3 text-sm">
+                          <p className="text-stone-500">
+                            Helper:{" "}
+                            <span className="font-medium text-stone-900">
+                              {overflow.helper_name || "-"}
+                            </span>
+                          </p>
+                          <p className="text-stone-500">
+                            Collaborators:{" "}
+                            <span className="font-medium text-stone-900">
                               {overflow.collaborator_names.length ? overflow.collaborator_names.join(", ") : "-"}
-                            </p>
-                          </div>
+                            </span>
+                          </p>
                         </div>
                       ) : null}
                     </div>
