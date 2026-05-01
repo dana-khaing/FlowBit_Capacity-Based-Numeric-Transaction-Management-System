@@ -313,10 +313,9 @@ export function SpillOverPage() {
                           <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${getOverflowStatusTone(overflow.status)}`}>
                             {getOverflowStatusLabel(overflow.status)}
                           </span>
-                          <div className="rounded-[18px] bg-stone-50 px-4 py-3">
-                            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Amount</p>
-                            <p className="mt-1 text-lg font-semibold text-stone-950">{formatAmount(overflow.excess_amount)}</p>
-                          </div>
+                          <p className="text-xl font-semibold text-stone-950">
+                            {formatAmount(overflow.excess_amount)}
+                          </p>
                         </div>
 
                         <div className="flex flex-wrap items-center gap-2 xl:justify-end">
