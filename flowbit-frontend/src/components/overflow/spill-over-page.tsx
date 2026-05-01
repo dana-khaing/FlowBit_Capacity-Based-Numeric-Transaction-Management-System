@@ -48,23 +48,6 @@ function formatAmount(value: string | null | undefined) {
   });
 }
 
-function formatDateTime(value: string | null | undefined) {
-  if (!value) {
-    return "Not set";
-  }
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return value;
-  }
-  return parsed.toLocaleString("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
 function getOverflowApprovedAmount(overflow: FlowBitOverflow) {
   return overflow.amount_to_approve || overflow.excess_amount;
 }
@@ -333,13 +316,6 @@ export function SpillOverPage() {
                             </span>
                           </div>
 
-                          <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-stone-500">
-                            <span>{overflow.ticket_number || "No ticket"}</span>
-                            <span>{overflow.order_number}</span>
-                            <span>{overflow.customer_name?.trim() || "-"}</span>
-                            <span>{formatDateTime(overflow.timestamp)}</span>
-                          </div>
-
                           <div
                             className={`mt-4 grid gap-3 ${
                               overflow.status === "TCSO"
@@ -348,7 +324,7 @@ export function SpillOverPage() {
                             }`}
                           >
                             <div className="rounded-[18px] bg-stone-50 px-4 py-3">
-                              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Spill over</p>
+                              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Amount</p>
                               <p className="mt-1 text-lg font-semibold text-stone-950">{formatAmount(overflow.excess_amount)}</p>
                             </div>
                             {overflow.status !== "TCSO" ? (
