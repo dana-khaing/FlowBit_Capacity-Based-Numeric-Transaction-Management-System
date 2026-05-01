@@ -425,9 +425,40 @@ class LedgerAllocationSerializer(serializers.ModelSerializer):
 
 
 class OverflowSerializer(serializers.ModelSerializer):
+    ticket_number = serializers.CharField(source='transaction.ticket.ticket_number', read_only=True, allow_null=True)
+    customer_name = serializers.CharField(source='transaction.ticket.customer_name', read_only=True, allow_null=True)
+    order_number = serializers.CharField(source='transaction.order_number', read_only=True)
+    identifier_number = serializers.CharField(source='transaction.identifier.number', read_only=True)
+    timestamp = serializers.DateTimeField(source='transaction.timestamp', read_only=True)
+    collaborator_names = serializers.SerializerMethodField()
+
     class Meta:
         model = Overflow
-        fields = '__all__'
+        fields = [
+            'id',
+            'transaction',
+            'ticket_number',
+            'customer_name',
+            'order_number',
+            'identifier_number',
+            'timestamp',
+            'excess_amount',
+            'status',
+            'amount_to_approve',
+            'collaborators',
+            'collaborator_names',
+            'approved_at',
+            'helper_name',
+            'resolution_type',
+            'refunded_at',
+            'refund_amount',
+        ]
+
+    def get_collaborator_names(self, obj):
+        return [
+            collaborator.full_name.strip() or collaborator.username
+            for collaborator in obj.collaborators.all()
+        ]
 
 
 class CollaboratorSerializer(serializers.ModelSerializer):
