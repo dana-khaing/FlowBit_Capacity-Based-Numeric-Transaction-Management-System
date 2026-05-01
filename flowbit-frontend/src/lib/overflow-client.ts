@@ -102,3 +102,19 @@ export async function createCollaborator(payload: {
     body: JSON.stringify(payload),
   });
 }
+
+export async function updateCollaborator(
+  collaboratorId: number,
+  payload: {
+    username: string;
+    full_name: string;
+    email: string;
+    phone_number: string;
+  },
+) {
+  return apiRequest<FlowBitCollaborator>(`/collaborators/${collaboratorId}/`, {
+    method: "PATCH",
+    headers: authHeaders(),
+    body: JSON.stringify(payload),
+  });
+}

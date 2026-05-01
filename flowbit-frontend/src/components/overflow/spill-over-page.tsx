@@ -26,6 +26,7 @@ import {
   fetchCollaborators,
   fetchPendingOverflows,
   resolveOverflowAction,
+  updateCollaborator,
   type FlowBitCollaborator,
   type FlowBitOverflow,
 } from "@/lib/overflow-client";
@@ -105,6 +106,7 @@ export function SpillOverPage() {
   const [approveTarget, setApproveTarget] = useState<FlowBitOverflow | null>(null);
   const [approveAmount, setApproveAmount] = useState("");
   const [selectedCollaboratorIds, setSelectedCollaboratorIds] = useState<number[]>([]);
+  const [editingCollaboratorId, setEditingCollaboratorId] = useState<number | null>(null);
   const [collaboratorDraft, setCollaboratorDraft] = useState<CollaboratorDraft>({
     username: "",
     full_name: "",
@@ -219,6 +221,7 @@ export function SpillOverPage() {
     setApproveAmount(formatWholeAmount(overflow.amount_to_approve || overflow.excess_amount || ""));
     const initialCollaboratorId = overflow.collaborators[0];
     setSelectedCollaboratorIds(initialCollaboratorId ? [initialCollaboratorId] : []);
+    setEditingCollaboratorId(null);
     setCollaboratorDraft({
       username: "",
       full_name: "",
@@ -229,6 +232,26 @@ export function SpillOverPage() {
 
   function selectCollaborator(collaboratorId: number) {
     setSelectedCollaboratorIds([collaboratorId]);
+  }
+
+  function openCollaboratorEditor(collaborator: FlowBitCollaborator) {
+    setEditingCollaboratorId(collaborator.id);
+    setCollaboratorDraft({
+      username: collaborator.username,
+      full_name: collaborator.full_name,
+      email: collaborator.email,
+      phone_number: collaborator.phone_number,
+    });
+  }
+
+  function resetCollaboratorDraft() {
+    setEditingCollaboratorId(null);
+    setCollaboratorDraft({
+      username: "",
+      full_name: "",
+      email: "",
+      phone_number: "",
+    });
   }
 
   async function handleApproveOverflow() {
@@ -255,23 +278,31 @@ export function SpillOverPage() {
   }
 
   async function handleCreateCollaborator() {
-    setBusyLabel("Creating collaborator");
+    setBusyLabel(editingCollaboratorId ? "Updating collaborator" : "Creating collaborator");
     try {
-      const collaborator = await createCollaborator({
+      const payload = {
         username: collaboratorDraft.username.trim(),
         full_name: collaboratorDraft.full_name.trim(),
         email: collaboratorDraft.email.trim(),
         phone_number: collaboratorDraft.phone_number.trim(),
-      });
-      setCollaborators((current) => [...current, collaborator].sort((left, right) => left.username.localeCompare(right.username)));
+      };
+      const collaborator = editingCollaboratorId
+        ? await updateCollaborator(editingCollaboratorId, payload)
+        : await createCollaborator(payload);
+      setCollaborators((current) =>
+        (editingCollaboratorId
+          ? current.map((item) => (item.id === collaborator.id ? collaborator : item))
+          : [...current, collaborator]
+        ).sort((left, right) => left.username.localeCompare(right.username)),
+      );
       setSelectedCollaboratorIds([collaborator.id]);
-      setCollaboratorDraft({
-        username: "",
-        full_name: "",
-        email: "",
-        phone_number: "",
+      resetCollaboratorDraft();
+      setToast({
+        type: "success",
+        message: editingCollaboratorId
+          ? `Collaborator '${collaborator.username}' updated.`
+          : `Collaborator '${collaborator.username}' created.`,
       });
-      setToast({ type: "success", message: `Collaborator '${collaborator.username}' created.` });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Request failed.";
       setToast({ type: "error", message });
@@ -562,6 +593,17 @@ export function SpillOverPage() {
                           <p className="text-sm font-semibold text-stone-900">{label}</p>
                           <p className="mt-1 text-sm text-stone-500">{collaborator.email || collaborator.phone_number || collaborator.username}</p>
                         </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="ml-auto h-9 rounded-[14px] px-3 text-sm"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            openCollaboratorEditor(collaborator);
+                          }}
+                        >
+                          Edit
+                        </Button>
                       </button>
                     );
                   })}
@@ -570,7 +612,16 @@ export function SpillOverPage() {
             </div>
 
             <div className="mt-5 rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Create collaborator</p>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">
+                  {editingCollaboratorId ? "Edit collaborator" : "Create collaborator"}
+                </p>
+                {editingCollaboratorId ? (
+                  <Button variant="ghost" className="h-8 rounded-[14px] px-3 text-xs" onClick={resetCollaboratorDraft}>
+                    Cancel edit
+                  </Button>
+                ) : null}
+              </div>
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 <Input
                   value={collaboratorDraft.full_name}
@@ -613,7 +664,7 @@ export function SpillOverPage() {
                     !collaboratorDraft.phone_number.trim()
                   }
                 >
-                  Create collaborator
+                  {editingCollaboratorId ? "Save collaborator" : "Create collaborator"}
                 </Button>
               </div>
             </div>
