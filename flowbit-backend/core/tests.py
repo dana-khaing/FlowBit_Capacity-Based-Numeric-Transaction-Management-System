@@ -1137,6 +1137,25 @@ class PrivateWorkspaceTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
+    @patch('core.views.timezone.now')
+    def test_fetch_periods_auto_closes_expired_active_period(self, mocked_now):
+        mocked_now.return_value = timezone.make_aware(datetime(2028, 1, 2, 12, 0, 0))
+        self.period.end_date = timezone.make_aware(datetime(2028, 1, 1, 16, 0, 0))
+        self.period.save(update_fields=['end_date'])
+        self.user_one_ledger.end_date = self.period.end_date
+        self.user_one_ledger.save(update_fields=['end_date'])
+
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.get('/api/periods/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.period.refresh_from_db()
+        self.user_one_ledger.refresh_from_db()
+        self.assertFalse(self.period.is_open)
+        self.assertIsNotNone(self.period.closed_at)
+        self.assertFalse(self.user_one_ledger.is_active)
+        self.assertTrue(AuditLog.objects.filter(action='period.auto_closed').exists())
+
     def test_admin_period_create_also_creates_creators_reserve_ledger(self):
         self.client.force_authenticate(user=self.approver)
 

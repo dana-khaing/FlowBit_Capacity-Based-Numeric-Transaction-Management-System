@@ -360,6 +360,35 @@ class PeriodViewSet(viewsets.ModelViewSet):
     serializer_class = PeriodSerializer
     permission_classes = [IsAuthenticatedReadOnlyOrAdminWrite]
 
+    def _auto_close_expired_periods(self, request):
+        now = timezone.now()
+        expired_periods = list(
+            Period.objects.filter(is_open=True, end_date__lte=now).order_by('end_date', 'id')
+        )
+
+        if not expired_periods:
+            return
+
+        closed_periods = []
+        with db_transaction.atomic():
+            for period in expired_periods:
+                period.close(
+                    closed_at=now,
+                    helper_name=helper_name_from_request(request),
+                )
+                closed_periods.append({
+                    'id': period.id,
+                    'name': period.name,
+                    'closed_at': serialize_audit_value(now),
+                })
+
+        record_audit_log(
+            request,
+            'period.auto_closed',
+            details=f"Auto-closed {len(closed_periods)} expired period(s)",
+            changes={'closed_periods': closed_periods},
+        )
+
     def perform_create(self, serializer):
         period = serializer.save()
         if self.request.user and self.request.user.is_authenticated:
@@ -402,6 +431,7 @@ class PeriodViewSet(viewsets.ModelViewSet):
         )
 
     def get_queryset(self):
+        self._auto_close_expired_periods(self.request)
         queryset = super().get_queryset()
         section = (self.request.query_params.get('section') or '').strip().lower()
         period_start = parse_period_value(self.request.query_params.get('period_start'))
@@ -422,6 +452,7 @@ class PeriodViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='current')
     def current_period(self, request):
+        self._auto_close_expired_periods(request)
         period = Period.get_open_period()
         if not period:
             return Response(
