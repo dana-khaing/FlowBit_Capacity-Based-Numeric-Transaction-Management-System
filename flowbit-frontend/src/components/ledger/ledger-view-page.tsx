@@ -86,6 +86,9 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
   const [selectedTicketDetail, setSelectedTicketDetail] = useState<FlowBitTicketDetail | null>(null);
   const [isTicketViewLoading, setIsTicketViewLoading] = useState(false);
   const { activePeriod } = usePeriodState();
+  const isReserveLedgerView = Boolean(
+    selectedView !== "all" && ledgerView?.ledger?.is_capacity_reserve,
+  );
 
   useEffect(() => {
     let isActive = true;
@@ -558,7 +561,7 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
                       className={`rounded-[22px] border px-4 py-3 ${
                         identifierRow.is_full
                           ? "border-red-200 bg-red-50/80"
-                          : identifierRow.is_frozen
+                          : !isReserveLedgerView && identifierRow.is_frozen
                             ? "border-sky-200 bg-sky-50/80"
                             : "border-emerald-200 bg-emerald-50/70"
                       }`}
@@ -604,22 +607,24 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
                         <span className="inline-flex shrink-0 items-center gap-2 rounded-full bg-white px-3 py-2 text-xs font-semibold text-stone-700">
                           Usage {formatCompactAmount(identifierRow.allocated_amount)}/{formatCompactAmount(identifierRow.total_capacity)}
                         </span>
-                        {identifierRow.is_frozen ? (
+                        {!isReserveLedgerView && identifierRow.is_frozen ? (
                           <span className="inline-flex shrink-0 items-center gap-2 rounded-full bg-sky-100 px-3 py-2 text-xs font-semibold text-sky-700">
                             <FontAwesomeIcon icon={faSnowflake} className="h-3 w-3" />
                             Frozen
                           </span>
                         ) : null}
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="h-10 shrink-0 px-4"
-                          onClick={() => setFreezeTarget(identifierRow)}
-                          disabled={identifierRow.is_full}
-                        >
-                          <FontAwesomeIcon icon={faSnowflake} className="h-3.5 w-3.5" />
-                          {identifierRow.is_frozen ? "Manage" : "Freeze"}
-                        </Button>
+                        {!isReserveLedgerView ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="h-10 shrink-0 px-4"
+                            onClick={() => setFreezeTarget(identifierRow)}
+                            disabled={identifierRow.is_full}
+                          >
+                            <FontAwesomeIcon icon={faSnowflake} className="h-3.5 w-3.5" />
+                            {identifierRow.is_frozen ? "Manage" : "Freeze"}
+                          </Button>
+                        ) : null}
                       </div>
                     </div>
                   ))}
