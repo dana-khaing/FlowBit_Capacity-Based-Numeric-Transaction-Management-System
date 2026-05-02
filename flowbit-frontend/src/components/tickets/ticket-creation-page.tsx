@@ -244,6 +244,7 @@ export function TicketCreationPage() {
       {
         remainingCapacity: string;
         isFrozenAllLedgers: boolean;
+        freezeStatus: "none" | "partial" | "all";
       }
     >
   >({});
@@ -442,6 +443,7 @@ export function TicketCreationPage() {
           {
             remainingCapacity: formatWholeAmount(capacity.remaining_capacity),
             isFrozenAllLedgers: capacity.is_frozen_all_ledgers,
+            freezeStatus: capacity.freeze_status,
           },
         ] as const;
       }),
@@ -1194,6 +1196,12 @@ export function TicketCreationPage() {
                           ? identifierCapacityMap[item.matchedIdentifier.id]
                               ?.isFrozenAllLedgers ?? false
                           : false
+                      }
+                      freezeStatus={
+                        item.matchedIdentifier
+                          ? identifierCapacityMap[item.matchedIdentifier.id]
+                              ?.freezeStatus ?? "none"
+                          : "none"
                       }
                       identifierError={item.identifierError}
                       amountError={item.amountError}
