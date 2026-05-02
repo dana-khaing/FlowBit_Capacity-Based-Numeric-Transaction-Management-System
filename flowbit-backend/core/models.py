@@ -105,7 +105,7 @@ class Period(models.Model):
                 end_date=self.end_date,
             )
 
-            self.ledgers.update(
+            self.ledgers.filter(is_capacity_reserve=True).update(
                 is_active=True,
                 closed_at=None,
             )

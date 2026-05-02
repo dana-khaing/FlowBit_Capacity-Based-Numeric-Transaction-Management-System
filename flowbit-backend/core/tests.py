@@ -1203,6 +1203,7 @@ class PrivateWorkspaceTests(APITestCase):
     def test_period_reopen_syncs_and_reactivates_reserve_ledgers(self):
         reserve = Ledger.get_capacity_reserve(self.period, self.user_one, create=True)
         self.period.close(closed_at=timezone.now())
+        self.user_one_ledger.refresh_from_db()
         self.client.force_authenticate(user=self.admin_user)
 
         response = self.client.post(
@@ -1216,10 +1217,13 @@ class PrivateWorkspaceTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         reserve.refresh_from_db()
+        self.user_one_ledger.refresh_from_db()
         self.assertTrue(reserve.is_active)
         self.assertIsNone(reserve.closed_at)
         self.assertEqual(reserve.end_date.date().isoformat(), '2028-01-18')
         self.assertEqual(reserve.end_date.strftime('%H:%M'), '17:30')
+        self.assertFalse(self.user_one_ledger.is_active)
+        self.assertIsNotNone(self.user_one_ledger.closed_at)
 
     @patch('core.views.timezone.now')
     def test_fetch_periods_auto_closes_expired_active_period(self, mocked_now):
