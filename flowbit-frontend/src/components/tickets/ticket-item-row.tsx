@@ -93,7 +93,9 @@ export function TicketItemRow({
   const permutationCount = getPermutationCount(item.identifierNumber);
   const permutationsSelected = Boolean(item.permutationIdentifiers?.length);
   const hasLoadedCapacity = remainingCapacity !== null && remainingCapacity !== undefined;
-  const remainingCapacityNumber = Number(remainingCapacity ?? "0");
+  const remainingCapacityNumber = Number(
+    String(remainingCapacity ?? "0").replace(/,/g, ""),
+  );
   const hasRemainingCapacity =
     !Number.isNaN(remainingCapacityNumber) && remainingCapacityNumber > 0;
   const isReserveOnlyCapacity = freezeStatus === "all" && hasRemainingCapacity;
