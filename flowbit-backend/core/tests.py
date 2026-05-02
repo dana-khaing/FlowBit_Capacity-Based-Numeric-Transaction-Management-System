@@ -1625,18 +1625,24 @@ class PrivateWorkflowAPITests(APITestCase):
         self.assertTrue(self.active_ticket.is_refunded)
         self.assertTrue(self.active_transaction.is_refunded)
 
-    def test_identifier_detail_reports_zero_remaining_capacity_when_frozen_for_all_ledgers(self):
+    def test_identifier_detail_keeps_reserve_capacity_when_frozen_for_all_ledgers(self):
         IdentifierLedgerFreeze.objects.create(
             identifier=self.identifier,
             period=self.active_period,
             owner=self.approver,
             applies_to_all=True,
         )
+        IdentifierCapacityAdjustment.objects.create(
+            identifier=self.identifier,
+            period=self.active_period,
+            owner=self.approver,
+            amount=Decimal('50.00'),
+        )
 
         response = self.client.get(f'/api/identifiers/{self.identifier.id}/')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['remaining_capacity'], Decimal('0.00'))
+        self.assertEqual(response.data['remaining_capacity'], Decimal('50.00'))
         self.assertTrue(response.data['is_frozen_all_ledgers'])
 
     def test_identifier_detail_excludes_capacity_from_frozen_ledger_only(self):
@@ -1973,7 +1979,7 @@ class PrivateWorkflowAPITests(APITestCase):
         self.assertEqual(allocations[0]['allocated_amount'], '150.00')
         self.assertEqual(preview_response.data['overflow_amount'], '0.00')
 
-    def test_freezing_identifier_across_all_ledgers_sends_whole_amount_to_overflow(self):
+    def test_freezing_identifier_across_all_ledgers_keeps_reserve_capacity_available(self):
         Ledger.objects.create(
             owner=self.approver,
             period=self.active_period,
@@ -2003,9 +2009,50 @@ class PrivateWorkflowAPITests(APITestCase):
         }, format='json')
 
         self.assertEqual(preview_response.status_code, status.HTTP_200_OK)
-        self.assertEqual(preview_response.data['reserve_allocated'], '0.00')
-        self.assertEqual(preview_response.data['overflow_amount'], '125.00')
+        self.assertEqual(preview_response.data['reserve_allocated'], '50.00')
+        self.assertEqual(preview_response.data['overflow_amount'], '75.00')
         self.assertTrue(all(item['allocated_amount'] == '0.00' for item in preview_response.data['ledger_allocations']))
+
+    def test_freezing_identifier_across_all_ledgers_still_uses_reserve_on_submit(self):
+        Ledger.objects.create(
+            owner=self.approver,
+            period=self.active_period,
+            name='Backup Ledger',
+            end_date=self.active_period.end_date,
+            limit_per_identifier=Decimal('200.00'),
+            priority=2,
+            is_active=True,
+        )
+        IdentifierCapacityAdjustment.objects.create(
+            identifier=self.identifier,
+            period=self.active_period,
+            owner=self.approver,
+            amount=Decimal('50.00'),
+        )
+        IdentifierLedgerFreeze.objects.create(
+            identifier=self.identifier,
+            period=self.active_period,
+            owner=self.approver,
+            applies_to_all=True,
+        )
+
+        response = self.client.post('/api/transactions/', {
+            'identifier': self.identifier.id,
+            'total_amount': '100.00',
+            'allow_overflow': True,
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        transaction_obj = Transaction.objects.get(id=response.data['id'])
+        reserve_ledger = Ledger.get_capacity_reserve(self.active_period, self.approver, create=True)
+        self.assertTrue(
+            LedgerAllocation.objects.filter(
+                transaction=transaction_obj,
+                ledger=reserve_ledger,
+                amount=Decimal('50.00'),
+            ).exists()
+        )
+        self.assertEqual(Overflow.objects.get(transaction=transaction_obj).excess_amount, Decimal('75.00'))
 
     def test_ledger_view_includes_identifier_freeze_state(self):
         freeze = IdentifierLedgerFreeze.objects.create(
