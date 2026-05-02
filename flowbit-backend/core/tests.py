@@ -1137,6 +1137,28 @@ class PrivateWorkspaceTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
+    def test_admin_reopen_period_requires_new_end_date_and_time(self):
+        self.period.close(closed_at=timezone.now())
+        self.client.force_authenticate(user=self.admin_user)
+
+        missing_fields_response = self.client.post(f'/api/periods/{self.period.id}/reopen/', {}, format='json')
+        self.assertEqual(missing_fields_response.status_code, status.HTTP_400_BAD_REQUEST)
+
+        response = self.client.post(
+            f'/api/periods/{self.period.id}/reopen/',
+            {
+                'end_date': '2028-01-15',
+                'close_time': '18:30',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.period.refresh_from_db()
+        self.assertTrue(self.period.is_open)
+        self.assertEqual(self.period.end_date.date().isoformat(), '2028-01-15')
+        self.assertEqual(self.period.end_date.strftime('%H:%M'), '18:30')
+
     @patch('core.views.timezone.now')
     def test_fetch_periods_auto_closes_expired_active_period(self, mocked_now):
         mocked_now.return_value = timezone.make_aware(datetime(2028, 1, 2, 12, 0, 0))

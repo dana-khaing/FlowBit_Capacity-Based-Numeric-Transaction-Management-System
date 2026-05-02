@@ -88,11 +88,22 @@ export async function closePeriod(periodId: number, adminOverrideCode?: string) 
   });
 }
 
-export async function reopenPeriod(periodId: number, adminOverrideCode?: string) {
+export async function reopenPeriod(
+  periodId: number,
+  payload: {
+    end_date: string;
+    close_time: string;
+    adminOverrideCode?: string;
+  },
+) {
   return apiRequest<{ message: string; period: FlowBitPeriod; reactivated_ledgers: number }>(`/periods/${periodId}/reopen/`, {
     method: "POST",
     headers: authHeaders(),
-    body: JSON.stringify(adminOverrideCode ? { admin_override_code: adminOverrideCode } : {}),
+    body: JSON.stringify({
+      end_date: payload.end_date,
+      close_time: payload.close_time,
+      ...(payload.adminOverrideCode ? { admin_override_code: payload.adminOverrideCode } : {}),
+    }),
   });
 }
 
