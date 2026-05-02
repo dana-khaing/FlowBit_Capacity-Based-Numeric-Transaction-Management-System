@@ -117,6 +117,11 @@ export function SpillOverPage() {
     overflow: FlowBitOverflow;
     action: RefundAction;
   } | null>(null);
+  const [pendingExtraApproval, setPendingExtraApproval] = useState<{
+    overflowAmount: number;
+    approveAmount: number;
+    identifierNumber: string;
+  } | null>(null);
   const [refundPickerTarget, setRefundPickerTarget] = useState<FlowBitOverflow | null>(null);
   const [overrideCode, setOverrideCode] = useState("");
   const [busyLabel, setBusyLabel] = useState<string | null>(null);
@@ -259,6 +264,25 @@ export function SpillOverPage() {
       return;
     }
 
+    const overflowAmount = Number(approveTarget.excess_amount || "0");
+    const nextApproveAmount = Number(approveAmount.trim() || overflowAmount);
+    if (nextApproveAmount > overflowAmount) {
+      setPendingExtraApproval({
+        overflowAmount,
+        approveAmount: nextApproveAmount,
+        identifierNumber: approveTarget.identifier_number,
+      });
+      return;
+    }
+
+    await submitApproveOverflow();
+  }
+
+  async function submitApproveOverflow() {
+    if (!approveTarget) {
+      return;
+    }
+
     setBusyLabel("Approving spill over");
     try {
       const response = await approveOverflow({
@@ -268,6 +292,7 @@ export function SpillOverPage() {
       });
       setToast({ type: "success", message: response.message });
       setApproveTarget(null);
+      setPendingExtraApproval(null);
       await loadPageData();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Request failed.";
@@ -687,6 +712,22 @@ export function SpillOverPage() {
           </div>
         </div>
       ) : null}
+
+      <AdminConfirmModal
+        open={Boolean(pendingExtraApproval)}
+        title="Confirm extra approval"
+        description={
+          pendingExtraApproval
+            ? `${pendingExtraApproval.identifierNumber} overflow is ${formatWholeAmount(String(pendingExtraApproval.overflowAmount))}.\nYou are approving ${formatWholeAmount(String(pendingExtraApproval.approveAmount))}, so the extra ${formatWholeAmount(String(pendingExtraApproval.approveAmount - pendingExtraApproval.overflowAmount))} will become reserve capacity.`
+            : ""
+        }
+        confirmLabel="Approve extra amount"
+        showCodeInput={false}
+        busy={Boolean(busyLabel)}
+        onCodeChange={() => {}}
+        onCancel={() => setPendingExtraApproval(null)}
+        onConfirm={submitApproveOverflow}
+      />
 
       <AdminConfirmModal
         open={Boolean(refundTarget)}
