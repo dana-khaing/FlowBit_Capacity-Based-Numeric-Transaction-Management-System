@@ -59,6 +59,7 @@ from .permissions import (
     is_admin_user,
 )
 from .serializers import (
+    FlexibleDateTimeField,
     PeriodSerializer,
     LedgerSerializer,
     IdentifierSerializer,
@@ -500,8 +501,32 @@ class PeriodViewSet(viewsets.ModelViewSet):
     def reopen_period(self, request, pk=None):
         period = self.get_object()
 
+        end_date_value = request.data.get('end_date')
+        close_time_value = request.data.get('close_time')
+        if not end_date_value or not close_time_value:
+            return Response(
+                {"detail": "End date and close time are required to reopen a period."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         try:
-            period.reopen()
+            parsed_close_time = PeriodSerializer().fields['close_time'].to_internal_value(close_time_value)
+            if getattr(parsed_close_time, 'tzinfo', None) is not None:
+                parsed_close_time = parsed_close_time.replace(tzinfo=None)
+            parsed_end_date = FlexibleDateTimeField(
+                default_time=lambda _field: parsed_close_time
+            ).to_internal_value(end_date_value)
+        except Exception:
+            return Response(
+                {"detail": "Enter a valid end date and close time."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        period.end_date = parsed_end_date
+
+        try:
+            period.reopen(save=False)
+            period.save(update_fields=['is_open', 'closed_at', 'end_date'])
         except ValidationError as exc:
             message = exc.messages[0] if getattr(exc, 'messages', None) else str(exc)
             return Response({"detail": message}, status=status.HTTP_400_BAD_REQUEST)
@@ -513,6 +538,7 @@ class PeriodViewSet(viewsets.ModelViewSet):
             details=f"Reopened period '{period.name}'",
             changes={
                 'reopened_at': serialize_audit_value(timezone.now()),
+                'end_date': serialize_audit_value(period.end_date),
                 'reactivated_ledgers': period.ledgers.filter(is_capacity_reserve=False).count(),
             },
         )

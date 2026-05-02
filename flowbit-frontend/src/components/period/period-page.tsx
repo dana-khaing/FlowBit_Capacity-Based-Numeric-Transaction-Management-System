@@ -78,6 +78,7 @@ export function PeriodPage() {
   const [toast, setToast] = useState<ToastState>(null);
   const [form, setForm] = useState<PeriodFormState>(defaultFormState);
   const [activePeriodForm, setActivePeriodForm] = useState({ end_date: "", close_time: "15:00" });
+  const [reopenForm, setReopenForm] = useState({ end_date: "", close_time: "15:00" });
   const [showActionConfirm, setShowActionConfirm] = useState(false);
   const [pendingAction, setPendingAction] = useState<PeriodAction>(null);
   const [overrideCode, setOverrideCode] = useState("");
@@ -126,6 +127,18 @@ export function PeriodPage() {
     });
   }, [activePeriod]);
 
+  useEffect(() => {
+    if (!latestClosedPeriod) {
+      setReopenForm({ end_date: "", close_time: "15:00" });
+      return;
+    }
+
+    setReopenForm({
+      end_date: formatDateInputValue(latestClosedPeriod.end_date),
+      close_time: formatTimeValue(latestClosedPeriod.end_date),
+    });
+  }, [latestClosedPeriod]);
+
   async function handleCreatePeriod(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -162,6 +175,12 @@ export function PeriodPage() {
   function openConfirm(action: PeriodAction) {
     setPendingAction(action);
     setOverrideCode("");
+    if (action === "reopen" && latestClosedPeriod) {
+      setReopenForm({
+        end_date: formatDateInputValue(latestClosedPeriod.end_date),
+        close_time: formatTimeValue(latestClosedPeriod.end_date),
+      });
+    }
     setShowActionConfirm(true);
   }
 
@@ -172,6 +191,12 @@ export function PeriodPage() {
 
     if (pendingAction === "update" && !activePeriodForm.end_date) {
       setToast({ type: "error", message: "End date is required." });
+      setShowActionConfirm(false);
+      return;
+    }
+
+    if (pendingAction === "reopen" && !reopenForm.end_date) {
+      setToast({ type: "error", message: "End date is required to reopen the period." });
       setShowActionConfirm(false);
       return;
     }
@@ -188,7 +213,10 @@ export function PeriodPage() {
         await closePeriod(activePeriod.id);
         setToast({ type: "success", message: "Period closed successfully." });
       } else if (pendingAction === "reopen" && latestClosedPeriod) {
-        await reopenPeriod(latestClosedPeriod.id);
+        await reopenPeriod(latestClosedPeriod.id, {
+          end_date: reopenForm.end_date,
+          close_time: reopenForm.close_time || "15:00",
+        });
         setToast({ type: "success", message: "Period reopened successfully." });
       } else if (pendingAction === "delete" && latestClosedPeriod) {
         await deletePeriod(latestClosedPeriod.id);
@@ -259,7 +287,34 @@ export function PeriodPage() {
           setOverrideCode("");
         }}
         onConfirm={handleConfirmAction}
-      />
+      >
+        {pendingAction === "reopen" ? (
+          <div className="space-y-4">
+            <label className="block space-y-2">
+              <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">New end date</span>
+              <Input
+                type="date"
+                value={reopenForm.end_date}
+                onChange={(event) =>
+                  setReopenForm((current) => ({ ...current, end_date: event.target.value }))
+                }
+                disabled={isSaving}
+              />
+            </label>
+            <label className="block space-y-2">
+              <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">New close time</span>
+              <Input
+                type="time"
+                value={reopenForm.close_time}
+                onChange={(event) =>
+                  setReopenForm((current) => ({ ...current, close_time: event.target.value }))
+                }
+                disabled={isSaving}
+              />
+            </label>
+          </div>
+        ) : null}
+      </AdminConfirmModal>
 
       <div className="mx-auto w-full max-w-[1800px] px-4 py-3 sm:px-6 lg:px-8 lg:py-5">
         <section className="grid gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(360px,0.85fr)]">

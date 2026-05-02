@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -12,6 +13,7 @@ type AdminConfirmModalProps = {
   confirmLabel: string;
   showCodeInput?: boolean;
   busy?: boolean;
+  children?: ReactNode;
   onCodeChange: (value: string) => void;
   onCancel: () => void;
   onConfirm: () => void;
@@ -26,6 +28,7 @@ export function AdminConfirmModal({
   confirmLabel,
   showCodeInput = true,
   busy = false,
+  children,
   onCodeChange,
   onCancel,
   onConfirm,
@@ -61,6 +64,8 @@ export function AdminConfirmModal({
             />
           </label>
         ) : null}
+
+        {children ? <div className="mt-5">{children}</div> : null}
 
         <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-end">
           <Button variant="outline" onClick={onCancel} disabled={busy}>
