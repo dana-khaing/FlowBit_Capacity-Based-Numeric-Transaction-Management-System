@@ -243,13 +243,11 @@ export function TicketItemRow({
             disabled={
               !identifier ||
               item.isTakingAll ||
-              !hasLoadedCapacity ||
               isFullyFrozenWithoutCapacity
             }
             className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] transition ${
               !identifier ||
               item.isTakingAll ||
-              !hasLoadedCapacity ||
               isFullyFrozenWithoutCapacity
                 ? "cursor-not-allowed bg-stone-200 text-stone-400"
                 : "bg-white text-stone-600 hover:bg-stone-100"
