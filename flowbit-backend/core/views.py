@@ -541,7 +541,7 @@ class PeriodViewSet(viewsets.ModelViewSet):
             changes={
                 'reopened_at': serialize_audit_value(timezone.now()),
                 'end_date': serialize_audit_value(period.end_date),
-                'reactivated_ledgers': period.ledgers.filter(is_capacity_reserve=False).count(),
+                'reactivated_reserve_ledgers': period.ledgers.filter(is_capacity_reserve=True, is_active=True).count(),
             },
         )
 
@@ -549,7 +549,7 @@ class PeriodViewSet(viewsets.ModelViewSet):
         return Response({
             "message": f"Period '{period.name}' reopened successfully",
             "period": serializer.data,
-            "reactivated_ledgers": period.ledgers.filter(is_capacity_reserve=False).count(),
+            "reactivated_ledgers": period.ledgers.filter(is_capacity_reserve=False, is_active=True).count(),
         }, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get'], url_path='summary')
