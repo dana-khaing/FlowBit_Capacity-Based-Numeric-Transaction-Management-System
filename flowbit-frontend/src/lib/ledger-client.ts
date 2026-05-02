@@ -182,11 +182,22 @@ export async function closeLedger(ledgerId: number, adminOverrideCode?: string) 
   });
 }
 
-export async function reopenLedger(ledgerId: number, adminOverrideCode?: string) {
+export async function reopenLedger(
+  ledgerId: number,
+  payload: {
+    end_date: string;
+    close_time: string;
+    adminOverrideCode?: string;
+  },
+) {
   return apiRequest<{ message: string; ledger: FlowBitLedger }>(`/ledgers/${ledgerId}/reopen/`, {
     method: "POST",
     headers: authHeaders(),
-    body: JSON.stringify(adminOverrideCode ? { admin_override_code: adminOverrideCode } : {}),
+    body: JSON.stringify({
+      end_date: payload.end_date,
+      close_time: payload.close_time,
+      ...(payload.adminOverrideCode ? { admin_override_code: payload.adminOverrideCode } : {}),
+    }),
   });
 }
 
