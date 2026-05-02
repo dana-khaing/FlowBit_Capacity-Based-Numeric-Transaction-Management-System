@@ -391,8 +391,8 @@ class PeriodViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         period = serializer.save()
-        if self.request.user and self.request.user.is_authenticated:
-            Ledger.get_capacity_reserve(period, self.request.user, create=True)
+        for user in User.objects.all().order_by('id'):
+            Ledger.get_capacity_reserve(period, user, create=True)
         record_audit_log(
             self.request,
             'period.created',

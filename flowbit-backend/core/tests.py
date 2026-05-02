@@ -1156,8 +1156,9 @@ class PrivateWorkspaceTests(APITestCase):
         self.assertFalse(self.user_one_ledger.is_active)
         self.assertTrue(AuditLog.objects.filter(action='period.auto_closed').exists())
 
-    def test_admin_period_create_also_creates_creators_reserve_ledger(self):
-        self.client.force_authenticate(user=self.approver)
+    def test_admin_period_create_creates_reserve_ledgers_for_all_users(self):
+        self.period.close(closed_at=timezone.now())
+        self.client.force_authenticate(user=self.admin_user)
 
         response = self.client.post('/api/periods/', {
             'name': 'Creator Reserve Period',
@@ -1168,13 +1169,16 @@ class PrivateWorkspaceTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         period = Period.objects.get(id=response.data['id'])
-        self.assertTrue(
+        reserve_owners = set(
             Ledger.objects.filter(
                 period=period,
-                owner=self.approver,
                 is_capacity_reserve=True,
                 is_active=True,
-            ).exists()
+            ).values_list('owner__username', flat=True)
+        )
+        self.assertSetEqual(
+            reserve_owners,
+            {self.admin_user.username, self.user_one.username, self.user_two.username},
         )
 
     def test_ledger_list_only_returns_current_users_ledgers_and_reserve(self):
