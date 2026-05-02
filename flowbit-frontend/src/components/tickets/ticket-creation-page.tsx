@@ -421,18 +421,17 @@ export function TicketCreationPage() {
   }, [hasActivePeriod, activePeriod?.id]);
 
   useEffect(() => {
-    const unresolvedIdentifiers = resolvedItems
+    const matchedIdentifiers = resolvedItems
       .map((item) => item.matchedIdentifier)
-      .filter((identifier): identifier is FlowBitIdentifierOption => identifier !== null)
-      .filter((identifier) => identifierCapacityMap[identifier.id] === undefined);
+      .filter((identifier): identifier is FlowBitIdentifierOption => identifier !== null);
 
-    if (!unresolvedIdentifiers.length) {
+    if (!matchedIdentifiers.length) {
       return;
     }
 
     let isMounted = true;
     const uniqueIdentifiers = Array.from(
-      new Map(unresolvedIdentifiers.map((identifier) => [identifier.id, identifier])).values(),
+      new Map(matchedIdentifiers.map((identifier) => [identifier.id, identifier])).values(),
     );
 
     Promise.all(
@@ -462,7 +461,7 @@ export function TicketCreationPage() {
     return () => {
       isMounted = false;
     };
-  }, [identifierCapacityMap, resolvedItems]);
+  }, [resolvedItems]);
 
   function setItemState(
     itemId: string,
