@@ -216,25 +216,25 @@ export function TicketItemRow({
         </div>
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center gap-3 rounded-[20px] border border-stone-900/8 bg-stone-50 px-4 py-3">
-        <div className="inline-flex rounded-[18px] border border-stone-900/8 bg-white p-1">
+      <div className="mt-4 flex flex-wrap items-center gap-3 rounded-[20px] border border-stone-900/8 bg-stone-50 px-3 py-3">
+        <div className="inline-flex rounded-[16px] border border-stone-900/8 bg-white p-1">
           <button
             type="button"
             onClick={() => onAllocationModeChange(item.id, "default")}
-            className={`rounded-[14px] px-4 py-2 text-sm font-medium transition ${
+            className={`rounded-[12px] px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] transition ${
               !item.manualMode ? "bg-stone-950 text-white" : "text-stone-600 hover:bg-stone-100"
             }`}
           >
-            Default Allocation
+            Default
           </button>
           <button
             type="button"
             onClick={() => onAllocationModeChange(item.id, "manual")}
-            className={`rounded-[14px] px-4 py-2 text-sm font-medium transition ${
+            className={`rounded-[12px] px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] transition ${
               item.manualMode ? "bg-stone-950 text-white" : "text-stone-600 hover:bg-stone-100"
             }`}
           >
-            Manual Allocation
+            Manual
           </button>
         </div>
 
