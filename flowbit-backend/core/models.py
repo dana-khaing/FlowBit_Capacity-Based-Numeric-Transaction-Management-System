@@ -45,6 +45,9 @@ class Period(models.Model):
         self.full_clean()
         super().save(*args, **kwargs)
 
+    def sync_reserve_ledgers(self):
+        self.ledgers.filter(is_capacity_reserve=True).update(end_date=self.end_date)
+
     def close(self, closed_at=None, save=True, helper_name=DEFAULT_HELPER_NAME):
         if closed_at is None:
             closed_at = timezone.now()
@@ -97,6 +100,10 @@ class Period(models.Model):
 
             if save:
                 self.save(update_fields=['is_open', 'closed_at'])
+
+            self.ledgers.filter(is_capacity_reserve=True).update(
+                end_date=self.end_date,
+            )
 
             self.ledgers.update(
                 is_active=True,
