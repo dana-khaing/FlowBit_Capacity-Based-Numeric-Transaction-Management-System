@@ -329,8 +329,6 @@ class IdentifierSerializer(serializers.ModelSerializer):
             owner=user,
             applies_to_all=True,
         ).exists()
-        if all_ledgers_frozen:
-            return Decimal('0.00')
 
         frozen_ledger_ids = list(
             IdentifierLedgerFreeze.objects.filter(
@@ -348,7 +346,9 @@ class IdentifierSerializer(serializers.ModelSerializer):
             period=open_period,
             is_capacity_reserve=False,
         )
-        if frozen_ledger_ids:
+        if all_ledgers_frozen:
+            usable_standard_ledgers = usable_standard_ledgers.none()
+        elif frozen_ledger_ids:
             usable_standard_ledgers = usable_standard_ledgers.exclude(id__in=frozen_ledger_ids)
 
         total_limit = usable_standard_ledgers.aggregate(total=Sum('limit_per_identifier'))['total'] or Decimal('0.00')
@@ -360,7 +360,9 @@ class IdentifierSerializer(serializers.ModelSerializer):
             ledger__is_active=True,
             ledger__is_capacity_reserve=False,
         )
-        if frozen_ledger_ids:
+        if all_ledgers_frozen:
+            normal_usage = normal_usage.none()
+        elif frozen_ledger_ids:
             normal_usage = normal_usage.exclude(ledger_id__in=frozen_ledger_ids)
         normal_usage = normal_usage.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
 

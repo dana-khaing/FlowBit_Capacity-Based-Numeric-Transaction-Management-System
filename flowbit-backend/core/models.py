@@ -431,7 +431,12 @@ def _get_transaction_period(transaction_obj):
 
 def _get_ledger_available_capacity(identifier, ledger):
     frozen_state = IdentifierLedgerFreeze.get_frozen_state(identifier, ledger.period, ledger.owner)
-    if frozen_state['all_ledgers'] or ledger.id in frozen_state['ledger_ids']:
+    if ledger.is_capacity_reserve:
+        is_frozen = False
+    else:
+        is_frozen = frozen_state['all_ledgers'] or ledger.id in frozen_state['ledger_ids']
+
+    if is_frozen:
         return Decimal('0.00')
 
     current_usage = LedgerAllocation.objects.filter(
@@ -517,13 +522,11 @@ def preview_transaction_allocation(identifier, total_amount, period, manual_allo
             remaining = Decimal('0.00')
             break
 
-    reserve_available = Decimal('0.00')
-    if not freeze_state['all_ledgers']:
-        reserve_available = IdentifierCapacityAdjustment.get_available_capacity(
-            identifier=identifier,
-            period=period,
-            owner=getattr(identifier, '_allocation_owner', None),
-        )
+    reserve_available = IdentifierCapacityAdjustment.get_available_capacity(
+        identifier=identifier,
+        period=period,
+        owner=getattr(identifier, '_allocation_owner', None),
+    )
     reserve_allocated = min(max(reserve_available, Decimal('0.00')), remaining)
     remaining -= reserve_allocated
 
@@ -574,13 +577,11 @@ def _allocate_transaction_amount(transaction_obj, amount, period, apply_multipli
         remaining -= assign_amount
 
     if remaining > 0:
-        reserve_available = Decimal('0.00')
-        if not freeze_state['all_ledgers']:
-            reserve_available = IdentifierCapacityAdjustment.get_available_capacity(
-                identifier=transaction_obj.identifier,
-                period=period,
-                owner=transaction_obj.created_by,
-            )
+        reserve_available = IdentifierCapacityAdjustment.get_available_capacity(
+            identifier=transaction_obj.identifier,
+            period=period,
+            owner=transaction_obj.created_by,
+        )
         if reserve_available > 0:
             reserve_ledger = Ledger.get_capacity_reserve(period, transaction_obj.created_by, create=True)
             reserve_amount = min(remaining, reserve_available)
@@ -711,6 +712,22 @@ def _resolve_pending_overflows(period, exclude_ledger_ids=None):
                 amount=assign_amount,
             )
             remaining -= assign_amount
+
+        if remaining > 0:
+            reserve_available = IdentifierCapacityAdjustment.get_available_capacity(
+                identifier=overflow.transaction.identifier,
+                period=period,
+                owner=overflow.transaction.created_by,
+            )
+            if reserve_available > 0:
+                reserve_ledger = Ledger.get_capacity_reserve(period, overflow.transaction.created_by, create=True)
+                reserve_amount = min(remaining, reserve_available)
+                LedgerAllocation.objects.create(
+                    transaction=overflow.transaction,
+                    ledger=reserve_ledger,
+                    amount=reserve_amount,
+                )
+                remaining -= reserve_amount
 
         if remaining <= 0:
             overflow.delete()
