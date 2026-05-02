@@ -716,8 +716,32 @@ class LedgerViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        end_date_value = request.data.get('end_date')
+        close_time_value = request.data.get('close_time')
+        if not end_date_value or not close_time_value:
+            return Response(
+                {"detail": "End date and close time are required to reopen a ledger."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         try:
-            ledger.reopen()
+            parsed_close_time = LedgerSerializer().fields['close_time'].to_internal_value(close_time_value)
+            if getattr(parsed_close_time, 'tzinfo', None) is not None:
+                parsed_close_time = parsed_close_time.replace(tzinfo=None)
+            parsed_end_date = FlexibleDateTimeField(
+                default_time=lambda _field: parsed_close_time
+            ).to_internal_value(end_date_value)
+        except Exception:
+            return Response(
+                {"detail": "Enter a valid end date and close time."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        ledger.end_date = parsed_end_date
+
+        try:
+            ledger.reopen(save=False)
+            ledger.save(update_fields=['is_active', 'closed_at', 'end_date'])
         except ValidationError as exc:
             detail = exc.message_dict if hasattr(exc, 'message_dict') else exc.messages[0]
             return Response({"detail": detail}, status=status.HTTP_400_BAD_REQUEST)

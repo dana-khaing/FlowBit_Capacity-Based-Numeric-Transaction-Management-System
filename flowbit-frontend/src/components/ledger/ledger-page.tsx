@@ -44,6 +44,11 @@ type LedgerFormState = {
   close_time: string;
 };
 
+type LedgerReopenFormState = {
+  end_date: string;
+  close_time: string;
+};
+
 type PendingAction =
   | { type: "create" }
   | { type: "close"; ledger: FlowBitLedger }
@@ -110,6 +115,14 @@ function formatTimeValue(value: string) {
   return `${String(parsed.getHours()).padStart(2, "0")}:${String(parsed.getMinutes()).padStart(2, "0")}`;
 }
 
+function formatDateInputValue(value: string) {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "";
+  }
+  return parsed.toISOString().slice(0, 10);
+}
+
 function filterLedgers(
   ledgers: FlowBitLedger[],
   searchQuery: string,
@@ -152,6 +165,7 @@ export function LedgerPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [overrideCode, setOverrideCode] = useState("");
+  const [reopenForm, setReopenForm] = useState<LedgerReopenFormState>({ end_date: "", close_time: "15:00" });
   const [draggedLedgerId, setDraggedLedgerId] = useState<number | null>(null);
 
   const { activePeriod, hasActivePeriod, error: periodError } = usePeriodState();
@@ -248,11 +262,23 @@ export function LedgerPage() {
 
   function openAction(action: PendingAction) {
     setOverrideCode("");
+    if (action?.type === "reopen") {
+      setReopenForm({
+        end_date: formatDateInputValue(action.ledger.end_date),
+        close_time: formatTimeValue(action.ledger.end_date),
+      });
+    }
     setPendingAction(action);
   }
 
   async function handleConfirmAction() {
     if (!activePeriod || !pendingAction) {
+      return;
+    }
+
+    if (pendingAction.type === "reopen" && !reopenForm.end_date) {
+      setToast({ type: "error", message: "End date is required to reopen the ledger." });
+      setPendingAction(null);
       return;
     }
 
@@ -276,7 +302,10 @@ export function LedgerPage() {
         await deleteLedger(pendingAction.ledger.id, requiresOverride ? overrideCode : undefined);
         setToast({ type: "success", message: "Ledger deleted successfully." });
       } else if (pendingAction.type === "reopen") {
-        await reopenLedger(pendingAction.ledger.id);
+        await reopenLedger(pendingAction.ledger.id, {
+          end_date: reopenForm.end_date,
+          close_time: reopenForm.close_time || "15:00",
+        });
         setToast({ type: "success", message: "Ledger reopened successfully." });
       } else if (pendingAction.type === "reorder") {
         await reorderLedgerPriorities(
@@ -392,7 +421,34 @@ export function LedgerPage() {
           setOverrideCode("");
         }}
         onConfirm={handleConfirmAction}
-      />
+      >
+        {pendingAction?.type === "reopen" ? (
+          <div className="space-y-4">
+            <label className="block space-y-2">
+              <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">New end date</span>
+              <Input
+                type="date"
+                value={reopenForm.end_date}
+                onChange={(event) =>
+                  setReopenForm((current) => ({ ...current, end_date: event.target.value }))
+                }
+                disabled={isSaving}
+              />
+            </label>
+            <label className="block space-y-2">
+              <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">New close time</span>
+              <Input
+                type="time"
+                value={reopenForm.close_time}
+                onChange={(event) =>
+                  setReopenForm((current) => ({ ...current, close_time: event.target.value }))
+                }
+                disabled={isSaving}
+              />
+            </label>
+          </div>
+        ) : null}
+      </AdminConfirmModal>
       {/*
         Drag-and-drop reorders active ledgers locally first.
         Persisted priorities are written only after explicit confirmation.

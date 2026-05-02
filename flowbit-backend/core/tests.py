@@ -685,13 +685,14 @@ class RolePermissionTests(APITestCase):
         )
         self.ledger = Ledger.objects.create(
             period=self.period,
+            owner=self.regular_user,
             name='Role Ledger',
             end_date=self.period.end_date,
             limit_per_identifier=Decimal('100.00'),
             priority=1,
             is_active=True,
         )
-        self.identifier = Identifier.objects.create(number='101')
+        self.identifier, _ = Identifier.objects.get_or_create(number='101')
 
     def test_regular_user_cannot_create_period(self):
         self.client.force_authenticate(user=self.regular_user)
@@ -746,7 +747,11 @@ class RolePermissionTests(APITestCase):
 
         response = self.client.post(
             f'/api/ledgers/{self.ledger.id}/reopen/',
-            {'admin_override_code': 'override-123'},
+            {
+                'admin_override_code': 'override-123',
+                'end_date': '2027-01-20',
+                'close_time': '18:30',
+            },
             format='json'
         )
 
@@ -754,6 +759,8 @@ class RolePermissionTests(APITestCase):
         self.ledger.refresh_from_db()
         self.assertTrue(self.ledger.is_active)
         self.assertIsNone(self.ledger.closed_at)
+        self.assertEqual(self.ledger.end_date.date().isoformat(), '2027-01-20')
+        self.assertEqual(self.ledger.end_date.strftime('%H:%M'), '18:30')
 
     def test_regular_user_can_create_ticket_with_transactions(self):
         self.client.force_authenticate(user=self.regular_user)
@@ -782,14 +789,30 @@ class RolePermissionTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_closed_ledger_cannot_reopen_if_period_is_closed(self):
-        self.client.force_authenticate(user=self.admin_user)
+        self.client.force_authenticate(user=self.regular_user)
         self.ledger.close()
         self.period.close()
 
-        response = self.client.post(f'/api/ledgers/{self.ledger.id}/reopen/')
+        response = self.client.post(
+            f'/api/ledgers/{self.ledger.id}/reopen/',
+            {
+                'end_date': '2027-01-20',
+                'close_time': '18:30',
+            },
+            format='json',
+        )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(response.data['detail'], 'Only ledgers in the active period can be reopened.')
+
+    def test_ledger_reopen_requires_new_end_date_and_time(self):
+        self.client.force_authenticate(user=self.regular_user)
+        self.ledger.close()
+
+        response = self.client.post(f'/api/ledgers/{self.ledger.id}/reopen/', {}, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['detail'], 'End date and close time are required to reopen a ledger.')
 
     def test_admin_can_list_users(self):
         self.client.force_authenticate(user=self.admin_user)
