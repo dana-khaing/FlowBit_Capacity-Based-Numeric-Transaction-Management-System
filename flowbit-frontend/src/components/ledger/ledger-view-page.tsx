@@ -602,7 +602,7 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
                           Left {formatCompactAmount(identifierRow.remaining_capacity)}
                         </span>
                         <span className="inline-flex shrink-0 items-center gap-2 rounded-full bg-white px-3 py-2 text-xs font-semibold text-stone-700">
-                          Usage {formatCompactAmount(identifierRow.allocated_amount)}/{ledgerView ? formatCompactAmount(ledgerView.summary.capacity_per_identifier) : "0"}
+                          Usage {formatCompactAmount(identifierRow.allocated_amount)}/{formatCompactAmount(identifierRow.total_capacity)}
                         </span>
                         {identifierRow.is_frozen ? (
                           <span className="inline-flex shrink-0 items-center gap-2 rounded-full bg-sky-100 px-3 py-2 text-xs font-semibold text-sky-700">
@@ -705,6 +705,7 @@ function buildCombinedLedgerView(
       identifier_id: number;
       number: string;
       recordings: FlowBitLedgerView["identifiers"][number]["recordings"];
+      total_capacity: number;
       allocated_amount: number;
       remaining_capacity: number;
       capacity: number;
@@ -728,6 +729,7 @@ function buildCombinedLedgerView(
           identifier_id: row.identifier_id,
           number: row.number,
           recordings: [...row.recordings],
+          total_capacity: Number(row.total_capacity || "0"),
           allocated_amount: Number(row.allocated_amount || "0"),
           remaining_capacity: Number(row.remaining_capacity || "0"),
           capacity: Number(row.allocated_amount || "0") + Number(row.remaining_capacity || "0"),
@@ -739,6 +741,7 @@ function buildCombinedLedgerView(
       }
 
       existing.recordings.push(...row.recordings);
+      existing.total_capacity += Number(row.total_capacity || "0");
       existing.allocated_amount += Number(row.allocated_amount || "0");
       existing.remaining_capacity += Number(row.remaining_capacity || "0");
       existing.capacity += Number(row.allocated_amount || "0") + Number(row.remaining_capacity || "0");
@@ -761,6 +764,7 @@ function buildCombinedLedgerView(
       recordings: row.recordings.sort((left, right) => {
         return new Date(left.created_at).getTime() - new Date(right.created_at).getTime();
       }),
+      total_capacity: row.total_capacity.toFixed(2),
       allocated_amount: row.allocated_amount.toFixed(2),
       remaining_capacity: row.remaining_capacity.toFixed(2),
       is_full: row.remaining_capacity <= 0,
