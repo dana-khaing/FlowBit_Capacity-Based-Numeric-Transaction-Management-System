@@ -283,6 +283,7 @@ class IdentifierSerializer(serializers.ModelSerializer):
     current_utilization = serializers.SerializerMethodField()
     remaining_capacity = serializers.SerializerMethodField()
     is_frozen_all_ledgers = serializers.SerializerMethodField()
+    freeze_status = serializers.SerializerMethodField()
     current_overflow_amount = serializers.SerializerMethodField()
     total_overflow_amount = serializers.SerializerMethodField()
     confirmed_overflow_amount = serializers.SerializerMethodField()
@@ -294,6 +295,7 @@ class IdentifierSerializer(serializers.ModelSerializer):
             'current_utilization',
             'remaining_capacity',
             'is_frozen_all_ledgers',
+            'freeze_status',
             'current_overflow_amount',
             'confirmed_overflow_amount',
             'total_overflow_amount',
@@ -393,6 +395,23 @@ class IdentifierSerializer(serializers.ModelSerializer):
             owner=user,
             applies_to_all=True,
         ).exists()
+
+    def get_freeze_status(self, obj):
+        user = self._request_user()
+        open_period = Period.get_open_period()
+        if user is None or open_period is None:
+            return 'none'
+
+        freeze_rows = IdentifierLedgerFreeze.objects.filter(
+            identifier=obj,
+            period=open_period,
+            owner=user,
+        )
+        if freeze_rows.filter(applies_to_all=True).exists():
+            return 'all'
+        if freeze_rows.filter(applies_to_all=False, ledger__isnull=False).exists():
+            return 'partial'
+        return 'none'
 
     def get_current_overflow_amount(self, obj):
         user = self._request_user()

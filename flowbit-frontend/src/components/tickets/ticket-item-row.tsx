@@ -40,6 +40,7 @@ type TicketItemRowProps = {
   identifier: FlowBitIdentifierOption | null;
   remainingCapacity?: string | null;
   isFrozenAllLedgers?: boolean;
+  freezeStatus?: "none" | "partial" | "all";
   identifierError?: string | null;
   amountError?: string | null;
   activeLedgers: FlowBitLedger[];
@@ -66,6 +67,7 @@ export function TicketItemRow({
   identifier,
   remainingCapacity,
   isFrozenAllLedgers = false,
+  freezeStatus = "none",
   identifierError,
   amountError,
   activeLedgers,
@@ -94,7 +96,9 @@ export function TicketItemRow({
   const remainingCapacityNumber = Number(remainingCapacity ?? "0");
   const hasRemainingCapacity =
     !Number.isNaN(remainingCapacityNumber) && remainingCapacityNumber > 0;
-  const isReserveOnlyCapacity = isFrozenAllLedgers && hasRemainingCapacity;
+  const isReserveOnlyCapacity = freezeStatus === "all" && hasRemainingCapacity;
+  const isFullyFrozenWithoutCapacity = freezeStatus === "all" && hasLoadedCapacity && !hasRemainingCapacity;
+  const hasPartialFreeze = freezeStatus === "partial";
 
   useEffect(() => {
     if (!autoFocusField) {
@@ -240,20 +244,20 @@ export function TicketItemRow({
               !identifier ||
               item.isTakingAll ||
               !hasLoadedCapacity ||
-              (isFrozenAllLedgers && !hasRemainingCapacity)
+              isFullyFrozenWithoutCapacity
             }
             className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] transition ${
               !identifier ||
               item.isTakingAll ||
               !hasLoadedCapacity ||
-              (isFrozenAllLedgers && !hasRemainingCapacity)
+              isFullyFrozenWithoutCapacity
                 ? "cursor-not-allowed bg-stone-200 text-stone-400"
                 : "bg-white text-stone-600 hover:bg-stone-100"
             }`}
           >
             {item.isTakingAll ? "Taking" : "Take all"}
           </button>
-          {identifier && isFrozenAllLedgers && !hasLoadedCapacity ? (
+          {identifier && freezeStatus !== "none" && !hasLoadedCapacity ? (
             <span className="inline-flex items-center gap-2 rounded-full bg-stone-100 px-3 py-1 text-stone-600">
               <FontAwesomeIcon icon={faSnowflake} className="h-3 w-3" />
               Checking capacity...
@@ -261,12 +265,17 @@ export function TicketItemRow({
           ) : identifier && isReserveOnlyCapacity ? (
             <span className="inline-flex items-center gap-2 rounded-full bg-sky-100 px-3 py-1 text-sky-800">
               <FontAwesomeIcon icon={faSnowflake} className="h-3 w-3" />
-              Reserve only · Left {remainingCapacity ?? "0"}
+              Frozen · All Ledger
             </span>
-          ) : identifier && isFrozenAllLedgers ? (
+          ) : identifier && isFullyFrozenWithoutCapacity ? (
             <span className="inline-flex items-center gap-2 rounded-full bg-sky-100 px-3 py-1 text-sky-800">
               <FontAwesomeIcon icon={faSnowflake} className="h-3 w-3" />
-              Frozen · will overflow
+              Frozen · All Ledger
+            </span>
+          ) : identifier && hasPartialFreeze ? (
+            <span className="inline-flex items-center gap-2 rounded-full bg-sky-100 px-3 py-1 text-sky-800">
+              <FontAwesomeIcon icon={faSnowflake} className="h-3 w-3" />
+              Frozen · Partially
             </span>
           ) : identifier ? (
             <span className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1">
@@ -277,6 +286,12 @@ export function TicketItemRow({
             <span className="inline-flex items-center gap-2 rounded-full bg-amber-100 px-3 py-1 text-amber-800">
               <FontAwesomeIcon icon={faCircleExclamation} className="h-3 w-3" />
               Identifier not found
+            </span>
+          ) : null}
+          {identifier && freezeStatus !== "none" && hasLoadedCapacity ? (
+            <span className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1">
+              <FontAwesomeIcon icon={faCircleCheck} className="h-3 w-3 text-emerald-600" />
+              Left {remainingCapacity ?? "0"}
             </span>
           ) : null}
         </div>
