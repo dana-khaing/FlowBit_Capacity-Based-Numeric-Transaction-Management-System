@@ -405,6 +405,7 @@ class PeriodViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         before = snapshot_instance(self.get_object())
         period = serializer.save()
+        period.sync_reserve_ledgers()
         record_audit_log(
             self.request,
             'period.updated',
@@ -527,6 +528,7 @@ class PeriodViewSet(viewsets.ModelViewSet):
         try:
             period.reopen(save=False)
             period.save(update_fields=['is_open', 'closed_at', 'end_date'])
+            period.sync_reserve_ledgers()
         except ValidationError as exc:
             message = exc.messages[0] if getattr(exc, 'messages', None) else str(exc)
             return Response({"detail": message}, status=status.HTTP_400_BAD_REQUEST)

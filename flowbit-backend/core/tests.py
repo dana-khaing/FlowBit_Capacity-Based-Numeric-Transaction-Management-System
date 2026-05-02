@@ -1182,6 +1182,45 @@ class PrivateWorkspaceTests(APITestCase):
         self.assertEqual(self.period.end_date.date().isoformat(), '2028-01-15')
         self.assertEqual(self.period.end_date.strftime('%H:%M'), '18:30')
 
+    def test_period_update_syncs_reserve_ledger_end_date(self):
+        reserve = Ledger.get_capacity_reserve(self.period, self.user_one, create=True)
+        self.client.force_authenticate(user=self.admin_user)
+
+        response = self.client.patch(
+            f'/api/periods/{self.period.id}/',
+            {
+                'end_date': '2028-02-20',
+                'close_time': '19:45',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        reserve.refresh_from_db()
+        self.assertEqual(reserve.end_date.date().isoformat(), '2028-02-20')
+        self.assertEqual(reserve.end_date.strftime('%H:%M'), '19:45')
+
+    def test_period_reopen_syncs_and_reactivates_reserve_ledgers(self):
+        reserve = Ledger.get_capacity_reserve(self.period, self.user_one, create=True)
+        self.period.close(closed_at=timezone.now())
+        self.client.force_authenticate(user=self.admin_user)
+
+        response = self.client.post(
+            f'/api/periods/{self.period.id}/reopen/',
+            {
+                'end_date': '2028-01-18',
+                'close_time': '17:30',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        reserve.refresh_from_db()
+        self.assertTrue(reserve.is_active)
+        self.assertIsNone(reserve.closed_at)
+        self.assertEqual(reserve.end_date.date().isoformat(), '2028-01-18')
+        self.assertEqual(reserve.end_date.strftime('%H:%M'), '17:30')
+
     @patch('core.views.timezone.now')
     def test_fetch_periods_auto_closes_expired_active_period(self, mocked_now):
         mocked_now.return_value = timezone.make_aware(datetime(2028, 1, 2, 12, 0, 0))
