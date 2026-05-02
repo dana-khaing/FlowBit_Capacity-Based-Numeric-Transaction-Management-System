@@ -560,7 +560,8 @@ export function TicketCreationPage() {
 
     try {
       const capacity = await fetchIdentifierCapacity(identifier.id);
-      if (capacity.is_frozen_all_ledgers) {
+      const remainingCapacity = Number(capacity.remaining_capacity) || 0;
+      if (capacity.is_frozen_all_ledgers && remainingCapacity <= 0) {
         setToast({
           type: "error",
           message: `Identifier ${identifier.number} is frozen across all ledgers and will spill over.`,
@@ -573,7 +574,7 @@ export function TicketCreationPage() {
         return;
       }
       const nextAmount = draft.amountUsesAllocationBasis
-        ? String(Math.floor(Number(capacity.remaining_capacity) || 0))
+        ? String(Math.floor(remainingCapacity))
         : toTakeAllAmount(capacity.remaining_capacity);
       if (Number(nextAmount) <= 0) {
         setToast({

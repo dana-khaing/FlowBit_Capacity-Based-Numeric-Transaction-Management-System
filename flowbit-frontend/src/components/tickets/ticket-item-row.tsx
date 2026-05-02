@@ -90,6 +90,10 @@ export function TicketItemRow({
   const amountInputRef = useRef<HTMLInputElement | null>(null);
   const permutationCount = getPermutationCount(item.identifierNumber);
   const permutationsSelected = Boolean(item.permutationIdentifiers?.length);
+  const remainingCapacityNumber = Number(remainingCapacity ?? "0");
+  const hasRemainingCapacity =
+    !Number.isNaN(remainingCapacityNumber) && remainingCapacityNumber > 0;
+  const isReserveOnlyCapacity = isFrozenAllLedgers && hasRemainingCapacity;
 
   useEffect(() => {
     if (!autoFocusField) {
@@ -231,16 +235,21 @@ export function TicketItemRow({
           <button
             type="button"
             onClick={() => onTakeAll(item.id)}
-            disabled={!identifier || item.isTakingAll || isFrozenAllLedgers}
+            disabled={!identifier || item.isTakingAll || (isFrozenAllLedgers && !hasRemainingCapacity)}
             className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] transition ${
-              !identifier || item.isTakingAll || isFrozenAllLedgers
+              !identifier || item.isTakingAll || (isFrozenAllLedgers && !hasRemainingCapacity)
                 ? "cursor-not-allowed bg-stone-200 text-stone-400"
                 : "bg-white text-stone-600 hover:bg-stone-100"
             }`}
           >
             {item.isTakingAll ? "Taking" : "Take all"}
           </button>
-          {identifier && isFrozenAllLedgers ? (
+          {identifier && isReserveOnlyCapacity ? (
+            <span className="inline-flex items-center gap-2 rounded-full bg-sky-100 px-3 py-1 text-sky-800">
+              <FontAwesomeIcon icon={faSnowflake} className="h-3 w-3" />
+              Reserve only · Left {remainingCapacity ?? "0"}
+            </span>
+          ) : identifier && isFrozenAllLedgers ? (
             <span className="inline-flex items-center gap-2 rounded-full bg-sky-100 px-3 py-1 text-sky-800">
               <FontAwesomeIcon icon={faSnowflake} className="h-3 w-3" />
               Frozen · will overflow
