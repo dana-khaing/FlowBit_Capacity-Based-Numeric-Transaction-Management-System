@@ -928,16 +928,28 @@ class LedgerViewSet(viewsets.ModelViewSet):
                 is_capacity_reserve=False,
             ).values('id', 'limit_per_identifier')
         }
+        allocation_queryset = LedgerAllocation.objects.filter(
+            ledger__period=ledger.period,
+            ledger__owner=ledger.owner,
+            ledger__is_active=True,
+            ledger__is_capacity_reserve=ledger.is_capacity_reserve,
+        )
         allocations = list(
-            LedgerAllocation.objects.filter(
-                ledger__period=ledger.period,
-                ledger__owner=ledger.owner,
-                ledger__is_active=True,
-                ledger__is_capacity_reserve=False,
-            )
+            allocation_queryset
             .select_related('transaction__identifier', 'transaction__ticket')
             .order_by('ledger_id', 'transaction__timestamp', 'id')
         )
+        reserve_grants_by_identifier = {}
+        if ledger.is_capacity_reserve:
+            reserve_grants_by_identifier = {
+                row['identifier_id']: row['total'] or Decimal('0.00')
+                for row in IdentifierCapacityAdjustment.objects.filter(
+                    owner=ledger.owner,
+                    period=ledger.period,
+                )
+                .values('identifier_id')
+                .annotate(total=Sum('amount'))
+            }
 
         allocations_by_identifier = {}
         ledger_usage_by_identifier = {}
@@ -989,7 +1001,8 @@ class LedgerViewSet(viewsets.ModelViewSet):
                 (Decimal(item['amount']) for item in recordings),
                 Decimal('0.00'),
             )
-            remaining_amount = capacity_per_identifier - allocated_amount
+            row_capacity = reserve_grants_by_identifier.get(identifier.id, capacity_per_identifier)
+            remaining_amount = row_capacity - allocated_amount
             if remaining_amount < Decimal('0.00'):
                 remaining_amount = Decimal('0.00')
 
@@ -1010,6 +1023,7 @@ class LedgerViewSet(viewsets.ModelViewSet):
                     'number': identifier.number,
                     'recording_display': recording_display,
                     'recordings': recordings,
+                    'total_capacity': str(row_capacity),
                     'allocated_amount': str(allocated_amount),
                     'remaining_capacity': str(remaining_amount),
                     'is_full': remaining_amount <= Decimal('0.00'),
@@ -1021,7 +1035,10 @@ class LedgerViewSet(viewsets.ModelViewSet):
             )
 
         identifier_count = len(identifiers)
-        total_capacity = capacity_per_identifier * identifier_count
+        if ledger.is_capacity_reserve:
+            total_capacity = sum(reserve_grants_by_identifier.values(), Decimal('0.00'))
+        else:
+            total_capacity = capacity_per_identifier * identifier_count
         remaining_capacity = total_capacity - total_allocated
         if remaining_capacity < Decimal('0.00'):
             remaining_capacity = Decimal('0.00')

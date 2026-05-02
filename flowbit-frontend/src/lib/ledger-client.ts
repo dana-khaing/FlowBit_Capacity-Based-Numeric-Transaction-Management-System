@@ -30,6 +30,7 @@ export type FlowBitLedgerIdentifierRow = {
   number: string;
   recording_display: string;
   recordings: FlowBitLedgerRecording[];
+  total_capacity: string;
   allocated_amount: string;
   remaining_capacity: string;
   is_full: boolean;
