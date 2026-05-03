@@ -3,10 +3,10 @@ import { getStoredToken } from "@/lib/auth-client";
 
 export type FlowBitOverflow = {
   id: number;
-  transaction: number;
+  transaction: number | null;
   ticket_number: string | null;
   customer_name: string | null;
-  order_number: string;
+  order_number: string | null;
   identifier_number: string;
   timestamp: string;
   excess_amount: string;

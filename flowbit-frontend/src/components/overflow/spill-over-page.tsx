@@ -802,7 +802,7 @@ export function SpillOverPage() {
         title="Confirm spill-over refund"
         description={
           refundTarget
-            ? `${refundTarget.overflow.identifier_number} · ${refundTarget.overflow.order_number}\nRefund ${refundTarget.action.replaceAll("_", " ")} for ${formatAmount(
+            ? `${refundTarget.overflow.identifier_number}${refundTarget.overflow.order_number ? ` · ${refundTarget.overflow.order_number}` : ""}\nRefund ${refundTarget.action.replaceAll("_", " ")} for ${formatAmount(
                 refundTarget.action === "refund_overflow_only"
                   ? refundTarget.overflow.excess_amount
                   : refundTarget.overflow.amount_to_approve || refundTarget.overflow.excess_amount,
@@ -832,7 +832,9 @@ export function SpillOverPage() {
             <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-500">Refund options</p>
             <h2 className="mt-2 text-2xl font-semibold text-stone-950">{refundPickerTarget.identifier_number}</h2>
             <p className="mt-2 text-sm leading-6 text-stone-500">
-              Choose how you want to refund this spill-over record.
+              {refundPickerTarget.status === "OVRK"
+                ? "Return this overkill amount to remove it from reserve capacity."
+                : "Choose how you want to refund this spill-over record."}
             </p>
 
             <div className="mt-5 space-y-3">
@@ -851,36 +853,40 @@ export function SpillOverPage() {
                   </p>
                 </div>
               </button>
-              <button
-                type="button"
-                className="flex w-full items-center justify-between rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4 text-left transition hover:border-stone-900/20"
-                onClick={() => {
-                  setRefundPickerTarget(null);
-                  setRefundTarget({ overflow: refundPickerTarget, action: "refund_transaction" });
-                }}
-              >
-                <div>
-                  <p className="font-semibold text-stone-950">Refund transaction</p>
-                  <p className="mt-1 text-sm text-stone-500">
-                    Refund the full transaction that created this spill over.
-                  </p>
-                </div>
-              </button>
-              <button
-                type="button"
-                className="flex w-full items-center justify-between rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4 text-left transition hover:border-stone-900/20"
-                onClick={() => {
-                  setRefundPickerTarget(null);
-                  setRefundTarget({ overflow: refundPickerTarget, action: "refund_ticket" });
-                }}
-              >
-                <div>
-                  <p className="font-semibold text-stone-950">Refund ticket</p>
-                  <p className="mt-1 text-sm text-stone-500">
-                    Refund the full ticket linked to {refundPickerTarget.order_number}.
-                  </p>
-                </div>
-              </button>
+              {refundPickerTarget.status !== "OVRK" ? (
+                <>
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-between rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4 text-left transition hover:border-stone-900/20"
+                    onClick={() => {
+                      setRefundPickerTarget(null);
+                      setRefundTarget({ overflow: refundPickerTarget, action: "refund_transaction" });
+                    }}
+                  >
+                    <div>
+                      <p className="font-semibold text-stone-950">Refund transaction</p>
+                      <p className="mt-1 text-sm text-stone-500">
+                        Refund the full transaction that created this spill over.
+                      </p>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-between rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4 text-left transition hover:border-stone-900/20"
+                    onClick={() => {
+                      setRefundPickerTarget(null);
+                      setRefundTarget({ overflow: refundPickerTarget, action: "refund_ticket" });
+                    }}
+                  >
+                    <div>
+                      <p className="font-semibold text-stone-950">Refund ticket</p>
+                      <p className="mt-1 text-sm text-stone-500">
+                        Refund the full ticket linked to {refundPickerTarget.order_number}.
+                      </p>
+                    </div>
+                  </button>
+                </>
+              ) : null}
             </div>
 
             <div className="mt-5 flex justify-end">

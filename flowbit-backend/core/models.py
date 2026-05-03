@@ -402,9 +402,10 @@ class IdentifierLedgerFreeze(models.Model):
 
 def _period_overflow_filter(period):
     if period is None:
-        return Q(transaction__allocations__ledger__period__isnull=True)
+        return Q(period__isnull=True) | Q(transaction__allocations__ledger__period__isnull=True)
 
     return (
+        Q(period=period) |
         Q(transaction__allocations__ledger__period=period) |
         Q(
             transaction__timestamp__gte=period.start_date,
@@ -596,6 +597,7 @@ def _allocate_transaction_amount(transaction_obj, amount, period, apply_multipli
                 period=period,
                 owner=transaction_obj.created_by,
                 amount=reserve_amount,
+                consuming_transaction=transaction_obj,
             )
             remaining -= reserve_amount
 
@@ -633,6 +635,7 @@ def _allocate_manual_transaction_amount(transaction_obj, amount, period, manual_
             period=period,
             owner=transaction_obj.created_by,
             amount=preview['reserve_allocated'],
+            consuming_transaction=transaction_obj,
         )
 
     return preview['overflow_amount']
@@ -745,6 +748,7 @@ def _resolve_pending_overflows(period, exclude_ledger_ids=None):
                     period=period,
                     owner=overflow.transaction.created_by,
                     amount=reserve_amount,
+                    consuming_transaction=overflow.transaction,
                 )
                 remaining -= reserve_amount
 
@@ -1000,7 +1004,34 @@ class Overflow(models.Model):
         (RESOLUTION_REFUND_TICKET, 'Refund Ticket'),
     )
 
-    transaction = models.ForeignKey(Transaction, on_delete=models.CASCADE, related_name='overflows')
+    transaction = models.ForeignKey(
+        Transaction,
+        on_delete=models.SET_NULL,
+        related_name='overflows',
+        null=True,
+        blank=True,
+    )
+    identifier = models.ForeignKey(
+        Identifier,
+        on_delete=models.CASCADE,
+        related_name='overflows',
+        null=True,
+        blank=True,
+    )
+    owner = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='overflows',
+        null=True,
+        blank=True,
+    )
+    period = models.ForeignKey(
+        Period,
+        on_delete=models.CASCADE,
+        related_name='overflows',
+        null=True,
+        blank=True,
+    )
     excess_amount = models.DecimalField(max_digits=12, decimal_places=2)
     status = models.CharField(max_length=4, choices=STATUS_CHOICES, default=STATUS_TCSO)
     amount_to_approve = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
@@ -1012,14 +1043,18 @@ class Overflow(models.Model):
     refund_amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
 
     @property
-    def period(self):
-        return _get_transaction_period(self.transaction)
-
-    @property
     def approved_capacity_amount(self):
         return self.amount_to_approve or self.excess_amount
 
     def save(self, *args, **kwargs):
+        if self.transaction_id:
+            if self.identifier_id is None:
+                self.identifier = self.transaction.identifier
+            if self.owner_id is None:
+                self.owner = self.transaction.created_by
+            if self.period_id is None:
+                self.period = _get_transaction_period(self.transaction)
+
         if self.status == self.STATUS_REFUNDED:
             pass
         elif self.approved_at and self.status not in {self.STATUS_CSO, self.STATUS_OVERKILL}:
@@ -1038,12 +1073,16 @@ class Overflow(models.Model):
                 super().save(update_fields=['excess_amount'])
                 Overflow.objects.create(
                     transaction=self.transaction,
+                    identifier=self.identifier,
+                    owner=self.owner,
+                    period=self.period,
                     excess_amount=leftover,
                     status=self.STATUS_TCSO
                 )
 
     def __str__(self):
-        return f"{self.status} - {self.transaction.order_number}"
+        label = self.transaction.order_number if self.transaction_id else (self.identifier.number if self.identifier_id else self.id)
+        return f"{self.status} - {label}"
 
 
 class IdentifierCapacityAdjustment(models.Model):
@@ -1158,10 +1197,13 @@ def _grant_capacity_adjustment(overflow, amount, adjustment_type, helper_name):
     if period is None:
         return None
 
-    owner = overflow.transaction.created_by
+    owner = overflow.owner
+    identifier = overflow.identifier
+    if owner is None or identifier is None:
+        return None
     Ledger.get_capacity_reserve(period, owner, create=True)
     return IdentifierCapacityAdjustment.objects.create(
-        identifier=overflow.transaction.identifier,
+        identifier=identifier,
         period=period,
         owner=owner,
         overflow=overflow,
@@ -1171,18 +1213,18 @@ def _grant_capacity_adjustment(overflow, amount, adjustment_type, helper_name):
     )
 
 
-def _consume_overkill_capacity(identifier, period, owner, amount):
+def _consume_overkill_capacity(identifier, period, owner, amount, consuming_transaction=None):
     if period is None or owner is None or amount <= 0:
         return
 
     remaining = Decimal(str(amount))
     overkill_rows = list(
         Overflow.objects.filter(
-            transaction__identifier=identifier,
-            transaction__created_by=owner,
+            identifier=identifier,
+            owner=owner,
+            period=period,
             status=Overflow.STATUS_OVERKILL,
         )
-        .filter(_period_overflow_filter(period))
         .prefetch_related('collaborators')
         .order_by('approved_at', 'id')
         .distinct()
@@ -1199,17 +1241,19 @@ def _consume_overkill_capacity(identifier, period, owner, amount):
         consumed_amount = min(current_amount, remaining)
         collaborator_ids = list(overflow.collaborators.values_list('id', flat=True))
 
-        if consumed_amount == current_amount:
-            overflow.status = Overflow.STATUS_CSO
-            overflow.resolution_type = Overflow.RESOLUTION_RESERVE_CONSUMED
-            overflow.save(update_fields=['status', 'resolution_type'])
-        else:
+        if consumed_amount != current_amount:
             overflow.excess_amount = current_amount - consumed_amount
             overflow.amount_to_approve = current_amount - consumed_amount
             overflow.save(update_fields=['excess_amount', 'amount_to_approve'])
+        else:
+            overflow.delete()
 
+        if consuming_transaction is not None:
             consumed_overflow = Overflow.objects.create(
-                transaction=overflow.transaction,
+                transaction=consuming_transaction,
+                identifier=identifier,
+                owner=owner,
+                period=period,
                 excess_amount=consumed_amount,
                 status=Overflow.STATUS_CSO,
                 amount_to_approve=consumed_amount,
@@ -1252,7 +1296,9 @@ def _return_reserve_consumed_overflow(overflow, helper_name, refunded_at=None):
 
     matching_overkill = (
         Overflow.objects.filter(
-            transaction=overflow.transaction,
+            identifier=overflow.identifier,
+            owner=overflow.owner,
+            period=overflow.period,
             status=Overflow.STATUS_OVERKILL,
         )
         .order_by('approved_at', 'id')
@@ -1264,15 +1310,20 @@ def _return_reserve_consumed_overflow(overflow, helper_name, refunded_at=None):
         matching_overkill.amount_to_approve = (matching_overkill.amount_to_approve or Decimal('0.00')) + refund_amount
         matching_overkill.refunded_at = None
         matching_overkill.refund_amount = None
+        matching_overkill.transaction = None
         matching_overkill.save(update_fields=[
             'excess_amount',
             'amount_to_approve',
             'refunded_at',
             'refund_amount',
+            'transaction',
         ])
     else:
         matching_overkill = Overflow.objects.create(
-            transaction=overflow.transaction,
+            transaction=None,
+            identifier=overflow.identifier,
+            owner=overflow.owner,
+            period=overflow.period,
             excess_amount=refund_amount,
             status=Overflow.STATUS_OVERKILL,
             amount_to_approve=refund_amount,
@@ -1305,7 +1356,7 @@ def refund_overflow(overflow, helper_name, resolution_type, refunded_at=None):
                     refunded_at=refunded_at,
                 )
                 if period:
-                    _retry_pending_overflows(period, restored_overkill.transaction.identifier)
+                    _retry_pending_overflows(period, restored_overkill.identifier)
                 return restored_overkill
 
             overflow.status = Overflow.STATUS_TCSO
@@ -1339,7 +1390,7 @@ def refund_overflow(overflow, helper_name, resolution_type, refunded_at=None):
             )
             overflow.delete()
             if period:
-                _retry_pending_overflows(period, overflow.transaction.identifier)
+                _retry_pending_overflows(period, overflow.identifier)
             return None
 
     if overflow.status == Overflow.STATUS_CSO and overflow.resolution_type != Overflow.RESOLUTION_RESERVE_CONSUMED:

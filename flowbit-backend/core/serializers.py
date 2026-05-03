@@ -446,11 +446,11 @@ class LedgerAllocationSerializer(serializers.ModelSerializer):
 
 
 class OverflowSerializer(serializers.ModelSerializer):
-    ticket_number = serializers.CharField(source='transaction.ticket.ticket_number', read_only=True, allow_null=True)
-    customer_name = serializers.CharField(source='transaction.ticket.customer_name', read_only=True, allow_null=True)
-    order_number = serializers.CharField(source='transaction.order_number', read_only=True)
-    identifier_number = serializers.CharField(source='transaction.identifier.number', read_only=True)
-    timestamp = serializers.DateTimeField(source='transaction.timestamp', read_only=True)
+    ticket_number = serializers.SerializerMethodField()
+    customer_name = serializers.SerializerMethodField()
+    order_number = serializers.SerializerMethodField()
+    identifier_number = serializers.SerializerMethodField()
+    timestamp = serializers.SerializerMethodField()
     collaborator_names = serializers.SerializerMethodField()
 
     class Meta:
@@ -480,6 +480,35 @@ class OverflowSerializer(serializers.ModelSerializer):
             collaborator.full_name.strip() or collaborator.username
             for collaborator in obj.collaborators.all()
         ]
+
+    def get_ticket_number(self, obj):
+        if obj.status == Overflow.STATUS_OVERKILL or obj.transaction_id is None or obj.transaction.ticket_id is None:
+            return None
+        return obj.transaction.ticket.ticket_number
+
+    def get_customer_name(self, obj):
+        if obj.status == Overflow.STATUS_OVERKILL or obj.transaction_id is None or obj.transaction.ticket_id is None:
+            return None
+        return obj.transaction.ticket.customer_name
+
+    def get_order_number(self, obj):
+        if obj.status == Overflow.STATUS_OVERKILL or obj.transaction_id is None:
+            return None
+        return obj.transaction.order_number
+
+    def get_identifier_number(self, obj):
+        if obj.identifier_id:
+            return obj.identifier.number
+        if obj.transaction_id:
+            return obj.transaction.identifier.number
+        return ""
+
+    def get_timestamp(self, obj):
+        if obj.status == Overflow.STATUS_OVERKILL:
+            return obj.approved_at or obj.refunded_at
+        if obj.transaction_id is None:
+            return obj.approved_at or obj.refunded_at
+        return obj.transaction.timestamp
 
 
 class CollaboratorSerializer(serializers.ModelSerializer):
