@@ -2149,6 +2149,74 @@ class PrivateWorkflowAPITests(APITestCase):
             Decimal('200.00'),
         )
 
+    def test_refunding_ticket_with_reserve_consumed_cso_restores_overkill_balance(self):
+        third_identifier = Identifier.objects.create(number='397')
+        seed_ticket = Ticket.objects.create(customer_name='Reserve Refund Seed', created_by=self.approver)
+        seed_transaction = Transaction.objects.create(
+            ticket=seed_ticket,
+            identifier=third_identifier,
+            total_amount=Decimal('400.00'),
+            created_by=self.approver,
+        )
+        seed_overflow = Overflow.objects.get(transaction=seed_transaction, status=Overflow.STATUS_TCSO)
+        self.client.post(
+            f'/api/overflows/{seed_overflow.id}/approve/',
+            {
+                'amount_to_approve': '500.00',
+                'collaborator_ids': [self.collaborator.id],
+            },
+            format='json',
+        )
+
+        IdentifierLedgerFreeze.objects.create(
+            identifier=third_identifier,
+            period=self.active_period,
+            owner=self.approver,
+            applies_to_all=True,
+        )
+
+        consume_ticket = Ticket.objects.create(customer_name='Reserve Refund Ticket', created_by=self.approver)
+        consume_transaction = Transaction.objects.create(
+            ticket=consume_ticket,
+            identifier=third_identifier,
+            total_amount=Decimal('40.00'),
+            created_by=self.approver,
+        )
+
+        consumed_cso = Overflow.objects.get(
+            transaction=consume_transaction,
+            identifier=third_identifier,
+            status=Overflow.STATUS_CSO,
+            resolution_type=Overflow.RESOLUTION_RESERVE_CONSUMED,
+        )
+        self.assertEqual(consumed_cso.amount_to_approve, Decimal('50.00'))
+
+        refund_response = self.client.post(
+            f'/api/tickets/{consume_ticket.ticket_number}/refund/',
+            {'action': 'refund_ticket'},
+            format='json',
+        )
+
+        self.assertEqual(refund_response.status_code, status.HTTP_200_OK)
+        self.assertFalse(Overflow.objects.filter(id=consumed_cso.id).exists())
+        overkill = Overflow.objects.get(
+            identifier=third_identifier,
+            owner=self.approver,
+            period=self.active_period,
+            status=Overflow.STATUS_OVERKILL,
+        )
+        self.assertEqual(overkill.amount_to_approve, Decimal('200.00'))
+        self.assertEqual(overkill.excess_amount, Decimal('200.00'))
+        self.assertIsNone(overkill.transaction)
+        self.assertEqual(
+            IdentifierCapacityAdjustment.get_available_capacity(
+                third_identifier,
+                self.active_period,
+                self.approver,
+            ),
+            Decimal('200.00'),
+        )
+
     def test_period_close_creates_reserve_archive_ticket_for_leftover_capacity(self):
         reserve_ledger = Ledger.get_capacity_reserve(self.active_period, self.approver, create=True)
         IdentifierCapacityAdjustment.objects.create(

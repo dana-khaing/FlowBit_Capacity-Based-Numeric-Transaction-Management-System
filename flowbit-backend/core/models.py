@@ -1282,17 +1282,18 @@ def _is_returned_pending_overflow(overflow):
     )
 
 
-def _return_reserve_consumed_overflow(overflow, helper_name, refunded_at=None):
+def _return_reserve_consumed_overflow(overflow, helper_name, refunded_at=None, restore_capacity_adjustment=True):
     refunded_at = refunded_at or timezone.now()
     refund_amount = overflow.amount_to_approve or overflow.excess_amount or Decimal('0.00')
     collaborator_ids = list(overflow.collaborators.values_list('id', flat=True))
 
-    _grant_capacity_adjustment(
-        overflow,
-        refund_amount,
-        IdentifierCapacityAdjustment.TYPE_REFUND_CSO,
-        helper_name,
-    )
+    if restore_capacity_adjustment:
+        _grant_capacity_adjustment(
+            overflow,
+            refund_amount,
+            IdentifierCapacityAdjustment.TYPE_REFUND_CSO,
+            helper_name,
+        )
 
     matching_overkill = (
         Overflow.objects.filter(
@@ -1347,18 +1348,27 @@ def refund_overflow(overflow, helper_name, resolution_type, refunded_at=None):
     if overflow.status == Overflow.STATUS_REFUNDED:
         return overflow
 
+    if (
+        overflow.status == Overflow.STATUS_CSO
+        and overflow.resolution_type == Overflow.RESOLUTION_RESERVE_CONSUMED
+        and resolution_type in {
+            Overflow.RESOLUTION_REFUND_OVERFLOW,
+            Overflow.RESOLUTION_REFUND_TRANSACTION,
+            Overflow.RESOLUTION_REFUND_TICKET,
+        }
+    ):
+        restored_overkill = _return_reserve_consumed_overflow(
+            overflow,
+            helper_name=helper_name,
+            refunded_at=refunded_at,
+            restore_capacity_adjustment=resolution_type == Overflow.RESOLUTION_REFUND_OVERFLOW,
+        )
+        if period:
+            _retry_pending_overflows(period, restored_overkill.identifier)
+        return restored_overkill
+
     if resolution_type == Overflow.RESOLUTION_REFUND_OVERFLOW:
         if overflow.status == Overflow.STATUS_CSO:
-            if overflow.resolution_type == Overflow.RESOLUTION_RESERVE_CONSUMED:
-                restored_overkill = _return_reserve_consumed_overflow(
-                    overflow,
-                    helper_name=helper_name,
-                    refunded_at=refunded_at,
-                )
-                if period:
-                    _retry_pending_overflows(period, restored_overkill.identifier)
-                return restored_overkill
-
             overflow.status = Overflow.STATUS_TCSO
             overflow.approved_at = None
             overflow.refunded_at = refunded_at
