@@ -64,6 +64,23 @@ function formatWholeAmount(value: string | null | undefined) {
   return Math.trunc(amount).toLocaleString("en-GB");
 }
 
+function formatDateTime(value: string | null | undefined) {
+  if (!value) {
+    return "-";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return date.toLocaleString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function sanitizeWholeNumberInput(value: string) {
   return value.replace(/[^\d]/g, "");
 }
@@ -106,7 +123,7 @@ export function SpillOverPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [pageError, setPageError] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastState>(null);
-  const [activeTab, setActiveTab] = useState<"pending" | "approved">("pending");
+  const [activeTab, setActiveTab] = useState<"pending" | "approved" | "overkill">("pending");
   const [searchQuery, setSearchQuery] = useState("");
   const [collaboratorFilter, setCollaboratorFilter] = useState("all");
   const [approveTarget, setApproveTarget] = useState<FlowBitOverflow | null>(null);
@@ -172,19 +189,36 @@ export function SpillOverPage() {
 
   const collaboratorFilterOptions = useMemo(() => {
     const names = new Set<string>();
-    approvedOverflows.forEach((overflow) => {
+    approvedOverflows
+      .filter((overflow) => overflow.status !== "TCSO")
+      .forEach((overflow) => {
       overflow.collaborator_names.forEach((name) => {
         const trimmed = name.trim();
         if (trimmed) {
           names.add(trimmed);
         }
       });
-    });
+      });
     return Array.from(names).sort((left, right) => left.localeCompare(right));
   }, [approvedOverflows]);
 
+  const approvedRows = useMemo(
+    () => approvedOverflows.filter((overflow) => overflow.status === "CSO"),
+    [approvedOverflows],
+  );
+
+  const overkillRows = useMemo(
+    () => approvedOverflows.filter((overflow) => overflow.status === "OVRK"),
+    [approvedOverflows],
+  );
+
   const visibleOverflows = useMemo(() => {
-    const source = activeTab === "pending" ? pendingOverflows : approvedOverflows;
+    const source =
+      activeTab === "pending"
+        ? pendingOverflows
+        : activeTab === "approved"
+          ? approvedRows
+          : overkillRows;
     const query = searchQuery.trim().toLowerCase();
     return source.filter((overflow) => {
       const matchesQuery = !query
@@ -207,7 +241,7 @@ export function SpillOverPage() {
 
       return matchesQuery && matchesCollaborator;
     });
-  }, [activeTab, approvedOverflows, collaboratorFilter, pendingOverflows, searchQuery]);
+  }, [activeTab, approvedRows, collaboratorFilter, overkillRows, pendingOverflows, searchQuery]);
 
   const pendingAmount = useMemo(
     () =>
@@ -220,11 +254,20 @@ export function SpillOverPage() {
 
   const approvedAmount = useMemo(
     () =>
-      approvedOverflows.reduce(
+      approvedRows.reduce(
         (sum, overflow) => sum + (Number(getOverflowApprovedAmount(overflow)) || 0),
         0,
       ),
-    [approvedOverflows],
+    [approvedRows],
+  );
+
+  const overkillAmount = useMemo(
+    () =>
+      overkillRows.reduce(
+        (sum, overflow) => sum + (Number(getOverflowApprovedAmount(overflow)) || 0),
+        0,
+      ),
+    [overkillRows],
   );
 
   function openApproveModal(overflow: FlowBitOverflow) {
@@ -387,7 +430,7 @@ export function SpillOverPage() {
       <PeriodRequiredPage
         eyebrow="Spill over"
         title="Spill-over review"
-        description="Review pending TCSO items, confirm approved CSO items, and move quickly into refund actions."
+        description="Review pending, approved, and overkill spill-over items and move quickly into follow-up actions."
         showDefaultAside={false}
       >
         {isLoading ? (
@@ -405,12 +448,13 @@ export function SpillOverPage() {
                 <div className="inline-flex rounded-[18px] border border-stone-900/8 bg-white p-1">
                   {[
                     { label: `Pending ${pendingOverflows.length}`, value: "pending" },
-                    { label: `Approved ${approvedOverflows.length}`, value: "approved" },
+                    { label: `Approved ${approvedRows.length}`, value: "approved" },
+                    { label: `Overkill ${overkillRows.length}`, value: "overkill" },
                   ].map((option) => (
                     <button
                       key={option.value}
                       type="button"
-                      onClick={() => setActiveTab(option.value as "pending" | "approved")}
+                      onClick={() => setActiveTab(option.value as "pending" | "approved" | "overkill")}
                       className={`rounded-[14px] px-4 py-2 text-sm font-medium transition ${
                         activeTab === option.value
                           ? "bg-stone-950 text-white"
@@ -427,7 +471,7 @@ export function SpillOverPage() {
                   placeholder="Search by identifier, ticket, order, customer, or collaborator"
                   className="min-w-[260px] flex-1"
                 />
-                {activeTab === "approved" ? (
+                {activeTab !== "pending" ? (
                   <select
                     value={collaboratorFilter}
                     onChange={(event) => setCollaboratorFilter(event.target.value)}
@@ -505,6 +549,12 @@ export function SpillOverPage() {
                       {overflow.status !== "TCSO" ? (
                         <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-stone-900/8 pt-3 text-sm">
                           <p className="text-stone-500">
+                            Approved at:{" "}
+                            <span className="font-medium text-stone-900">
+                              {formatDateTime(overflow.approved_at)}
+                            </span>
+                          </p>
+                          <p className="text-stone-500">
                             Collaborators:{" "}
                             <span className="font-medium text-stone-900">
                               {overflow.collaborator_names.length ? overflow.collaborator_names.join(", ") : "-"}
@@ -534,8 +584,16 @@ export function SpillOverPage() {
                     <FontAwesomeIcon icon={faArrowTrendUp} className="h-4 w-4 text-emerald-600" />
                     <p className="text-sm">Approved</p>
                   </div>
-                  <p className="mt-2 text-2xl font-semibold text-stone-950">{approvedOverflows.length}</p>
+                  <p className="mt-2 text-2xl font-semibold text-stone-950">{approvedRows.length}</p>
                   <p className="mt-1 text-sm text-stone-500">{formatAmount(String(approvedAmount))}</p>
+                </div>
+                <div className="rounded-[22px] bg-white px-4 py-4">
+                  <div className="flex items-center gap-2 text-stone-500">
+                    <FontAwesomeIcon icon={faArrowTrendUp} className="h-4 w-4 text-violet-600" />
+                    <p className="text-sm">Overkill</p>
+                  </div>
+                  <p className="mt-2 text-2xl font-semibold text-stone-950">{overkillRows.length}</p>
+                  <p className="mt-1 text-sm text-stone-500">{formatAmount(String(overkillAmount))}</p>
                 </div>
               </div>
               <div className="rounded-[22px] bg-white px-4 py-4">
@@ -544,10 +602,14 @@ export function SpillOverPage() {
                   <p className="text-sm">Current view</p>
                 </div>
                 <p className="mt-2 text-lg font-semibold text-stone-950">
-                  {activeTab === "pending" ? "Pending TCSO queue" : "Approved CSO queue"}
+                  {activeTab === "pending"
+                    ? "Pending TCSO queue"
+                    : activeTab === "approved"
+                      ? "Approved CSO queue"
+                      : "Overkill queue"}
                 </p>
                 <p className="mt-2 text-sm leading-6 text-stone-500">
-                  Approve pending spill-over with collaborator support, or refund overflow, transaction, and ticket records directly from this page.
+                  Approve pending spill-over with collaborator support, or review approved and overkill items with their timestamps and return actions.
                 </p>
               </div>
             </aside>
