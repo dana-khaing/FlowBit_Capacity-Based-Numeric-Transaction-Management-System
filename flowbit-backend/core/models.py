@@ -591,6 +591,12 @@ def _allocate_transaction_amount(transaction_obj, amount, period, apply_multipli
                 ledger=reserve_ledger,
                 amount=reserve_amount,
             )
+            _consume_overkill_capacity(
+                identifier=transaction_obj.identifier,
+                period=period,
+                owner=transaction_obj.created_by,
+                amount=reserve_amount,
+            )
             remaining -= reserve_amount
 
     return remaining
@@ -620,6 +626,12 @@ def _allocate_manual_transaction_amount(transaction_obj, amount, period, manual_
         LedgerAllocation.objects.create(
             transaction=transaction_obj,
             ledger=reserve_ledger,
+            amount=preview['reserve_allocated'],
+        )
+        _consume_overkill_capacity(
+            identifier=transaction_obj.identifier,
+            period=period,
+            owner=transaction_obj.created_by,
             amount=preview['reserve_allocated'],
         )
 
@@ -726,6 +738,12 @@ def _resolve_pending_overflows(period, exclude_ledger_ids=None):
                 LedgerAllocation.objects.create(
                     transaction=overflow.transaction,
                     ledger=reserve_ledger,
+                    amount=reserve_amount,
+                )
+                _consume_overkill_capacity(
+                    identifier=overflow.transaction.identifier,
+                    period=period,
+                    owner=overflow.transaction.created_by,
                     amount=reserve_amount,
                 )
                 remaining -= reserve_amount
@@ -952,6 +970,7 @@ class Overflow(models.Model):
     STATUS_REFUNDED = 'RFND'
 
     RESOLUTION_APPROVE = 'APPROVE'
+    RESOLUTION_RESERVE_CONSUMED = 'RESERVE_CONSUMED'
     RESOLUTION_AUTO_CLOSE = 'AUTO_CLOSE'
     RESOLUTION_REFUND_OVERFLOW = 'REFUND_OVERFLOW'
     RESOLUTION_REFUND_TRANSACTION = 'REFUND_TRANSACTION'
@@ -965,6 +984,7 @@ class Overflow(models.Model):
     )
     RESOLUTION_CHOICES = (
         (RESOLUTION_APPROVE, 'Approved'),
+        (RESOLUTION_RESERVE_CONSUMED, 'Reserve Consumed'),
         (RESOLUTION_AUTO_CLOSE, 'Auto Close'),
         (RESOLUTION_REFUND_OVERFLOW, 'Refund Overflow'),
         (RESOLUTION_REFUND_TRANSACTION, 'Refund Transaction'),
@@ -1142,6 +1162,58 @@ def _grant_capacity_adjustment(overflow, amount, adjustment_type, helper_name):
     )
 
 
+def _consume_overkill_capacity(identifier, period, owner, amount):
+    if period is None or owner is None or amount <= 0:
+        return
+
+    remaining = Decimal(str(amount))
+    overkill_rows = list(
+        Overflow.objects.filter(
+            transaction__identifier=identifier,
+            transaction__created_by=owner,
+            status=Overflow.STATUS_OVERKILL,
+        )
+        .filter(_period_overflow_filter(period))
+        .prefetch_related('collaborators')
+        .order_by('approved_at', 'id')
+        .distinct()
+    )
+
+    for overflow in overkill_rows:
+        if remaining <= 0:
+            break
+
+        current_amount = overflow.amount_to_approve or overflow.excess_amount or Decimal('0.00')
+        if current_amount <= 0:
+            continue
+
+        consumed_amount = min(current_amount, remaining)
+        collaborator_ids = list(overflow.collaborators.values_list('id', flat=True))
+
+        if consumed_amount == current_amount:
+            overflow.status = Overflow.STATUS_CSO
+            overflow.resolution_type = Overflow.RESOLUTION_RESERVE_CONSUMED
+            overflow.save(update_fields=['status', 'resolution_type'])
+        else:
+            overflow.excess_amount = current_amount - consumed_amount
+            overflow.amount_to_approve = current_amount - consumed_amount
+            overflow.save(update_fields=['excess_amount', 'amount_to_approve'])
+
+            consumed_overflow = Overflow.objects.create(
+                transaction=overflow.transaction,
+                excess_amount=consumed_amount,
+                status=Overflow.STATUS_CSO,
+                amount_to_approve=consumed_amount,
+                approved_at=overflow.approved_at or timezone.now(),
+                helper_name=overflow.helper_name,
+                resolution_type=Overflow.RESOLUTION_RESERVE_CONSUMED,
+            )
+            if collaborator_ids:
+                consumed_overflow.collaborators.set(collaborator_ids)
+
+        remaining -= consumed_amount
+
+
 def _refund_capacity_amount_for_overflow(overflow):
     approval_extra = overflow.capacity_adjustments.filter(
         adjustment_type=IdentifierCapacityAdjustment.TYPE_APPROVAL_EXTRA,
@@ -1157,7 +1229,7 @@ def refund_overflow(overflow, helper_name, resolution_type, refunded_at=None):
     if overflow.status == Overflow.STATUS_REFUNDED:
         return overflow
 
-    if overflow.status == Overflow.STATUS_CSO:
+    if overflow.status == Overflow.STATUS_CSO and overflow.resolution_type != Overflow.RESOLUTION_RESERVE_CONSUMED:
         refund_capacity = _refund_capacity_amount_for_overflow(overflow)
         _grant_capacity_adjustment(
             overflow,
