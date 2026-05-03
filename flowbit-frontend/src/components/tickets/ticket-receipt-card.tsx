@@ -44,11 +44,17 @@ function getTicketBasisAmount(
   return (amount * 1.25).toFixed(2);
 }
 
+function isVisibleReceiptSpillOver(
+  overflow: FlowBitTicketDetail["transactions"][number]["overflows"][number],
+) {
+  return overflow.status !== "RFND" && overflow.resolution_type !== "RESERVE_CONSUMED";
+}
+
 function getActiveOverflowAmount(
   transaction: FlowBitTicketDetail["transactions"][number],
 ) {
   return transaction.overflows
-    .filter((overflow) => overflow.status !== "RFND")
+    .filter(isVisibleReceiptSpillOver)
     .reduce((sum, overflow) => {
       const amount = Number(getOverflowDisplayAmount(overflow));
       return sum + (Number.isNaN(amount) ? 0 : amount);
@@ -213,14 +219,14 @@ export function TicketReceiptCard({
               </div>
             ) : null}
 
-            {transaction.overflows.filter((overflow) => overflow.status !== "RFND").length ? (
+            {transaction.overflows.filter(isVisibleReceiptSpillOver).length ? (
               <div className="mt-3 rounded-[18px] border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800 print:hidden">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-700">
                   Spill over
                 </p>
                 <div className="mt-2 space-y-2">
                   {transaction.overflows
-                    .filter((overflow) => overflow.status !== "RFND")
+                    .filter(isVisibleReceiptSpillOver)
                     .map((overflow) => (
                     <div
                       key={overflow.id}
