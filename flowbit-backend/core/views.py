@@ -44,6 +44,7 @@ from .models import (
     LedgerAllocation,
     IdentifierCapacityAdjustment,
     IdentifierLedgerFreeze,
+    _is_returned_pending_overflow,
     preview_transaction_allocation,
     refund_overflow,
     refund_transactions,
@@ -1804,6 +1805,8 @@ class OverflowViewSet(viewsets.ModelViewSet):
             overflow.amount_to_approve = approved_amount
             overflow.status = Overflow.STATUS_CSO
             overflow.approved_at = timezone.now()
+            overflow.refunded_at = None
+            overflow.refund_amount = None
             overflow.helper_name = helper_name
             overflow.resolution_type = Overflow.RESOLUTION_APPROVE
             overflow.save()
@@ -1879,13 +1882,15 @@ class OverflowViewSet(viewsets.ModelViewSet):
 
         if action_name == 'refund_overflow_only':
             refund_amount = overflow.amount_to_approve or overflow.excess_amount or Decimal('0.00')
+            overflow_id = overflow.id
+            overflow_status = overflow.status
             with db_transaction.atomic():
-                refund_overflow(
+                resolved_overflow = refund_overflow(
                     overflow,
                     helper_name=helper_name,
                     resolution_type=Overflow.RESOLUTION_REFUND_OVERFLOW,
                 )
-            serializer = self.get_serializer(overflow)
+            serializer_data = self.get_serializer(resolved_overflow).data if resolved_overflow is not None else None
             record_audit_log(
                 request,
                 'overflow.refunded',
@@ -1898,12 +1903,13 @@ class OverflowViewSet(viewsets.ModelViewSet):
                     'order_number': overflow.transaction.order_number,
                     'identifier_number': overflow.transaction.identifier.number,
                     'refund_amount': str(refund_amount),
-                    'status': overflow.status,
+                    'status': resolved_overflow.status if resolved_overflow is not None else overflow_status,
+                    'overflow_id': overflow_id,
                 },
             )
             return Response({
                 "message": "Overflow refunded successfully",
-                "overflow": serializer.data,
+                "overflow": serializer_data,
             }, status=status.HTTP_200_OK)
 
         if action_name == 'refund_transaction':
@@ -3076,7 +3082,11 @@ def _ticket_visible_line_amount(transaction_obj):
         Decimal('0.00'),
     )
 
-    active_overflows = [overflow for overflow in transaction_obj.overflows.all() if overflow.status != Overflow.STATUS_REFUNDED]
+    active_overflows = [
+        overflow
+        for overflow in transaction_obj.overflows.all()
+        if overflow.status != Overflow.STATUS_REFUNDED and not _is_returned_pending_overflow(overflow)
+    ]
     overflow_total = sum(
         (
             overflow.excess_amount

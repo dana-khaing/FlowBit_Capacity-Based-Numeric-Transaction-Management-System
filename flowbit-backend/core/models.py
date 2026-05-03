@@ -836,8 +836,17 @@ class Ticket(models.Model):
             transaction__is_refunded=False,
             status=Overflow.STATUS_REFUNDED,
         ).aggregate(total=Sum('refund_amount'))['total'] or Decimal('0.00')
+        returned_overflow_total = Overflow.objects.filter(
+            transaction__ticket=self,
+            transaction__is_refunded=False,
+            status=Overflow.STATUS_TCSO,
+            refunded_at__isnull=False,
+            resolution_type=Overflow.RESOLUTION_REFUND_OVERFLOW,
+        ).aggregate(total=Sum('refund_amount'))['total'] or Decimal('0.00')
 
-        active_total = visible_total - _from_allocation_basis_amount(refunded_overflow_total)
+        active_total = visible_total - _from_allocation_basis_amount(
+            refunded_overflow_total + returned_overflow_total
+        )
         if active_total < Decimal('0.00'):
             return Decimal('0.00')
         return active_total
@@ -1221,6 +1230,14 @@ def _refund_capacity_amount_for_overflow(overflow):
     return max((overflow.amount_to_approve or Decimal('0.00')) - approval_extra, Decimal('0.00'))
 
 
+def _is_returned_pending_overflow(overflow):
+    return (
+        overflow.status == Overflow.STATUS_TCSO
+        and overflow.refunded_at is not None
+        and overflow.resolution_type == Overflow.RESOLUTION_REFUND_OVERFLOW
+    )
+
+
 def refund_overflow(overflow, helper_name, resolution_type, refunded_at=None):
     refunded_at = refunded_at or timezone.now()
     helper_name = helper_name or DEFAULT_HELPER_NAME
@@ -1228,6 +1245,42 @@ def refund_overflow(overflow, helper_name, resolution_type, refunded_at=None):
 
     if overflow.status == Overflow.STATUS_REFUNDED:
         return overflow
+
+    if resolution_type == Overflow.RESOLUTION_REFUND_OVERFLOW:
+        if overflow.status == Overflow.STATUS_CSO:
+            overflow.status = Overflow.STATUS_TCSO
+            overflow.approved_at = None
+            overflow.refunded_at = refunded_at
+            overflow.refund_amount = overflow.amount_to_approve or overflow.excess_amount
+            overflow.amount_to_approve = None
+            overflow.helper_name = helper_name
+            overflow.resolution_type = resolution_type
+            overflow.save(update_fields=[
+                'status',
+                'approved_at',
+                'refunded_at',
+                'refund_amount',
+                'amount_to_approve',
+                'helper_name',
+                'resolution_type',
+            ])
+            overflow.collaborators.clear()
+            if period:
+                _retry_pending_overflows(period, overflow.transaction.identifier)
+            return overflow
+
+        if overflow.status == Overflow.STATUS_OVERKILL:
+            refund_capacity = overflow.amount_to_approve or overflow.excess_amount or Decimal('0.00')
+            _grant_capacity_adjustment(
+                overflow,
+                -refund_capacity,
+                IdentifierCapacityAdjustment.TYPE_REFUND_OVERKILL,
+                helper_name,
+            )
+            overflow.delete()
+            if period:
+                _retry_pending_overflows(period, overflow.transaction.identifier)
+            return None
 
     if overflow.status == Overflow.STATUS_CSO and overflow.resolution_type != Overflow.RESOLUTION_RESERVE_CONSUMED:
         refund_capacity = _refund_capacity_amount_for_overflow(overflow)
