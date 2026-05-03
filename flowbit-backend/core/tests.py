@@ -6,7 +6,7 @@ from unittest.mock import patch
 from django.core.management import call_command
 from django.core import mail
 from django.contrib.auth.models import User
-from django.db.models import Sum
+from django.db.models import Q, Sum
 from django.test import override_settings
 from django.test import SimpleTestCase
 from django.utils import timezone
@@ -1933,7 +1933,13 @@ class PrivateWorkflowAPITests(APITestCase):
         self.assertEqual(overflow.amount_to_approve, Decimal('300.00'))
         self.assertEqual(overflow.excess_amount, Decimal('300.00'))
 
-        overkill = Overflow.objects.get(transaction=tx, status=Overflow.STATUS_OVERKILL)
+        overkill = Overflow.objects.get(
+            identifier=self.second_identifier,
+            owner=self.approver,
+            period=self.active_period,
+            status=Overflow.STATUS_OVERKILL,
+        )
+        self.assertIsNone(overkill.transaction)
         self.assertEqual(overkill.excess_amount, Decimal('200.00'))
         self.assertEqual(overkill.amount_to_approve, Decimal('200.00'))
         self.assertEqual(list(overkill.collaborators.values_list('id', flat=True)), [self.collaborator.id])
@@ -2043,7 +2049,12 @@ class PrivateWorkflowAPITests(APITestCase):
         )
         self.assertEqual(approve_response.status_code, status.HTTP_200_OK)
 
-        overkill = Overflow.objects.get(transaction=tx, status=Overflow.STATUS_OVERKILL)
+        overkill = Overflow.objects.get(
+            identifier=self.second_identifier,
+            owner=self.approver,
+            period=self.active_period,
+            status=Overflow.STATUS_OVERKILL,
+        )
         self.assertEqual(
             IdentifierCapacityAdjustment.get_available_capacity(
                 self.second_identifier,
@@ -2105,7 +2116,7 @@ class PrivateWorkflowAPITests(APITestCase):
         )
 
         consumed_cso = Overflow.objects.get(
-            transaction=seed_transaction,
+            transaction__ticket=consume_ticket,
             status=Overflow.STATUS_CSO,
             resolution_type=Overflow.RESOLUTION_RESERVE_CONSUMED,
         )
@@ -2120,7 +2131,9 @@ class PrivateWorkflowAPITests(APITestCase):
         self.assertFalse(Overflow.objects.filter(id=consumed_cso.id).exists())
         overkill_rows = list(
             Overflow.objects.filter(
-                transaction=seed_transaction,
+                identifier=third_identifier,
+                owner=self.approver,
+                period=self.active_period,
                 status=Overflow.STATUS_OVERKILL,
             ).order_by('id')
         )
@@ -2180,7 +2193,12 @@ class PrivateWorkflowAPITests(APITestCase):
             format='json',
         )
 
-        overkill = Overflow.objects.get(transaction=seed_transaction, status=Overflow.STATUS_OVERKILL)
+        overkill = Overflow.objects.get(
+            identifier=third_identifier,
+            owner=self.approver,
+            period=self.active_period,
+            status=Overflow.STATUS_OVERKILL,
+        )
         IdentifierLedgerFreeze.objects.create(
             identifier=third_identifier,
             period=self.active_period,
@@ -2196,9 +2214,14 @@ class PrivateWorkflowAPITests(APITestCase):
             created_by=self.approver,
         )
 
-        overkill.refresh_from_db()
-        self.assertEqual(overkill.status, Overflow.STATUS_CSO)
-        self.assertEqual(overkill.amount_to_approve, Decimal('200.00'))
+        self.assertFalse(Overflow.objects.filter(id=overkill.id).exists())
+        consumed_cso = Overflow.objects.get(
+            transaction__ticket=consume_ticket,
+            identifier=third_identifier,
+            status=Overflow.STATUS_CSO,
+            resolution_type=Overflow.RESOLUTION_RESERVE_CONSUMED,
+        )
+        self.assertEqual(consumed_cso.amount_to_approve, Decimal('200.00'))
 
     def test_partial_reserve_consumption_splits_overkill_balance(self):
         third_identifier = Identifier.objects.create(number='399')
@@ -2235,7 +2258,11 @@ class PrivateWorkflowAPITests(APITestCase):
         )
 
         overkill_rows = list(
-            Overflow.objects.filter(transaction=seed_transaction).exclude(status=Overflow.STATUS_REFUNDED).order_by('status', 'id')
+            Overflow.objects.filter(
+                Q(transaction=seed_transaction) |
+                Q(transaction__ticket=consume_ticket) |
+                Q(identifier=third_identifier, owner=self.approver, period=self.active_period, transaction__isnull=True)
+            ).exclude(status=Overflow.STATUS_REFUNDED).order_by('status', 'id')
         )
         self.assertEqual(
             sorted((row.status, row.amount_to_approve or row.excess_amount) for row in overkill_rows),

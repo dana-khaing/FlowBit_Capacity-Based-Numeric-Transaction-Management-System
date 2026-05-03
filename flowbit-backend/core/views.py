@@ -138,19 +138,12 @@ def period_transaction_queryset(period, user=None):
 def period_overflow_rows(period, identifier=None, user=None):
     overflow_queryset = Overflow.objects.all()
     if user is not None:
-        overflow_queryset = overflow_queryset.filter(transaction__created_by=user)
+        overflow_queryset = overflow_queryset.filter(owner=user)
     if identifier is not None:
-        overflow_queryset = overflow_queryset.filter(transaction__identifier=identifier)
+        overflow_queryset = overflow_queryset.filter(identifier=identifier)
 
     if period is not None:
-        overflow_queryset = overflow_queryset.filter(
-            Q(transaction__allocations__ledger__period=period) |
-            Q(
-                transaction__allocations__isnull=True,
-                transaction__timestamp__gte=period.start_date,
-                transaction__timestamp__lte=period.end_date,
-            )
-        )
+        overflow_queryset = overflow_queryset.filter(period=period)
 
     return list(overflow_queryset.distinct())
 
@@ -1724,7 +1717,7 @@ class OverflowViewSet(viewsets.ModelViewSet):
         )
 
     def get_queryset(self):
-        queryset = super().get_queryset().filter(transaction__created_by=self.request.user)
+        queryset = super().get_queryset().filter(owner=self.request.user)
         return apply_ledger_period_filters(
             queryset,
             self.request.query_params,
@@ -1738,7 +1731,7 @@ class OverflowViewSet(viewsets.ModelViewSet):
             'transaction__identifier',
             'transaction__ticket'
         ).filter(
-            transaction__created_by=request.user
+            owner=request.user
         ).order_by('-transaction__timestamp')
         serializer = self.get_serializer(pending, many=True)
         return Response(serializer.data)
@@ -1750,9 +1743,10 @@ class OverflowViewSet(viewsets.ModelViewSet):
             status__in=[Overflow.STATUS_CSO, Overflow.STATUS_OVERKILL]
         ).select_related(
             'transaction__identifier',
-            'transaction__ticket'
+            'transaction__ticket',
+            'identifier',
         ).filter(
-            transaction__created_by=request.user
+            owner=request.user
         ).order_by('-approved_at')
         serializer = self.get_serializer(approved, many=True)
         return Response(serializer.data)
@@ -1814,7 +1808,10 @@ class OverflowViewSet(viewsets.ModelViewSet):
             overkill_overflow = None
             if extra_amount > 0:
                 overkill_overflow = Overflow.objects.create(
-                    transaction=overflow.transaction,
+                    transaction=None,
+                    identifier=overflow.transaction.identifier,
+                    owner=overflow.transaction.created_by,
+                    period=target_period,
                     excess_amount=extra_amount,
                     status=Overflow.STATUS_OVERKILL,
                     amount_to_approve=extra_amount,
@@ -1884,6 +1881,16 @@ class OverflowViewSet(viewsets.ModelViewSet):
             refund_amount = overflow.amount_to_approve or overflow.excess_amount or Decimal('0.00')
             overflow_id = overflow.id
             overflow_status = overflow.status
+            overflow_ticket_number = (
+                overflow.transaction.ticket.ticket_number
+                if overflow.transaction_id and overflow.transaction.ticket_id
+                else ''
+            )
+            overflow_transaction_id = overflow.transaction.id if overflow.transaction_id else None
+            overflow_order_number = overflow.transaction.order_number if overflow.transaction_id else ''
+            overflow_identifier_number = (
+                overflow.identifier.number if overflow.identifier_id else ''
+            )
             with db_transaction.atomic():
                 resolved_overflow = refund_overflow(
                     overflow,
@@ -1895,13 +1902,17 @@ class OverflowViewSet(viewsets.ModelViewSet):
                 request,
                 'overflow.refunded',
                 target=overflow,
-                details=f"Refunded overflow for transaction '{overflow.transaction.order_number}'",
+                details=(
+                    f"Refunded overflow for transaction '{overflow_order_number}'"
+                    if overflow_order_number
+                    else f"Refunded overflow for identifier '{overflow_identifier_number}'"
+                ),
                 changes={
                     'resolution_type': Overflow.RESOLUTION_REFUND_OVERFLOW,
-                    'ticket_number': overflow.transaction.ticket.ticket_number if overflow.transaction.ticket_id else '',
-                    'transaction_id': overflow.transaction.id,
-                    'order_number': overflow.transaction.order_number,
-                    'identifier_number': overflow.transaction.identifier.number,
+                    'ticket_number': overflow_ticket_number,
+                    'transaction_id': overflow_transaction_id,
+                    'order_number': overflow_order_number,
+                    'identifier_number': overflow_identifier_number,
                     'refund_amount': str(refund_amount),
                     'status': resolved_overflow.status if resolved_overflow is not None else overflow_status,
                     'overflow_id': overflow_id,
@@ -2097,26 +2108,26 @@ class CollaboratorViewSet(viewsets.ModelViewSet):
 
         overflows = Overflow.objects.filter(
             collaborators=collaborator,
-            transaction__created_by=request.user,
+            owner=request.user,
             status__in=[Overflow.STATUS_CSO, Overflow.STATUS_OVERKILL],
         ).select_related(
             'transaction__identifier',
         ).distinct()
 
         if selected_period:
-            overflows = overflows.filter(transaction__allocations__ledger__period=selected_period).distinct()
+            overflows = overflows.filter(period=selected_period).distinct()
             period_label = selected_period.name
         else:
             period_label = 'All Periods'
 
-        order_field = 'transaction__identifier__number' if sort_by == 'identifier' else 'approved_at'
+        order_field = 'identifier__number' if sort_by == 'identifier' else 'approved_at'
         if sort_order == 'desc':
             order_field = f'-{order_field}'
 
         if sort_by == 'identifier':
             overflows = overflows.order_by(order_field, 'approved_at', 'id')
         else:
-            overflows = overflows.order_by(order_field, 'transaction__identifier__number', 'id')
+            overflows = overflows.order_by(order_field, 'identifier__number', 'id')
 
         return overflows, period_label
 
