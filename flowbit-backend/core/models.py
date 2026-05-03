@@ -58,6 +58,7 @@ class Period(models.Model):
                 closed_at=closed_at,
                 helper_name=helper_name,
             )
+            _create_reserve_archive_tickets(self)
 
             self.is_open = False
             self.closed_at = closed_at
@@ -872,7 +873,7 @@ class Transaction(models.Model):
         is_new = self.pk is None
         super().save(*args, **kwargs)
 
-        if is_new:
+        if is_new and not getattr(self, '_skip_auto_allocate', False):
             self._allocate_to_ledgers()
 
     def _allocate_to_ledgers(self):
@@ -947,6 +948,7 @@ class Collaborator(models.Model):
 class Overflow(models.Model):
     STATUS_TCSO = 'TCSO'
     STATUS_CSO = 'CSO'
+    STATUS_OVERKILL = 'OVRK'
     STATUS_REFUNDED = 'RFND'
 
     RESOLUTION_APPROVE = 'APPROVE'
@@ -958,6 +960,7 @@ class Overflow(models.Model):
     STATUS_CHOICES = (
         (STATUS_TCSO, 'Take Care Spill Over'),
         (STATUS_CSO, 'Completed Spill Over'),
+        (STATUS_OVERKILL, 'Overkill'),
         (STATUS_REFUNDED, 'Refunded'),
     )
     RESOLUTION_CHOICES = (
@@ -990,9 +993,9 @@ class Overflow(models.Model):
     def save(self, *args, **kwargs):
         if self.status == self.STATUS_REFUNDED:
             pass
-        elif self.approved_at and self.status != self.STATUS_CSO:
+        elif self.approved_at and self.status not in {self.STATUS_CSO, self.STATUS_OVERKILL}:
             self.status = self.STATUS_CSO
-        elif self.status == self.STATUS_CSO and self.approved_at is None:
+        elif self.status in {self.STATUS_CSO, self.STATUS_OVERKILL} and self.approved_at is None:
             self.approved_at = timezone.now()
         elif self.status == self.STATUS_TCSO and self.approved_at is not None:
             self.approved_at = None
@@ -1017,10 +1020,12 @@ class Overflow(models.Model):
 class IdentifierCapacityAdjustment(models.Model):
     TYPE_APPROVAL_EXTRA = 'APPROVAL_EXTRA'
     TYPE_REFUND_CSO = 'REFUND_CSO'
+    TYPE_REFUND_OVERKILL = 'REFUND_OVERKILL'
 
     TYPE_CHOICES = (
         (TYPE_APPROVAL_EXTRA, 'Approved Extra Capacity'),
         (TYPE_REFUND_CSO, 'Refunded CSO Capacity'),
+        (TYPE_REFUND_OVERKILL, 'Refunded Overkill Capacity'),
     )
 
     identifier = models.ForeignKey(
@@ -1117,7 +1122,7 @@ class OverflowNotification(models.Model):
 
 
 def _grant_capacity_adjustment(overflow, amount, adjustment_type, helper_name):
-    if amount <= 0:
+    if amount == 0:
         return None
 
     period = overflow.period
@@ -1158,6 +1163,14 @@ def refund_overflow(overflow, helper_name, resolution_type, refunded_at=None):
             overflow,
             refund_capacity,
             IdentifierCapacityAdjustment.TYPE_REFUND_CSO,
+            helper_name,
+        )
+    elif overflow.status == Overflow.STATUS_OVERKILL:
+        refund_capacity = overflow.amount_to_approve or overflow.excess_amount or Decimal('0.00')
+        _grant_capacity_adjustment(
+            overflow,
+            -refund_capacity,
+            IdentifierCapacityAdjustment.TYPE_REFUND_OVERKILL,
             helper_name,
         )
 
@@ -1213,6 +1226,90 @@ def refund_transactions(transactions, helper_name, resolution_type, refunded_at=
         identifier = Identifier.objects.filter(pk=identifier_id).first()
         if period and identifier:
             _retry_pending_overflows(period, identifier)
+
+
+def _create_reserve_archive_tickets(period):
+    if period is None:
+        return []
+
+    created_tickets = []
+    owner_ids = set(
+        period.ledgers.filter(
+            is_capacity_reserve=True,
+            owner__isnull=False,
+        ).values_list('owner_id', flat=True)
+    )
+    owner_ids.update(
+        IdentifierCapacityAdjustment.objects.filter(
+            period=period,
+            owner__isnull=False,
+        ).values_list('owner_id', flat=True)
+    )
+
+    for owner_id in owner_ids:
+        owner = User.objects.filter(pk=owner_id).first()
+        if owner is None:
+            continue
+
+        reserve_ledger = Ledger.get_capacity_reserve(period, owner, create=False)
+        if reserve_ledger is None:
+            continue
+
+        reserve_rows = list(
+            IdentifierCapacityAdjustment.objects.filter(
+                period=period,
+                owner=owner,
+            )
+            .values('identifier_id', 'identifier__number')
+            .annotate(total=Sum('amount'))
+            .order_by('identifier__number')
+        )
+
+        reserve_items = []
+        for row in reserve_rows:
+            granted = row['total'] or Decimal('0.00')
+            used = LedgerAllocation.objects.filter(
+                transaction__identifier_id=row['identifier_id'],
+                transaction__created_by=owner,
+                ledger=reserve_ledger,
+            ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+            remaining = granted - used
+            if remaining <= 0:
+                continue
+            reserve_items.append(
+                {
+                    'identifier_id': row['identifier_id'],
+                    'allocation_amount': remaining.quantize(Decimal('0.01')),
+                }
+            )
+
+        if not reserve_items:
+            continue
+
+        ticket = Ticket.objects.create(
+            created_by=owner,
+            customer_name='-',
+            notes=f"Reserve archive for {period.name}",
+        )
+
+        for item in reserve_items:
+            transaction_obj = Transaction(
+                ticket=ticket,
+                identifier_id=item['identifier_id'],
+                total_amount=_from_allocation_basis_amount(item['allocation_amount']),
+                created_by=owner,
+            )
+            transaction_obj._skip_auto_allocate = True
+            transaction_obj.save()
+            LedgerAllocation.objects.create(
+                transaction=transaction_obj,
+                ledger=reserve_ledger,
+                amount=item['allocation_amount'],
+            )
+
+        created_tickets.append(ticket)
+
+    return created_tickets
 
 
 class Profile(models.Model):

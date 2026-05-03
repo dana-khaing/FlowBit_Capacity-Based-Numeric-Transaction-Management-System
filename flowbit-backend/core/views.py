@@ -1745,7 +1745,9 @@ class OverflowViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='approved')
     def approved_overflows(self, request):
         """GET /api/overflows/approved/ - Get all CSO (green) overflows"""
-        approved = Overflow.objects.filter(status=Overflow.STATUS_CSO).select_related(
+        approved = Overflow.objects.filter(
+            status__in=[Overflow.STATUS_CSO, Overflow.STATUS_OVERKILL]
+        ).select_related(
             'transaction__identifier',
             'transaction__ticket'
         ).filter(
@@ -1777,19 +1779,20 @@ class OverflowViewSet(viewsets.ModelViewSet):
                         {"detail": "Invalid approval amount"},
                         status=status.HTTP_400_BAD_REQUEST
                     )
-                overflow.amount_to_approve = amount
+                requested_amount = amount
             except (InvalidOperation, ValueError):
                 return Response(
                     {"detail": "Invalid amount format"},
                     status=status.HTTP_400_BAD_REQUEST
                 )
         else:
-            overflow.amount_to_approve = overflow.excess_amount
+            requested_amount = overflow.excess_amount
 
         helper_name = ", ".join(
             filter(None, [collaborator.full_name.strip() or collaborator.username for collaborator in collaborators])
         )
-        extra_amount = overflow.amount_to_approve - overflow.excess_amount
+        approved_amount = min(requested_amount, overflow.excess_amount)
+        extra_amount = requested_amount - overflow.excess_amount
         target_period = overflow.period
         if extra_amount > 0 and (not target_period or not target_period.is_open):
             return Response(
@@ -1798,18 +1801,29 @@ class OverflowViewSet(viewsets.ModelViewSet):
             )
 
         with db_transaction.atomic():
+            overflow.amount_to_approve = approved_amount
             overflow.status = Overflow.STATUS_CSO
             overflow.approved_at = timezone.now()
             overflow.helper_name = helper_name
             overflow.resolution_type = Overflow.RESOLUTION_APPROVE
             overflow.save()
 
+            overkill_overflow = None
             if extra_amount > 0:
+                overkill_overflow = Overflow.objects.create(
+                    transaction=overflow.transaction,
+                    excess_amount=extra_amount,
+                    status=Overflow.STATUS_OVERKILL,
+                    amount_to_approve=extra_amount,
+                    approved_at=overflow.approved_at,
+                    helper_name=helper_name,
+                    resolution_type=Overflow.RESOLUTION_APPROVE,
+                )
                 adjustment = IdentifierCapacityAdjustment.objects.create(
                     identifier=overflow.transaction.identifier,
                     period=target_period,
                     owner=overflow.transaction.created_by,
-                    overflow=overflow,
+                    overflow=overkill_overflow,
                     amount=extra_amount,
                     adjustment_type=IdentifierCapacityAdjustment.TYPE_APPROVAL_EXTRA,
                     helper_name=helper_name,
@@ -1818,6 +1832,8 @@ class OverflowViewSet(viewsets.ModelViewSet):
                     Ledger.get_capacity_reserve(target_period, overflow.transaction.created_by, create=True)
 
         overflow.collaborators.set(collaborators)
+        if overkill_overflow:
+            overkill_overflow.collaborators.set(collaborators)
         record_audit_log(
             request,
             'overflow.approved',
@@ -1826,6 +1842,8 @@ class OverflowViewSet(viewsets.ModelViewSet):
             changes={
                 'status': overflow.status,
                 'amount_to_approve': str(overflow.amount_to_approve),
+                'extra_approved_amount': str(max(extra_amount, Decimal('0.00'))),
+                'overkill_overflow_id': overkill_overflow.id if overkill_overflow else None,
                 'helper_name': helper_name,
                 'collaborator_ids': [collaborator.id for collaborator in collaborators],
             },
@@ -2074,7 +2092,7 @@ class CollaboratorViewSet(viewsets.ModelViewSet):
         overflows = Overflow.objects.filter(
             collaborators=collaborator,
             transaction__created_by=request.user,
-            status=Overflow.STATUS_CSO,
+            status__in=[Overflow.STATUS_CSO, Overflow.STATUS_OVERKILL],
         ).select_related(
             'transaction__identifier',
         ).distinct()
@@ -2235,7 +2253,9 @@ class DashboardReportView(APIView):
             allocation_queryset = allocation_queryset.filter(ledger__period=period)
 
         pending_overflow_rows = [row for row in overflow_rows if row.status == Overflow.STATUS_TCSO]
-        approved_overflow_rows = [row for row in overflow_rows if row.status == Overflow.STATUS_CSO]
+        approved_overflow_rows = [
+            row for row in overflow_rows if row.status in {Overflow.STATUS_CSO, Overflow.STATUS_OVERKILL}
+        ]
         refunded_overflow_rows = [row for row in overflow_rows if row.status == Overflow.STATUS_REFUNDED]
 
         data = {
@@ -2297,7 +2317,7 @@ class IdentifierCapacityReportView(APIView):
                 approved_overflow = Overflow.objects.filter(
                     transaction__identifier=identifier,
                     transaction__created_by=request.user,
-                    status=Overflow.STATUS_CSO,
+                    status__in=[Overflow.STATUS_CSO, Overflow.STATUS_OVERKILL],
                 ).aggregate(total=Sum('excess_amount'))['total'] or Decimal('0.00')
                 refunded_overflow = sum(
                     (
@@ -2337,7 +2357,11 @@ class IdentifierCapacityReportView(APIView):
                     Decimal('0.00'),
                 )
                 approved_overflow = sum(
-                    (row.excess_amount for row in overflow_rows if row.status == Overflow.STATUS_CSO),
+                    (
+                        row.excess_amount
+                        for row in overflow_rows
+                        if row.status in {Overflow.STATUS_CSO, Overflow.STATUS_OVERKILL}
+                    ),
                     Decimal('0.00'),
                 )
                 refunded_overflow = sum(

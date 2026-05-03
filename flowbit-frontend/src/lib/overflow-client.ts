@@ -10,7 +10,7 @@ export type FlowBitOverflow = {
   identifier_number: string;
   timestamp: string;
   excess_amount: string;
-  status: "TCSO" | "CSO" | "RFND";
+  status: "TCSO" | "CSO" | "OVRK" | "RFND";
   amount_to_approve: string | null;
   collaborators: number[];
   collaborator_names: string[];
