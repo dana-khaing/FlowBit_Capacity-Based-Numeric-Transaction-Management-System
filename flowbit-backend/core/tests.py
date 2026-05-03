@@ -1880,7 +1880,7 @@ class PrivateWorkflowAPITests(APITestCase):
     def test_overflow_approval_and_exports_are_private_to_owner(self):
         tx = Transaction.objects.create(
             ticket=Ticket.objects.create(customer_name='Overflow Ticket', created_by=self.approver),
-            identifier=self.identifier,
+            identifier=self.second_identifier,
             total_amount=Decimal('250.00'),
             created_by=self.approver,
         )
@@ -1900,12 +1900,74 @@ class PrivateWorkflowAPITests(APITestCase):
             {'period_id': self.active_period.id}
         )
         self.assertEqual(export_response.status_code, status.HTTP_200_OK)
-        self.assertIn('101,.,180.00', export_response.content.decode('utf-8'))
+        export_content = export_response.content.decode('utf-8')
+        self.assertIn('102,.,112.50', export_content)
+        self.assertIn('102,.,67.50', export_content)
 
         self.client.force_authenticate(user=self.other_user)
         hidden_response = self.client.get('/api/overflows/')
         self.assertEqual(hidden_response.status_code, status.HTTP_200_OK)
         self.assertEqual(hidden_response.data, [])
+
+    def test_extra_overflow_approval_creates_separate_overkill_record(self):
+        tx = Transaction.objects.create(
+            ticket=Ticket.objects.create(customer_name='Overkill Ticket', created_by=self.approver),
+            identifier=self.second_identifier,
+            total_amount=Decimal('400.00'),
+            created_by=self.approver,
+        )
+        overflow = Overflow.objects.get(transaction=tx, status=Overflow.STATUS_TCSO)
+
+        response = self.client.post(
+            f'/api/overflows/{overflow.id}/approve/',
+            {
+                'amount_to_approve': '500.00',
+                'collaborator_ids': [self.collaborator.id],
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        overflow.refresh_from_db()
+        self.assertEqual(overflow.status, Overflow.STATUS_CSO)
+        self.assertEqual(overflow.amount_to_approve, Decimal('300.00'))
+        self.assertEqual(overflow.excess_amount, Decimal('300.00'))
+
+        overkill = Overflow.objects.get(transaction=tx, status=Overflow.STATUS_OVERKILL)
+        self.assertEqual(overkill.excess_amount, Decimal('200.00'))
+        self.assertEqual(overkill.amount_to_approve, Decimal('200.00'))
+        self.assertEqual(list(overkill.collaborators.values_list('id', flat=True)), [self.collaborator.id])
+
+        adjustment = IdentifierCapacityAdjustment.objects.get(
+            overflow=overkill,
+            adjustment_type=IdentifierCapacityAdjustment.TYPE_APPROVAL_EXTRA,
+        )
+        self.assertEqual(adjustment.amount, Decimal('200.00'))
+
+    def test_period_close_creates_reserve_archive_ticket_for_leftover_capacity(self):
+        reserve_ledger = Ledger.get_capacity_reserve(self.active_period, self.approver, create=True)
+        IdentifierCapacityAdjustment.objects.create(
+            identifier=self.identifier,
+            period=self.active_period,
+            owner=self.approver,
+            amount=Decimal('200.00'),
+        )
+
+        self.active_period.close()
+
+        archive_ticket = Ticket.objects.filter(
+            created_by=self.approver,
+            notes=f"Reserve archive for {self.active_period.name}",
+        ).latest('created_at')
+        archive_transaction = archive_ticket.transactions.get(identifier=self.identifier)
+        self.assertTrue(getattr(archive_transaction, 'ticket_id', None))
+        self.assertTrue(
+            LedgerAllocation.objects.filter(
+                transaction=archive_transaction,
+                ledger=reserve_ledger,
+                amount=Decimal('200.00'),
+            ).exists()
+        )
 
     def test_allocation_preview_and_manual_create_use_current_users_ledgers(self):
         backup_ledger = Ledger.objects.create(

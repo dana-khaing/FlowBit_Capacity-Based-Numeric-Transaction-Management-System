@@ -79,6 +79,9 @@ function getOverflowStatusLabel(status: FlowBitOverflow["status"]) {
   if (status === "CSO") {
     return "Approved";
   }
+  if (status === "OVRK") {
+    return "Overkill";
+  }
   return "Refunded";
 }
 
@@ -88,6 +91,9 @@ function getOverflowStatusTone(status: FlowBitOverflow["status"]) {
   }
   if (status === "CSO") {
     return "bg-emerald-100 text-emerald-700";
+  }
+  if (status === "OVRK") {
+    return "bg-violet-100 text-violet-800";
   }
   return "bg-stone-200 text-stone-700";
 }
