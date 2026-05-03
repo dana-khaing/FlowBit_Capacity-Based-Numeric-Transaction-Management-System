@@ -1969,6 +1969,91 @@ class PrivateWorkflowAPITests(APITestCase):
             ).exists()
         )
 
+    def test_reserve_consumption_turns_overkill_into_cso(self):
+        third_identifier = Identifier.objects.create(number='398')
+        seed_ticket = Ticket.objects.create(customer_name='Reserve Seed', created_by=self.approver)
+        seed_transaction = Transaction.objects.create(
+            ticket=seed_ticket,
+            identifier=third_identifier,
+            total_amount=Decimal('400.00'),
+            created_by=self.approver,
+        )
+        seed_overflow = Overflow.objects.get(transaction=seed_transaction, status=Overflow.STATUS_TCSO)
+        self.client.post(
+            f'/api/overflows/{seed_overflow.id}/approve/',
+            {
+                'amount_to_approve': '500.00',
+                'collaborator_ids': [self.collaborator.id],
+            },
+            format='json',
+        )
+
+        overkill = Overflow.objects.get(transaction=seed_transaction, status=Overflow.STATUS_OVERKILL)
+        IdentifierLedgerFreeze.objects.create(
+            identifier=third_identifier,
+            period=self.active_period,
+            owner=self.approver,
+            applies_to_all=True,
+        )
+
+        consume_ticket = Ticket.objects.create(customer_name='Reserve Consume', created_by=self.approver)
+        Transaction.objects.create(
+            ticket=consume_ticket,
+            identifier=third_identifier,
+            total_amount=Decimal('160.00'),
+            created_by=self.approver,
+        )
+
+        overkill.refresh_from_db()
+        self.assertEqual(overkill.status, Overflow.STATUS_CSO)
+        self.assertEqual(overkill.amount_to_approve, Decimal('200.00'))
+
+    def test_partial_reserve_consumption_splits_overkill_balance(self):
+        third_identifier = Identifier.objects.create(number='399')
+        seed_ticket = Ticket.objects.create(customer_name='Reserve Split Seed', created_by=self.approver)
+        seed_transaction = Transaction.objects.create(
+            ticket=seed_ticket,
+            identifier=third_identifier,
+            total_amount=Decimal('400.00'),
+            created_by=self.approver,
+        )
+        seed_overflow = Overflow.objects.get(transaction=seed_transaction, status=Overflow.STATUS_TCSO)
+        self.client.post(
+            f'/api/overflows/{seed_overflow.id}/approve/',
+            {
+                'amount_to_approve': '500.00',
+                'collaborator_ids': [self.collaborator.id],
+            },
+            format='json',
+        )
+
+        IdentifierLedgerFreeze.objects.create(
+            identifier=third_identifier,
+            period=self.active_period,
+            owner=self.approver,
+            applies_to_all=True,
+        )
+
+        consume_ticket = Ticket.objects.create(customer_name='Reserve Partial Consume', created_by=self.approver)
+        Transaction.objects.create(
+            ticket=consume_ticket,
+            identifier=third_identifier,
+            total_amount=Decimal('80.00'),
+            created_by=self.approver,
+        )
+
+        overkill_rows = list(
+            Overflow.objects.filter(transaction=seed_transaction).exclude(status=Overflow.STATUS_REFUNDED).order_by('status', 'id')
+        )
+        self.assertEqual(
+            sorted((row.status, row.amount_to_approve or row.excess_amount) for row in overkill_rows),
+            [
+                (Overflow.STATUS_CSO, Decimal('100.00')),
+                (Overflow.STATUS_CSO, Decimal('300.00')),
+                (Overflow.STATUS_OVERKILL, Decimal('100.00')),
+            ],
+        )
+
     def test_allocation_preview_and_manual_create_use_current_users_ledgers(self):
         backup_ledger = Ledger.objects.create(
             owner=self.approver,
