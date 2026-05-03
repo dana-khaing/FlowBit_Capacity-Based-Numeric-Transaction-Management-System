@@ -1238,6 +1238,56 @@ def _is_returned_pending_overflow(overflow):
     )
 
 
+def _return_reserve_consumed_overflow(overflow, helper_name, refunded_at=None):
+    refunded_at = refunded_at or timezone.now()
+    refund_amount = overflow.amount_to_approve or overflow.excess_amount or Decimal('0.00')
+    collaborator_ids = list(overflow.collaborators.values_list('id', flat=True))
+
+    _grant_capacity_adjustment(
+        overflow,
+        refund_amount,
+        IdentifierCapacityAdjustment.TYPE_REFUND_CSO,
+        helper_name,
+    )
+
+    matching_overkill = (
+        Overflow.objects.filter(
+            transaction=overflow.transaction,
+            status=Overflow.STATUS_OVERKILL,
+        )
+        .order_by('approved_at', 'id')
+        .first()
+    )
+
+    if matching_overkill:
+        matching_overkill.excess_amount = (matching_overkill.excess_amount or Decimal('0.00')) + refund_amount
+        matching_overkill.amount_to_approve = (matching_overkill.amount_to_approve or Decimal('0.00')) + refund_amount
+        matching_overkill.refunded_at = None
+        matching_overkill.refund_amount = None
+        matching_overkill.save(update_fields=[
+            'excess_amount',
+            'amount_to_approve',
+            'refunded_at',
+            'refund_amount',
+        ])
+    else:
+        matching_overkill = Overflow.objects.create(
+            transaction=overflow.transaction,
+            excess_amount=refund_amount,
+            status=Overflow.STATUS_OVERKILL,
+            amount_to_approve=refund_amount,
+            approved_at=overflow.approved_at or refunded_at,
+            helper_name=overflow.helper_name or helper_name,
+            resolution_type=Overflow.RESOLUTION_APPROVE,
+        )
+
+    if collaborator_ids:
+        matching_overkill.collaborators.set(collaborator_ids)
+
+    overflow.delete()
+    return matching_overkill
+
+
 def refund_overflow(overflow, helper_name, resolution_type, refunded_at=None):
     refunded_at = refunded_at or timezone.now()
     helper_name = helper_name or DEFAULT_HELPER_NAME
@@ -1248,6 +1298,16 @@ def refund_overflow(overflow, helper_name, resolution_type, refunded_at=None):
 
     if resolution_type == Overflow.RESOLUTION_REFUND_OVERFLOW:
         if overflow.status == Overflow.STATUS_CSO:
+            if overflow.resolution_type == Overflow.RESOLUTION_RESERVE_CONSUMED:
+                restored_overkill = _return_reserve_consumed_overflow(
+                    overflow,
+                    helper_name=helper_name,
+                    refunded_at=refunded_at,
+                )
+                if period:
+                    _retry_pending_overflows(period, restored_overkill.transaction.identifier)
+                return restored_overkill
+
             overflow.status = Overflow.STATUS_TCSO
             overflow.approved_at = None
             overflow.refunded_at = refunded_at
