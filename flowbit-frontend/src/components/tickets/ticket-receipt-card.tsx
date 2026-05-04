@@ -256,12 +256,32 @@ export function TicketReceiptCard({
                     .map((overflow) => (
                     <div
                       key={overflow.id}
-                      className="flex items-center justify-between gap-3"
+                      className="space-y-1"
                     >
-                      <span>{overflow.status.replaceAll("_", " ")}</span>
-                      <span className="font-medium">
-                        {formatTicketAmount(getOverflowDisplayAmount(overflow))}
-                      </span>
+                      <div className="flex items-center justify-between gap-3">
+                        <span>{overflow.status.replaceAll("_", " ")}</span>
+                        <span className="font-medium">
+                          {formatTicketAmount(getOverflowDisplayAmount(overflow))}
+                        </span>
+                      </div>
+                      {overflow.status === "CSO" ? (
+                        <div className="text-xs leading-5 text-inherit/80">
+                          <p>
+                            Collaborator:{" "}
+                            <span className="font-medium">
+                              {overflow.collaborator_names?.length
+                                ? overflow.collaborator_names.join(", ")
+                                : "-"}
+                            </span>
+                          </p>
+                          <p>
+                            Time:{" "}
+                            <span className="font-medium">
+                              {overflow.approved_at ? formatTicketDate(overflow.approved_at) : "-"}
+                            </span>
+                          </p>
+                        </div>
+                      ) : null}
                     </div>
                   ))}
                 </div>
