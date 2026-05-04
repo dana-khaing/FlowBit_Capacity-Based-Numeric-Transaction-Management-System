@@ -68,6 +68,15 @@ export function TicketPreviewCard({
   const permutationHasOverflow = permutationSummary
     ? permutationSummary.some((detail) => detail.hasOverflow)
     : preview.has_overflow;
+  const visibleLedgerAllocations = preview.ledger_allocations.filter((allocation) => {
+    const availableAmount = Number(allocation.available_amount) || 0;
+    const allocatedAmount = Number(allocation.allocated_amount) || 0;
+    return availableAmount > 0 || allocatedAmount > 0;
+  });
+  const shouldShowReserveFill =
+    !permutationSummary &&
+    Number(preview.reserve_allocated) > 0 &&
+    visibleLedgerAllocations.length === 0;
 
   return (
     <div className="rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4">
@@ -120,7 +129,7 @@ export function TicketPreviewCard({
         </div>
       ) : (
         <div className="mt-4 space-y-3">
-          {preview.ledger_allocations.map((allocation) => (
+          {visibleLedgerAllocations.map((allocation) => (
             <div
               key={`${allocation.ledger_id}-${allocation.requested_amount}`}
               className="rounded-[18px] border border-white bg-white px-4 py-3"
@@ -140,6 +149,19 @@ export function TicketPreviewCard({
               </div>
             </div>
           ))}
+          {shouldShowReserveFill ? (
+            <div className="rounded-[18px] border border-white bg-white px-4 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-semibold text-stone-900">Reserve ledger</p>
+                <p className="text-sm text-stone-500">
+                  Available {formatAmount(preview.reserve_available)}
+                </p>
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-4 text-sm text-stone-600">
+                <span>Allocated {formatAmount(preview.reserve_allocated)}</span>
+              </div>
+            </div>
+          ) : null}
         </div>
       )}
 
