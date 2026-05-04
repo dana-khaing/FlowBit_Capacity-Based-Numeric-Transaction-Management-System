@@ -50,6 +50,14 @@ function isVisibleReceiptSpillOver(
   return overflow.status !== "RFND" && overflow.resolution_type !== "RESERVE_CONSUMED";
 }
 
+function hasPendingReceiptSpillOver(
+  transaction: FlowBitTicketDetail["transactions"][number],
+) {
+  return transaction.overflows.some(
+    (overflow) => isVisibleReceiptSpillOver(overflow) && overflow.status === "TCSO",
+  );
+}
+
 function getActiveOverflowAmount(
   transaction: FlowBitTicketDetail["transactions"][number],
 ) {
@@ -220,8 +228,20 @@ export function TicketReceiptCard({
             ) : null}
 
             {transaction.overflows.filter(isVisibleReceiptSpillOver).length ? (
-              <div className="mt-3 rounded-[18px] border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800 print:hidden">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-700">
+              <div
+                className={`mt-3 rounded-[18px] px-3 py-3 text-sm print:hidden ${
+                  hasPendingReceiptSpillOver(transaction)
+                    ? "border border-amber-200 bg-amber-50 text-amber-800"
+                    : "border border-emerald-200 bg-emerald-50 text-emerald-800"
+                }`}
+              >
+                <p
+                  className={`text-[11px] font-semibold uppercase tracking-[0.16em] ${
+                    hasPendingReceiptSpillOver(transaction)
+                      ? "text-amber-700"
+                      : "text-emerald-700"
+                  }`}
+                >
                   Spill over
                 </p>
                 <div className="mt-2 space-y-2">
