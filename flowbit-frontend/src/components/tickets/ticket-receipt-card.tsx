@@ -47,11 +47,13 @@ function getTicketBasisAmount(
 function isVisibleReceiptSpillOver(
   overflow: FlowBitTicketDetail["transactions"][number]["overflows"][number],
 ) {
-  return (
-    overflow.status !== "RFND" &&
-    overflow.status !== "OVRK" &&
-    overflow.resolution_type !== "RESERVE_CONSUMED"
-  );
+  return overflow.status !== "RFND" && overflow.status !== "OVRK";
+}
+
+function countsTowardReceiptOverflowTotal(
+  overflow: FlowBitTicketDetail["transactions"][number]["overflows"][number],
+) {
+  return isVisibleReceiptSpillOver(overflow) && overflow.resolution_type !== "RESERVE_CONSUMED";
 }
 
 function hasPendingReceiptSpillOver(
@@ -66,7 +68,7 @@ function getActiveOverflowAmount(
   transaction: FlowBitTicketDetail["transactions"][number],
 ) {
   return transaction.overflows
-    .filter(isVisibleReceiptSpillOver)
+    .filter(countsTowardReceiptOverflowTotal)
     .reduce((sum, overflow) => {
       const amount = Number(getOverflowDisplayAmount(overflow));
       return sum + (Number.isNaN(amount) ? 0 : amount);
