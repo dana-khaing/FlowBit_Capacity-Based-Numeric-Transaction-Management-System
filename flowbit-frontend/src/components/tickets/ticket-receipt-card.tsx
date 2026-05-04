@@ -47,7 +47,11 @@ function getTicketBasisAmount(
 function isVisibleReceiptSpillOver(
   overflow: FlowBitTicketDetail["transactions"][number]["overflows"][number],
 ) {
-  return overflow.status !== "RFND" && overflow.resolution_type !== "RESERVE_CONSUMED";
+  return (
+    overflow.status !== "RFND" &&
+    overflow.status !== "OVRK" &&
+    overflow.resolution_type !== "RESERVE_CONSUMED"
+  );
 }
 
 function hasPendingReceiptSpillOver(
