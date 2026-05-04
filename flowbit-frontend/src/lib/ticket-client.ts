@@ -131,6 +131,7 @@ export type FlowBitTicketDetail = FlowBitTicketListItem & {
       approved_at: string | null;
       status: string;
       resolution_type?: string | null;
+      collaborator_names?: string[];
     }>;
   }>;
 };
