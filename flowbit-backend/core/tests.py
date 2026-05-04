@@ -1244,6 +1244,26 @@ class PrivateWorkspaceTests(APITestCase):
         self.assertFalse(self.user_one_ledger.is_active)
         self.assertTrue(AuditLog.objects.filter(action='period.auto_closed').exists())
 
+    @patch('core.management.commands.close_expired_periods.timezone.now')
+    def test_close_expired_periods_command_closes_ledgers_with_same_timestamp(self, mocked_now):
+        closed_at = timezone.make_aware(datetime(2028, 1, 2, 12, 5, 0))
+        mocked_now.return_value = closed_at
+        self.period.end_date = timezone.make_aware(datetime(2028, 1, 2, 12, 0, 0))
+        self.period.save(update_fields=['end_date'])
+        self.user_one_ledger.end_date = self.period.end_date
+        self.user_one_ledger.save(update_fields=['end_date'])
+
+        out = StringIO()
+        call_command('close_expired_periods', stdout=out)
+
+        self.period.refresh_from_db()
+        self.user_one_ledger.refresh_from_db()
+        self.assertFalse(self.period.is_open)
+        self.assertEqual(self.period.closed_at, closed_at)
+        self.assertFalse(self.user_one_ledger.is_active)
+        self.assertEqual(self.user_one_ledger.closed_at, closed_at)
+        self.assertTrue(AuditLog.objects.filter(action='period.auto_closed').exists())
+
     def test_admin_period_create_creates_reserve_ledgers_for_all_users(self):
         self.period.close(closed_at=timezone.now())
         self.client.force_authenticate(user=self.admin_user)
