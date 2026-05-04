@@ -253,10 +253,14 @@ export function TicketReceiptCard({
                 <div className="mt-2 space-y-2">
                   {transaction.overflows
                     .filter(isVisibleReceiptSpillOver)
-                    .map((overflow) => (
+                    .map((overflow, index, visibleOverflows) => (
                     <div
                       key={overflow.id}
-                      className="space-y-1"
+                      className={`space-y-1 ${
+                        index < visibleOverflows.length - 1
+                          ? "border-b border-dashed border-current/30 pb-2"
+                          : ""
+                      }`}
                     >
                       <div className="flex items-center justify-between gap-3">
                         <span>{overflow.status.replaceAll("_", " ")}</span>
