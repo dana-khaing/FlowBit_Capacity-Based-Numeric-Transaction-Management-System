@@ -2242,6 +2242,51 @@ class PrivateWorkflowAPITests(APITestCase):
             ).exists()
         )
 
+    def test_period_close_archives_and_clears_detached_overkill_rows(self):
+        third_identifier = Identifier.objects.create(number='398')
+        seed_ticket = Ticket.objects.create(customer_name='Archive Overkill Seed', created_by=self.approver)
+        seed_transaction = Transaction.objects.create(
+            ticket=seed_ticket,
+            identifier=third_identifier,
+            total_amount=Decimal('400.00'),
+            created_by=self.approver,
+        )
+        seed_overflow = Overflow.objects.get(transaction=seed_transaction, status=Overflow.STATUS_TCSO)
+        approve_response = self.client.post(
+            f'/api/overflows/{seed_overflow.id}/approve/',
+            {
+                'amount_to_approve': '500.00',
+                'collaborator_ids': [self.collaborator.id],
+            },
+            format='json',
+        )
+        self.assertEqual(approve_response.status_code, status.HTTP_200_OK)
+        self.assertTrue(
+            Overflow.objects.filter(
+                identifier=third_identifier,
+                owner=self.approver,
+                period=self.active_period,
+                status=Overflow.STATUS_OVERKILL,
+            ).exists()
+        )
+
+        self.active_period.close()
+
+        archive_ticket = Ticket.objects.filter(
+            created_by=self.approver,
+            notes=f"Reserve archive for {self.active_period.name}",
+        ).latest('created_at')
+        archive_transaction = archive_ticket.transactions.get(identifier=third_identifier)
+        self.assertEqual(archive_transaction.total_amount, Decimal('160.00'))
+        self.assertFalse(
+            Overflow.objects.filter(
+                identifier=third_identifier,
+                owner=self.approver,
+                period=self.active_period,
+                status=Overflow.STATUS_OVERKILL,
+            ).exists()
+        )
+
     def test_reserve_consumption_turns_overkill_into_cso(self):
         third_identifier = Identifier.objects.create(number='398')
         seed_ticket = Ticket.objects.create(customer_name='Reserve Seed', created_by=self.approver)
