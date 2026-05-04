@@ -4,17 +4,14 @@ Improved Django management command for auto-closing ledgers at exact times
 This command:
 1. Closes ledgers that have passed their end_date
 2. Respects the EXACT time in end_date (not just the date)
-3. Safe to run frequently (every 5-15 minutes)
+3. Safe to run frequently (every 5 minutes)
 4. Won't close the same ledger twice
 
 Usage:
     python manage.py close_expired_ledgers
 
 Recommended Cron Setup:
-    # Check every 15 minutes (catches 3:00 PM closings within 15 min)
-    */15 * * * * cd /path/to/project && /path/to/venv/bin/python manage.py close_expired_ledgers >> /var/log/ledger_close.log 2>&1
-    
-    # Or check every 5 minutes for more precision
+    # Check every 5 minutes
     */5 * * * * cd /path/to/project && /path/to/venv/bin/python manage.py close_expired_ledgers >> /var/log/ledger_close.log 2>&1
 """
 
