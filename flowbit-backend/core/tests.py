@@ -2242,7 +2242,7 @@ class PrivateWorkflowAPITests(APITestCase):
             ).exists()
         )
 
-    def test_period_close_archives_and_clears_detached_overkill_rows(self):
+    def test_period_close_archives_overkill_into_cso_ticket_rows(self):
         third_identifier = Identifier.objects.create(number='398')
         seed_ticket = Ticket.objects.create(customer_name='Archive Overkill Seed', created_by=self.approver)
         seed_transaction = Transaction.objects.create(
@@ -2278,6 +2278,13 @@ class PrivateWorkflowAPITests(APITestCase):
         ).latest('created_at')
         archive_transaction = archive_ticket.transactions.get(identifier=third_identifier)
         self.assertEqual(archive_transaction.total_amount, Decimal('160.00'))
+        archive_cso = Overflow.objects.get(
+            transaction=archive_transaction,
+            identifier=third_identifier,
+            status=Overflow.STATUS_CSO,
+            resolution_type=Overflow.RESOLUTION_RESERVE_CONSUMED,
+        )
+        self.assertEqual(archive_cso.amount_to_approve, Decimal('200.00'))
         self.assertFalse(
             Overflow.objects.filter(
                 identifier=third_identifier,
