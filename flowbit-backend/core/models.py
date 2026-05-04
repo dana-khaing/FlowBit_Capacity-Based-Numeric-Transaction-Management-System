@@ -1267,6 +1267,41 @@ def _consume_overkill_capacity(identifier, period, owner, amount, consuming_tran
         remaining -= consumed_amount
 
 
+def _drain_overkill_capacity(identifier, period, owner, amount):
+    if period is None or owner is None or amount <= 0:
+        return
+
+    remaining = Decimal(str(amount))
+    overkill_rows = list(
+        Overflow.objects.filter(
+            identifier=identifier,
+            owner=owner,
+            period=period,
+            status=Overflow.STATUS_OVERKILL,
+        )
+        .order_by('approved_at', 'id')
+        .distinct()
+    )
+
+    for overflow in overkill_rows:
+        if remaining <= 0:
+            break
+
+        current_amount = overflow.amount_to_approve or overflow.excess_amount or Decimal('0.00')
+        if current_amount <= 0:
+            continue
+
+        drained_amount = min(current_amount, remaining)
+        if drained_amount == current_amount:
+            overflow.delete()
+        else:
+            overflow.excess_amount = current_amount - drained_amount
+            overflow.amount_to_approve = current_amount - drained_amount
+            overflow.save(update_fields=['excess_amount', 'amount_to_approve'])
+
+        remaining -= drained_amount
+
+
 def _refund_capacity_amount_for_overflow(overflow):
     approval_extra = overflow.capacity_adjustments.filter(
         adjustment_type=IdentifierCapacityAdjustment.TYPE_APPROVAL_EXTRA,
@@ -1550,6 +1585,12 @@ def _create_reserve_archive_tickets(period):
             LedgerAllocation.objects.create(
                 transaction=transaction_obj,
                 ledger=reserve_ledger,
+                amount=item['allocation_amount'],
+            )
+            _drain_overkill_capacity(
+                identifier=transaction_obj.identifier,
+                period=period,
+                owner=owner,
                 amount=item['allocation_amount'],
             )
 
