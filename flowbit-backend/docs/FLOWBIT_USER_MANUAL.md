@@ -742,6 +742,12 @@ API:
 python manage.py close_expired_periods
 ```
 
+Recommended scheduler:
+
+```bash
+*/5 * * * * cd /path/to/project && /path/to/venv/bin/python manage.py close_expired_periods >> /var/log/period_close.log 2>&1
+```
+
 Dry run:
 
 ```bash
@@ -752,6 +758,12 @@ python manage.py close_expired_periods --dry-run
 
 ```bash
 python manage.py close_expired_ledgers
+```
+
+Recommended scheduler:
+
+```bash
+*/5 * * * * cd /path/to/project && /path/to/venv/bin/python manage.py close_expired_ledgers >> /var/log/ledger_close.log 2>&1
 ```
 
 Verbose:

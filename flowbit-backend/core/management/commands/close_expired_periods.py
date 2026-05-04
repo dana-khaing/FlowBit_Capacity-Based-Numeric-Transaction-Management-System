@@ -1,3 +1,10 @@
+"""
+Close expired periods and their active ledgers.
+
+Recommended scheduler:
+    */5 * * * * cd /path/to/project && /path/to/venv/bin/python manage.py close_expired_periods >> /var/log/period_close.log 2>&1
+"""
+
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
