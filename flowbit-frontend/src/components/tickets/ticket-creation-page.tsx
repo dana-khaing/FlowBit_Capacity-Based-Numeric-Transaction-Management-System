@@ -380,13 +380,13 @@ export function TicketCreationPage() {
 
     let isMounted = true;
     setIsLoading(true);
+    setIsRecentTicketsLoading(true);
 
     Promise.all([
       fetchIdentifierOptions(),
       fetchLedgers({ period_id: activePeriod.id }),
-      fetchTickets(),
     ])
-      .then(([nextIdentifiers, nextLedgers, tickets]) => {
+      .then(([nextIdentifiers, nextLedgers]) => {
         if (!isMounted) {
           return;
         }
@@ -397,7 +397,6 @@ export function TicketCreationPage() {
             .slice()
             .sort((left, right) => left.priority - right.priority),
         );
-        setRecentTickets(tickets.slice(0, 5));
         setPageError(null);
       })
       .catch((error) => {
@@ -412,6 +411,26 @@ export function TicketCreationPage() {
       .finally(() => {
         if (isMounted) {
           setIsLoading(false);
+        }
+      });
+
+    fetchTickets({ periodId: activePeriod.id })
+      .then((tickets) => {
+        if (!isMounted) {
+          return;
+        }
+        setRecentTickets(tickets.slice(0, 5));
+      })
+      .catch((error) => {
+        if (!isMounted) {
+          return;
+        }
+        const message =
+          error instanceof Error ? error.message : "Request failed.";
+        setToast({ type: "error", message });
+      })
+      .finally(() => {
+        if (isMounted) {
           setIsRecentTicketsLoading(false);
         }
       });
