@@ -24,6 +24,7 @@ import {
   createCollaborator,
   fetchApprovedOverflows,
   fetchCollaborators,
+  fetchOverkillOverflows,
   fetchPendingOverflows,
   resolveOverflowAction,
   updateCollaborator,
@@ -163,14 +164,15 @@ export function SpillOverPage() {
   async function loadPageData() {
     setIsLoading(true);
     try {
-      const [nextPending, nextApproved, nextCollaborators, nextUser] = await Promise.all([
-        fetchPendingOverflows(),
-        fetchApprovedOverflows(),
+      const [nextPending, nextApproved, nextOverkill, nextCollaborators, nextUser] = await Promise.all([
+        fetchPendingOverflows(20),
+        fetchApprovedOverflows(20),
+        fetchOverkillOverflows(20),
         fetchCollaborators(),
         fetchCurrentUser(),
       ]);
       setPendingOverflows(nextPending);
-      setApprovedOverflows(nextApproved);
+      setApprovedOverflows([...nextApproved, ...nextOverkill]);
       setCollaborators(nextCollaborators);
       setUser(nextUser);
       setPageError(null);
