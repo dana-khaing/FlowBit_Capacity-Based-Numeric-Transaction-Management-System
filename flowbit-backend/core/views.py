@@ -1780,6 +1780,83 @@ class OverflowViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(self._apply_overflow_limit(overkill), many=True)
         return Response(serializer.data)
 
+    @action(detail=False, methods=['post'], url_path='overkill')
+    def create_overkill(self, request):
+        period = Period.get_open_period()
+        if not period:
+            return Response({"detail": "No open period available."}, status=status.HTTP_400_BAD_REQUEST)
+
+        identifier_id = request.data.get('identifier')
+        amount_str = request.data.get('amount')
+        collaborator_ids = request.data.get('collaborator_ids', [])
+
+        try:
+            identifier = Identifier.objects.get(pk=identifier_id)
+        except (Identifier.DoesNotExist, TypeError, ValueError):
+            return Response({"detail": "Choose a valid identifier."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            collaborators = resolve_collaborators_for_approval(request, collaborator_ids)
+        except ValidationError as exc:
+            detail = exc.messages[0] if getattr(exc, 'messages', None) else str(exc)
+            return Response({"detail": detail}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            amount = Decimal(str(amount_str))
+            if amount <= 0:
+                raise InvalidOperation
+        except (InvalidOperation, ValueError, TypeError):
+            return Response({"detail": "Invalid overkill amount."}, status=status.HTTP_400_BAD_REQUEST)
+
+        helper_name = ", ".join(
+            filter(None, [collaborator.full_name.strip() or collaborator.username for collaborator in collaborators])
+        )
+
+        with db_transaction.atomic():
+            overkill = Overflow.objects.create(
+                transaction=None,
+                identifier=identifier,
+                owner=request.user,
+                period=period,
+                excess_amount=amount,
+                status=Overflow.STATUS_OVERKILL,
+                amount_to_approve=amount,
+                approved_at=timezone.now(),
+                helper_name=helper_name,
+                resolution_type=Overflow.RESOLUTION_APPROVE,
+            )
+            overkill.collaborators.set(collaborators)
+            IdentifierCapacityAdjustment.objects.create(
+                identifier=identifier,
+                period=period,
+                owner=request.user,
+                overflow=overkill,
+                amount=amount,
+                adjustment_type=IdentifierCapacityAdjustment.TYPE_APPROVAL_EXTRA,
+                helper_name=helper_name,
+            )
+            Ledger.get_capacity_reserve(period, request.user, create=True)
+
+        record_audit_log(
+            request,
+            'overflow.overkill_created',
+            target=overkill,
+            details=f"Created detached overkill for identifier '{identifier.number}'",
+            changes={
+                'identifier_number': identifier.number,
+                'amount': str(amount),
+                'period': period.name,
+                'collaborator_ids': [collaborator.id for collaborator in collaborators],
+            },
+        )
+        return Response(
+            {
+                'message': f"Overkill created for identifier '{identifier.number}'.",
+                'overflow': self.get_serializer(overkill).data,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
     def _approve_overflow(self, overflow, request):
         if overflow.status != Overflow.STATUS_TCSO:
             return Response(

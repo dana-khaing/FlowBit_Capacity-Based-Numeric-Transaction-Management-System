@@ -1970,6 +1970,35 @@ class PrivateWorkflowAPITests(APITestCase):
         )
         self.assertEqual(adjustment.amount, Decimal('200.00'))
 
+    def test_direct_overkill_creation_creates_detached_reserve_capacity(self):
+        response = self.client.post(
+            '/api/overflows/overkill/',
+            {
+                'identifier': self.second_identifier.id,
+                'amount': '125.00',
+                'collaborator_ids': [self.collaborator.id],
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        overkill = Overflow.objects.get(
+            identifier=self.second_identifier,
+            owner=self.approver,
+            period=self.active_period,
+            status=Overflow.STATUS_OVERKILL,
+        )
+        self.assertIsNone(overkill.transaction)
+        self.assertEqual(overkill.excess_amount, Decimal('125.00'))
+        self.assertEqual(overkill.amount_to_approve, Decimal('125.00'))
+        self.assertEqual(list(overkill.collaborators.values_list('id', flat=True)), [self.collaborator.id])
+
+        adjustment = IdentifierCapacityAdjustment.objects.get(
+            overflow=overkill,
+            adjustment_type=IdentifierCapacityAdjustment.TYPE_APPROVAL_EXTRA,
+        )
+        self.assertEqual(adjustment.amount, Decimal('125.00'))
+
     def test_returning_cso_overflow_moves_it_back_to_tcso(self):
         tx = Transaction.objects.create(
             ticket=Ticket.objects.create(customer_name='Return CSO Ticket', created_by=self.approver),
