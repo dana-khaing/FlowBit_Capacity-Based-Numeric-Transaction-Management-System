@@ -1,5 +1,5 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faArrowDownWideShort, faCircleExclamation, faSliders, faXmark } from "@fortawesome/free-solid-svg-icons";
+import { faArrowDownWideShort, faCircleExclamation, faXmark } from "@fortawesome/free-solid-svg-icons";
 import { Input } from "@/components/ui/input";
 import type { FlowBitLedger } from "@/lib/ledger-client";
 
@@ -78,12 +78,6 @@ export function TicketManualAllocationPanel({
               </span>
             </div>
           </div>
-
-          <span className="inline-flex items-center gap-2 rounded-full bg-stone-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">
-            <FontAwesomeIcon icon={faSliders} className="h-3 w-3" />
-            Manual target
-          </span>
-
           <label className="space-y-2 lg:justify-self-end">
             <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Amount</span>
             <div className="relative">
