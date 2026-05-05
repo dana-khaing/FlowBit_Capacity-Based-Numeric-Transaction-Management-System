@@ -1724,6 +1724,21 @@ class OverflowViewSet(viewsets.ModelViewSet):
             ledger_prefix='transaction__allocations__ledger__'
         )
 
+    def _overflow_limit(self):
+        raw_limit = self.request.query_params.get('limit')
+        if raw_limit in {None, ''}:
+            return None
+        try:
+            return max(1, min(int(raw_limit), 20))
+        except (TypeError, ValueError):
+            return 20
+
+    def _apply_overflow_limit(self, queryset):
+        limit = self._overflow_limit()
+        if limit is None:
+            return queryset
+        return queryset[:limit]
+
     @action(detail=False, methods=['get'], url_path='pending')
     def pending_overflows(self, request):
         """GET /api/overflows/pending/ - Get all TCSO (red) overflows"""
@@ -1733,14 +1748,14 @@ class OverflowViewSet(viewsets.ModelViewSet):
         ).filter(
             owner=request.user
         ).order_by('-transaction__timestamp')
-        serializer = self.get_serializer(pending, many=True)
+        serializer = self.get_serializer(self._apply_overflow_limit(pending), many=True)
         return Response(serializer.data)
 
     @action(detail=False, methods=['get'], url_path='approved')
     def approved_overflows(self, request):
         """GET /api/overflows/approved/ - Get all CSO (green) overflows"""
         approved = Overflow.objects.filter(
-            status__in=[Overflow.STATUS_CSO, Overflow.STATUS_OVERKILL]
+            status=Overflow.STATUS_CSO
         ).select_related(
             'transaction__identifier',
             'transaction__ticket',
@@ -1748,7 +1763,21 @@ class OverflowViewSet(viewsets.ModelViewSet):
         ).filter(
             owner=request.user
         ).order_by('-approved_at')
-        serializer = self.get_serializer(approved, many=True)
+        serializer = self.get_serializer(self._apply_overflow_limit(approved), many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='overkill')
+    def overkill_overflows(self, request):
+        overkill = Overflow.objects.filter(
+            status=Overflow.STATUS_OVERKILL
+        ).select_related(
+            'transaction__identifier',
+            'transaction__ticket',
+            'identifier',
+        ).filter(
+            owner=request.user
+        ).order_by('-approved_at')
+        serializer = self.get_serializer(self._apply_overflow_limit(overkill), many=True)
         return Response(serializer.data)
 
     def _approve_overflow(self, overflow, request):

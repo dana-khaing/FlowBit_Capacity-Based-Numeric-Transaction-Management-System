@@ -37,15 +37,25 @@ function authHeaders() {
   return { Authorization: `Token ${token}` };
 }
 
-export async function fetchPendingOverflows() {
-  return apiRequest<FlowBitOverflow[]>("/overflows/pending/", {
+export async function fetchPendingOverflows(limit?: number) {
+  const suffix = limit ? `?limit=${Math.min(limit, 20)}` : "";
+  return apiRequest<FlowBitOverflow[]>(`/overflows/pending/${suffix}`, {
     method: "GET",
     headers: authHeaders(),
   });
 }
 
-export async function fetchApprovedOverflows() {
-  return apiRequest<FlowBitOverflow[]>("/overflows/approved/", {
+export async function fetchApprovedOverflows(limit?: number) {
+  const suffix = limit ? `?limit=${Math.min(limit, 20)}` : "";
+  return apiRequest<FlowBitOverflow[]>(`/overflows/approved/${suffix}`, {
+    method: "GET",
+    headers: authHeaders(),
+  });
+}
+
+export async function fetchOverkillOverflows(limit?: number) {
+  const suffix = limit ? `?limit=${Math.min(limit, 20)}` : "";
+  return apiRequest<FlowBitOverflow[]>(`/overflows/overkill/${suffix}`, {
     method: "GET",
     headers: authHeaders(),
   });
