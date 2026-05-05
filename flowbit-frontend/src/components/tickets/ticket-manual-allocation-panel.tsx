@@ -65,14 +65,12 @@ export function TicketManualAllocationPanel({
           className="grid gap-3 rounded-[18px] border border-white bg-white px-4 py-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,180px)] lg:items-center"
         >
           <div>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 lg:flex-nowrap">
               <p className="text-sm font-semibold text-stone-900">{ledger.name}</p>
               <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-500">
                 <FontAwesomeIcon icon={faArrowDownWideShort} className="h-3 w-3" />
                 Priority {ledger.priority}
               </span>
-            </div>
-            <div className="mt-2">
               <span className="inline-flex items-center gap-2 rounded-full bg-emerald-100 px-3 py-1.5 text-sm font-semibold text-emerald-800">
                 Left {formatAmount(ledger.remainingCapacity)}
               </span>
