@@ -245,6 +245,17 @@ export function TicketCreationPage() {
         remainingCapacity: string;
         isFrozenAllLedgers: boolean;
         freezeStatus: "none" | "partial" | "all";
+        ledgerCapacityRows: Array<{
+          ledgerId: number;
+          ledgerName: string;
+          priority: number;
+          isCapacityReserve: boolean;
+          totalCapacity: string;
+          allocatedAmount: string;
+          remainingCapacity: string;
+          isFrozen: boolean;
+          isFull: boolean;
+        }>;
       }
     >
   >({});
@@ -323,7 +334,15 @@ export function TicketCreationPage() {
       }),
     [identifierMap, items],
   );
-  const hasWorkingLedgers = activeLedgers.length > 0;
+  const workingLedgers = useMemo(
+    () =>
+      activeLedgers
+        .filter((ledger) => !ledger.is_capacity_reserve)
+        .slice()
+        .sort((left, right) => left.priority - right.priority),
+    [activeLedgers],
+  );
+  const hasWorkingLedgers = workingLedgers.length > 0;
 
   function getCustomerDisplayName(value: string | null | undefined) {
     const normalized = (value ?? "").trim();
@@ -393,7 +412,7 @@ export function TicketCreationPage() {
         setIdentifiers(nextIdentifiers);
         setActiveLedgers(
           nextLedgers
-            .filter((ledger) => ledger.is_active && !ledger.is_capacity_reserve)
+            .filter((ledger) => ledger.is_active)
             .slice()
             .sort((left, right) => left.priority - right.priority),
         );
@@ -463,6 +482,17 @@ export function TicketCreationPage() {
             remainingCapacity: formatWholeAmount(capacity.remaining_capacity),
             isFrozenAllLedgers: capacity.is_frozen_all_ledgers,
             freezeStatus: capacity.freeze_status,
+            ledgerCapacityRows: (capacity.ledger_capacity_rows || []).map((row) => ({
+              ledgerId: row.ledger_id,
+              ledgerName: row.ledger_name,
+              priority: row.priority,
+              isCapacityReserve: row.is_capacity_reserve,
+              totalCapacity: formatWholeAmount(row.total_capacity),
+              allocatedAmount: formatWholeAmount(row.allocated_amount),
+              remainingCapacity: formatWholeAmount(row.remaining_capacity),
+              isFrozen: row.is_frozen,
+              isFull: row.is_full,
+            })),
           },
         ] as const;
       }),
@@ -1222,9 +1252,42 @@ export function TicketCreationPage() {
                               ?.freezeStatus ?? "none"
                           : "none"
                       }
+                      manualLedgers={
+                        item.matchedIdentifier
+                          ? identifierCapacityMap[item.matchedIdentifier.id]
+                              ?.ledgerCapacityRows
+                              ?.map((row) => {
+                                const ledger = activeLedgers.find(
+                                  (candidate) => candidate.id === row.ledgerId,
+                                );
+                                if (!ledger) {
+                                  return null;
+                                }
+
+                                return {
+                                  ...ledger,
+                                  remainingCapacity: row.remainingCapacity,
+                                  totalCapacity: row.totalCapacity,
+                                  allocatedAmount: row.allocatedAmount,
+                                  isFull: row.isFull,
+                                  isFrozen: row.isFrozen,
+                                };
+                              })
+                              .filter(
+                                (
+                                  ledger,
+                                ): ledger is FlowBitLedger & {
+                                  remainingCapacity: string;
+                                  totalCapacity: string;
+                                  allocatedAmount: string;
+                                  isFull: boolean;
+                                  isFrozen: boolean;
+                                } => ledger !== null,
+                              )
+                          : undefined
+                      }
                       identifierError={item.identifierError}
                       amountError={item.amountError}
-                      activeLedgers={activeLedgers}
                       allocationBasisAmount={getAllocationBasisAmount(item)}
                       autoFocusField={
                         pendingFocus?.itemId === item.id ? pendingFocus.field : null

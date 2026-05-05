@@ -12,6 +12,17 @@ export type FlowBitIdentifierCapacity = {
   remaining_capacity: string;
   is_frozen_all_ledgers: boolean;
   freeze_status: "none" | "partial" | "all";
+  ledger_capacity_rows: Array<{
+    ledger_id: number;
+    ledger_name: string;
+    priority: number;
+    is_capacity_reserve: boolean;
+    total_capacity: string;
+    allocated_amount: string;
+    remaining_capacity: string;
+    is_frozen: boolean;
+    is_full: boolean;
+  }>;
 };
 
 export type TicketManualAllocation = {

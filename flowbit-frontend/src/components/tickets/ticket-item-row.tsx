@@ -43,7 +43,15 @@ type TicketItemRowProps = {
   freezeStatus?: "none" | "partial" | "all";
   identifierError?: string | null;
   amountError?: string | null;
-  activeLedgers: FlowBitLedger[];
+  manualLedgers?: Array<
+    FlowBitLedger & {
+      remainingCapacity: string;
+      totalCapacity: string;
+      allocatedAmount: string;
+      isFull: boolean;
+      isFrozen: boolean;
+    }
+  >;
   allocationBasisAmount: string;
   autoFocusField?: "identifier" | "amount" | null;
   canRemove: boolean;
@@ -70,7 +78,7 @@ export function TicketItemRow({
   freezeStatus = "none",
   identifierError,
   amountError,
-  activeLedgers,
+  manualLedgers,
   allocationBasisAmount,
   autoFocusField,
   canRemove,
@@ -300,7 +308,7 @@ export function TicketItemRow({
       {item.manualMode ? (
         <div className="mt-4">
           <TicketManualAllocationPanel
-            ledgers={activeLedgers}
+            ledgers={manualLedgers || []}
             lineAmount={allocationBasisAmount}
             values={item.manualAllocations}
             onAmountChange={(ledgerId, value) => onManualAmountChange(item.id, ledgerId, value)}
