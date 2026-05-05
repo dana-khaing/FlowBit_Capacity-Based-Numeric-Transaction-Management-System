@@ -180,13 +180,11 @@ export function TicketPreviewCard({
                   Available {formatAmount(allocation.available_amount)}
                 </p>
               </div>
-              <div className="mt-2 flex flex-wrap items-center gap-4 text-sm text-stone-600">
-                <span>Requested {formatAmount(allocation.requested_amount)}</span>
-                <span>Allocated {formatAmount(allocation.allocated_amount)}</span>
-                {Number(allocation.overflow_amount) > 0 ? (
-                  <span className="text-amber-700">Spill over {formatAmount(allocation.overflow_amount)}</span>
-                ) : null}
-              </div>
+              {Number(allocation.overflow_amount) > 0 ? (
+                <div className="mt-2 text-sm text-amber-700">
+                  Spill over {formatAmount(allocation.overflow_amount)}
+                </div>
+              ) : null}
             </div>
           ))}
           {shouldShowReserveFill ? (
