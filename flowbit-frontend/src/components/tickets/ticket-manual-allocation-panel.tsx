@@ -62,7 +62,7 @@ export function TicketManualAllocationPanel({
       {visibleLedgers.map((ledger) => (
         <div
           key={ledger.id}
-          className="grid gap-3 rounded-[18px] border border-white bg-white px-4 py-3 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,180px)] lg:items-center"
+          className="grid gap-3 rounded-[18px] border border-white bg-white px-4 py-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,180px)] lg:items-center"
         >
           <div>
             <div className="flex flex-wrap items-center gap-2">
@@ -78,7 +78,7 @@ export function TicketManualAllocationPanel({
               </span>
             </div>
           </div>
-          <label className="space-y-2 lg:justify-self-end">
+          <label className="space-y-2 lg:justify-self-end lg:text-right">
             <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Amount</span>
             <div className="relative">
               <Input
@@ -86,7 +86,7 @@ export function TicketManualAllocationPanel({
                 pattern="[0-9]*"
                 value={values[ledger.id] || ""}
                 onChange={(event) => onAmountChange(ledger.id, event.target.value)}
-                placeholder="Leave blank"
+                placeholder="Enter amount"
                 className="h-11 rounded-[16px] bg-stone-50 pr-10 lg:w-[180px]"
               />
               {values[ledger.id] ? (
