@@ -72,9 +72,11 @@ export function TicketManualAllocationPanel({
                 Priority {ledger.priority}
               </span>
             </div>
-            <p className="mt-2 text-sm text-stone-500">
-              Left {formatAmount(ledger.remainingCapacity)}
-            </p>
+            <div className="mt-2">
+              <span className="inline-flex items-center gap-2 rounded-full bg-emerald-100 px-3 py-1.5 text-sm font-semibold text-emerald-800">
+                Left {formatAmount(ledger.remainingCapacity)}
+              </span>
+            </div>
           </div>
 
           <span className="inline-flex items-center gap-2 rounded-full bg-stone-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">
