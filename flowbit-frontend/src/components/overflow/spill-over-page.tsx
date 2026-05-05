@@ -444,8 +444,8 @@ export function SpillOverPage() {
             {pageError}
           </div>
         ) : (
-          <div className="grid gap-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(300px,0.8fr)]">
-            <div className="space-y-5">
+          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-start">
+            <div className="space-y-5 xl:min-h-0 xl:max-h-[calc(100vh-12rem)] xl:overflow-hidden">
               <div className="flex flex-wrap items-center gap-3 rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-3">
                 <div className="inline-flex rounded-[18px] border border-stone-900/8 bg-white p-1">
                   {[
@@ -489,17 +489,18 @@ export function SpillOverPage() {
                 ) : null}
               </div>
 
-              {visibleOverflows.length === 0 ? (
-                <div className="rounded-[24px] border border-dashed border-stone-300 bg-stone-50 px-5 py-10 text-sm text-stone-500">
-                  No spill-over items match this view.
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {visibleOverflows.map((overflow) => (
-                    <div
-                      key={overflow.id}
-                      className="rounded-[24px] border border-stone-900/8 bg-white px-5 py-4 shadow-[0_8px_24px_rgba(28,24,20,0.04)]"
-                    >
+              <div className="xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:pr-1">
+                {visibleOverflows.length === 0 ? (
+                  <div className="rounded-[24px] border border-dashed border-stone-300 bg-stone-50 px-5 py-10 text-sm text-stone-500">
+                    No spill-over items match this view.
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {visibleOverflows.map((overflow) => (
+                      <div
+                        key={overflow.id}
+                        className="rounded-[24px] border border-stone-900/8 bg-white px-5 py-4 shadow-[0_8px_24px_rgba(28,24,20,0.04)]"
+                      >
                       <div className="flex flex-wrap items-center gap-3 xl:flex-nowrap">
                         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
                           <p className="text-xl font-semibold text-stone-950">
@@ -564,13 +565,14 @@ export function SpillOverPage() {
                           </p>
                         </div>
                       ) : null}
-                    </div>
-                  ))}
-                </div>
-              )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
-            <aside className="space-y-3 rounded-[28px] border border-stone-900/8 bg-[#f3f0ea] p-4 shadow-[0_8px_24px_rgba(28,24,20,0.03)] sm:p-5">
+            <aside className="space-y-3 rounded-[28px] border border-stone-900/8 bg-[#f3f0ea] p-4 shadow-[0_8px_24px_rgba(28,24,20,0.03)] sm:p-5 xl:sticky xl:top-24 xl:max-h-[calc(100vh-12rem)] xl:overflow-y-auto">
               <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Queue summary</p>
               <div className="grid gap-2 sm:grid-cols-3 xl:grid-cols-1">
                 <div className="rounded-[20px] bg-white px-3.5 py-3">
