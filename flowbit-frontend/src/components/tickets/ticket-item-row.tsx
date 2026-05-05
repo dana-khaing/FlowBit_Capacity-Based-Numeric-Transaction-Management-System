@@ -322,6 +322,7 @@ export function TicketItemRow({
           permutationDetails={item.previewPermutationDetails}
           loading={item.isPreviewing}
           error={item.previewError}
+          compactMode={item.manualMode}
         />
       </div>
     </div>
