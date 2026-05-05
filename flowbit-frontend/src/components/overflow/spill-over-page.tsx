@@ -444,8 +444,8 @@ export function SpillOverPage() {
             {pageError}
           </div>
         ) : (
-          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-start">
-            <div className="space-y-5 xl:min-h-0 xl:max-h-[calc(100vh-12rem)] xl:overflow-hidden">
+          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_280px] xl:items-start">
+            <div className="space-y-5 xl:flex xl:h-[calc(100vh-12rem)] xl:min-h-0 xl:flex-col xl:overflow-hidden">
               <div className="flex flex-wrap items-center gap-3 rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-3">
                 <div className="inline-flex rounded-[18px] border border-stone-900/8 bg-white p-1">
                   {[
