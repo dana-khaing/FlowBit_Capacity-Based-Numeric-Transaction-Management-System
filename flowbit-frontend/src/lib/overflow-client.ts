@@ -128,3 +128,19 @@ export async function updateCollaborator(
     body: JSON.stringify(payload),
   });
 }
+
+export async function createDirectOverkill(payload: {
+  identifier: number;
+  amount: string;
+  collaboratorIds: number[];
+}) {
+  return apiRequest<{ message: string; overflow: FlowBitOverflow }>("/overflows/overkill/", {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({
+      identifier: payload.identifier,
+      amount: payload.amount,
+      collaborator_ids: payload.collaboratorIds,
+    }),
+  });
+}
