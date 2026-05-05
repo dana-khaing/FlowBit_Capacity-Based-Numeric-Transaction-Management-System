@@ -568,48 +568,51 @@ export function SpillOverPage() {
               )}
             </div>
 
-            <aside className="space-y-4 rounded-[28px] border border-stone-900/8 bg-[#f3f0ea] p-5 shadow-[0_8px_24px_rgba(28,24,20,0.03)] sm:p-6">
+            <aside className="space-y-3 rounded-[28px] border border-stone-900/8 bg-[#f3f0ea] p-4 shadow-[0_8px_24px_rgba(28,24,20,0.03)] sm:p-5">
               <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Queue summary</p>
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-                <div className="rounded-[22px] bg-white px-4 py-4">
+              <div className="grid gap-2 sm:grid-cols-3 xl:grid-cols-1">
+                <div className="rounded-[20px] bg-white px-3.5 py-3">
                   <div className="flex items-center gap-2 text-stone-500">
                     <FontAwesomeIcon icon={faTriangleExclamation} className="h-4 w-4 text-amber-600" />
-                    <p className="text-sm">Pending</p>
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em]">Pending</p>
                   </div>
-                  <p className="mt-2 text-2xl font-semibold text-stone-950">{pendingOverflows.length}</p>
-                  <p className="mt-1 text-sm text-stone-500">{formatAmount(String(pendingAmount))}</p>
+                  <div className="mt-2 flex items-end justify-between gap-3">
+                    <p className="text-xl font-semibold text-stone-950">{pendingOverflows.length}</p>
+                    <p className="text-sm text-stone-500">{formatAmount(String(pendingAmount))}</p>
+                  </div>
                 </div>
-                <div className="rounded-[22px] bg-white px-4 py-4">
+                <div className="rounded-[20px] bg-white px-3.5 py-3">
                   <div className="flex items-center gap-2 text-stone-500">
                     <FontAwesomeIcon icon={faArrowTrendUp} className="h-4 w-4 text-emerald-600" />
-                    <p className="text-sm">Approved</p>
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em]">Approved</p>
                   </div>
-                  <p className="mt-2 text-2xl font-semibold text-stone-950">{approvedRows.length}</p>
-                  <p className="mt-1 text-sm text-stone-500">{formatAmount(String(approvedAmount))}</p>
+                  <div className="mt-2 flex items-end justify-between gap-3">
+                    <p className="text-xl font-semibold text-stone-950">{approvedRows.length}</p>
+                    <p className="text-sm text-stone-500">{formatAmount(String(approvedAmount))}</p>
+                  </div>
                 </div>
-                <div className="rounded-[22px] bg-white px-4 py-4">
+                <div className="rounded-[20px] bg-white px-3.5 py-3">
                   <div className="flex items-center gap-2 text-stone-500">
                     <FontAwesomeIcon icon={faArrowTrendUp} className="h-4 w-4 text-violet-600" />
-                    <p className="text-sm">Overkill</p>
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em]">Overkill</p>
                   </div>
-                  <p className="mt-2 text-2xl font-semibold text-stone-950">{overkillRows.length}</p>
-                  <p className="mt-1 text-sm text-stone-500">{formatAmount(String(overkillAmount))}</p>
+                  <div className="mt-2 flex items-end justify-between gap-3">
+                    <p className="text-xl font-semibold text-stone-950">{overkillRows.length}</p>
+                    <p className="text-sm text-stone-500">{formatAmount(String(overkillAmount))}</p>
+                  </div>
                 </div>
               </div>
-              <div className="rounded-[22px] bg-white px-4 py-4">
+              <div className="rounded-[20px] bg-white px-3.5 py-3">
                 <div className="flex items-center gap-2 text-stone-500">
                   <FontAwesomeIcon icon={faClock} className="h-4 w-4 text-stone-400" />
-                  <p className="text-sm">Current view</p>
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em]">Current view</p>
                 </div>
-                <p className="mt-2 text-lg font-semibold text-stone-950">
+                <p className="mt-2 text-base font-semibold text-stone-950">
                   {activeTab === "pending"
                     ? "Pending TCSO queue"
                     : activeTab === "approved"
                       ? "Approved CSO queue"
                       : "Overkill queue"}
-                </p>
-                <p className="mt-2 text-sm leading-6 text-stone-500">
-                  Approve pending spill-over with collaborator support, or review approved and overkill items with their timestamps and return actions.
                 </p>
               </div>
             </aside>
