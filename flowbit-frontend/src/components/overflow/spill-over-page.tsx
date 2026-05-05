@@ -18,10 +18,16 @@ import { TicketReceiptCard } from "@/components/tickets/ticket-receipt-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { fetchCurrentUser, getStoredUser, type AuthUser } from "@/lib/auth-client";
-import { fetchTicketDetail, type FlowBitTicketDetail } from "@/lib/ticket-client";
+import {
+  fetchIdentifierOptions,
+  fetchTicketDetail,
+  type FlowBitIdentifierOption,
+  type FlowBitTicketDetail,
+} from "@/lib/ticket-client";
 import {
   approveOverflow,
   createCollaborator,
+  createDirectOverkill,
   fetchApprovedOverflows,
   fetchCollaborators,
   fetchOverkillOverflows,
@@ -84,6 +90,14 @@ function formatDateTime(value: string | null | undefined) {
 
 function sanitizeWholeNumberInput(value: string) {
   return value.replace(/[^\d]/g, "");
+}
+
+function normalizeIdentifierNumber(value: string) {
+  const digits = value.replace(/\D/g, "");
+  if (!digits) {
+    return "";
+  }
+  return digits.slice(-3).padStart(3, "0");
 }
 
 function getOverflowApprovedAmount(overflow: FlowBitOverflow) {
@@ -151,6 +165,10 @@ export function SpillOverPage() {
   const [busyLabel, setBusyLabel] = useState<string | null>(null);
   const [selectedTicketDetail, setSelectedTicketDetail] = useState<FlowBitTicketDetail | null>(null);
   const [isTicketViewLoading, setIsTicketViewLoading] = useState(false);
+  const [identifierOptions, setIdentifierOptions] = useState<FlowBitIdentifierOption[]>([]);
+  const [overkillIdentifierNumber, setOverkillIdentifierNumber] = useState("");
+  const [overkillDraftAmount, setOverkillDraftAmount] = useState("");
+  const [overkillCollaboratorId, setOverkillCollaboratorId] = useState("");
 
   const requiresOverride = user?.role !== "admin";
 
@@ -164,17 +182,19 @@ export function SpillOverPage() {
   async function loadPageData() {
     setIsLoading(true);
     try {
-      const [nextPending, nextApproved, nextOverkill, nextCollaborators, nextUser] = await Promise.all([
+      const [nextPending, nextApproved, nextOverkill, nextCollaborators, nextUser, nextIdentifiers] = await Promise.all([
         fetchPendingOverflows(20),
         fetchApprovedOverflows(20),
         fetchOverkillOverflows(20),
         fetchCollaborators(),
         fetchCurrentUser(),
+        fetchIdentifierOptions(),
       ]);
       setPendingOverflows(nextPending);
       setApprovedOverflows([...nextApproved, ...nextOverkill]);
       setCollaborators(nextCollaborators);
       setUser(nextUser);
+      setIdentifierOptions(nextIdentifiers);
       setPageError(null);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Request failed.";
@@ -272,6 +292,11 @@ export function SpillOverPage() {
     [overkillRows],
   );
 
+  const identifierOptionsList = useMemo(
+    () => identifierOptions.map((identifier) => identifier.number),
+    [identifierOptions],
+  );
+
   function openApproveModal(overflow: FlowBitOverflow) {
     setApproveTarget(overflow);
     setApproveAmount(formatWholeAmount(overflow.amount_to_approve || overflow.excess_amount || ""));
@@ -327,6 +352,48 @@ export function SpillOverPage() {
     }
 
     await submitApproveOverflow();
+  }
+
+  async function handleCreateOverkill() {
+    const normalizedIdentifier = normalizeIdentifierNumber(overkillIdentifierNumber);
+    const matchedIdentifier = identifierOptions.find(
+      (identifier) => identifier.number === normalizedIdentifier,
+    );
+    if (!matchedIdentifier) {
+      setToast({ type: "error", message: "Choose a valid identifier." });
+      return;
+    }
+
+    if (!overkillDraftAmount.trim() || Number(overkillDraftAmount) <= 0) {
+      setToast({ type: "error", message: "Enter an overkill amount greater than zero." });
+      return;
+    }
+
+    const collaboratorId = Number(overkillCollaboratorId);
+    if (!collaboratorId) {
+      setToast({ type: "error", message: "Choose one collaborator." });
+      return;
+    }
+
+    setBusyLabel("Creating overkill");
+    try {
+      const response = await createDirectOverkill({
+        identifier: matchedIdentifier.id,
+        amount: overkillDraftAmount.trim(),
+        collaboratorIds: [collaboratorId],
+      });
+      setToast({ type: "success", message: response.message });
+      setOverkillIdentifierNumber("");
+      setOverkillDraftAmount("");
+      setOverkillCollaboratorId("");
+      await loadPageData();
+      setActiveTab("overkill");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Request failed.";
+      setToast({ type: "error", message });
+    } finally {
+      setBusyLabel(null);
+    }
   }
 
   async function submitApproveOverflow() {
@@ -488,6 +555,60 @@ export function SpillOverPage() {
                   </select>
                 ) : null}
               </div>
+
+              {activeTab === "overkill" ? (
+                <div className="rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4">
+                  <div className="grid gap-3 lg:grid-cols-[minmax(0,180px)_minmax(0,160px)_minmax(0,1fr)_auto] lg:items-end">
+                    <label className="space-y-2">
+                      <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Identifier</span>
+                      <Input
+                        list="overkill-identifier-options"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        value={overkillIdentifierNumber}
+                        onChange={(event) => setOverkillIdentifierNumber(sanitizeWholeNumberInput(event.target.value).slice(0, 3))}
+                        placeholder="000"
+                      />
+                      <datalist id="overkill-identifier-options">
+                        {identifierOptionsList.map((identifierNumber) => (
+                          <option key={identifierNumber} value={identifierNumber} />
+                        ))}
+                      </datalist>
+                    </label>
+
+                    <label className="space-y-2">
+                      <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Amount</span>
+                      <Input
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        value={overkillDraftAmount}
+                        onChange={(event) => setOverkillDraftAmount(sanitizeWholeNumberInput(event.target.value))}
+                        placeholder="Enter amount"
+                      />
+                    </label>
+
+                    <label className="space-y-2">
+                      <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Collaborator</span>
+                      <select
+                        value={overkillCollaboratorId}
+                        onChange={(event) => setOverkillCollaboratorId(event.target.value)}
+                        className="h-11 w-full rounded-[18px] border border-stone-900/8 bg-white px-4 text-sm font-medium text-stone-700 outline-none transition focus:border-stone-950"
+                      >
+                        <option value="">Choose collaborator</option>
+                        {collaborators.map((collaborator) => (
+                          <option key={collaborator.id} value={String(collaborator.id)}>
+                            {collaborator.full_name || collaborator.username}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <Button className="h-11 rounded-[18px]" onClick={handleCreateOverkill}>
+                      Add
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
 
               <div className="xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:pr-1">
                 {visibleOverflows.length === 0 ? (
