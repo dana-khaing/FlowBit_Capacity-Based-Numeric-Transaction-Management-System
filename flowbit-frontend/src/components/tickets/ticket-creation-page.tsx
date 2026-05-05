@@ -1352,12 +1352,14 @@ export function TicketCreationPage() {
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">
                     Last created ticket
                   </p>
-                  <div className="mt-3 space-y-2 text-sm text-emerald-900">
+                  <div className="mt-3 text-sm text-emerald-900">
                     <p className="text-lg font-semibold">{lastCreatedTicket.ticketNumber}</p>
-                    <p>{lastCreatedTicket.customerName}</p>
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-emerald-800">
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-emerald-800">
+                      <span className="font-medium text-emerald-900">
+                        {getCustomerDisplayName(lastCreatedTicket.customerName)}
+                      </span>
                       <span>{formatEntryCount(lastCreatedTicket.entryCount)}</span>
-                      <span>{lastCreatedTicket.totalAmount}</span>
+                      <span>Amount - {lastCreatedTicket.totalAmount}</span>
                     </div>
                   </div>
                 </div>
