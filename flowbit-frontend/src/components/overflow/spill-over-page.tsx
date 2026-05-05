@@ -88,6 +88,11 @@ function formatDateTime(value: string | null | undefined) {
   });
 }
 
+function getCollaboratorDisplayName(collaborator: FlowBitCollaborator) {
+  const fullName = collaborator.full_name.trim();
+  return fullName || collaborator.username;
+}
+
 function sanitizeWholeNumberInput(value: string) {
   return value.replace(/[^\d]/g, "");
 }
@@ -775,7 +780,7 @@ export function SpillOverPage() {
                         className="w-full rounded-[16px] border border-stone-900/8 bg-stone-50 px-3 py-2 text-left transition hover:border-stone-300 hover:bg-white"
                       >
                         <p className="text-sm font-semibold text-stone-900">
-                          {collaborator.full_name || collaborator.username}
+                          {getCollaboratorDisplayName(collaborator)}
                         </p>
                       </button>
                     ))
@@ -1005,7 +1010,7 @@ export function SpillOverPage() {
           >
             <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-500">Collaborator detail</p>
             <h2 className="mt-2 text-2xl font-semibold text-stone-950">
-              {selectedCollaborator.full_name || selectedCollaborator.username}
+              {getCollaboratorDisplayName(selectedCollaborator)}
             </h2>
             <div className="mt-5 space-y-3 rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4 text-sm">
               <p className="text-stone-500">
@@ -1155,7 +1160,7 @@ export function SpillOverPage() {
                   <option value="">Choose collaborator</option>
                   {collaborators.map((collaborator) => (
                     <option key={collaborator.id} value={String(collaborator.id)}>
-                      {collaborator.full_name || collaborator.username}
+                      {getCollaboratorDisplayName(collaborator)}
                     </option>
                   ))}
                 </select>
