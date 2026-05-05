@@ -1436,24 +1436,26 @@ export function TicketCreationPage() {
                         </span>
                       </div>
                       <div className="mt-2 flex items-center justify-between gap-3">
-                        <p className="text-sm font-medium text-stone-700">
-                          {getCustomerDisplayName(ticket.customer_name)}
-                        </p>
+                        <div className="min-w-0 flex-1 overflow-hidden">
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-stone-500">
+                            <span className="truncate font-medium text-stone-700">
+                              {getCustomerDisplayName(ticket.customer_name)}
+                            </span>
+                            <span>Amount - {formatAmount(ticket.total_amount)}</span>
+                            <span className="text-xs">
+                              {new Date(ticket.created_at).toLocaleString("en-GB", {
+                                day: "2-digit",
+                                month: "short",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </span>
+                          </div>
+                        </div>
                         <FontAwesomeIcon
                           icon={faArrowUpRightFromSquare}
-                          className="h-3.5 w-3.5 text-stone-400"
+                          className="h-3.5 w-3.5 flex-none text-stone-400"
                         />
-                      </div>
-                      <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-stone-500">
-                        <span>{formatAmount(ticket.total_amount)}</span>
-                        <span className="text-xs">
-                          {new Date(ticket.created_at).toLocaleString("en-GB", {
-                            day: "2-digit",
-                            month: "short",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </span>
                       </div>
                     </button>
                   ))}
