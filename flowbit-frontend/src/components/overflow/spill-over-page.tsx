@@ -170,6 +170,7 @@ export function SpillOverPage() {
   const [overkillDraftAmount, setOverkillDraftAmount] = useState("");
   const [overkillCollaboratorId, setOverkillCollaboratorId] = useState("");
   const [isOverkillFormOpen, setIsOverkillFormOpen] = useState(false);
+  const [isCollaboratorModalOpen, setIsCollaboratorModalOpen] = useState(false);
   const [pendingOverkillConfirmation, setPendingOverkillConfirmation] = useState<{
     identifierNumber: string;
     amount: string;
@@ -480,6 +481,9 @@ export function SpillOverPage() {
           ? `Collaborator '${collaborator.username}' updated.`
           : `Collaborator '${collaborator.username}' created.`,
       });
+      if (!approveTarget) {
+        setIsCollaboratorModalOpen(false);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Request failed.";
       setToast({ type: "error", message });
@@ -526,6 +530,11 @@ export function SpillOverPage() {
     } finally {
       setIsTicketViewLoading(false);
     }
+  }
+
+  function openStandaloneCollaboratorModal() {
+    resetCollaboratorDraft();
+    setIsCollaboratorModalOpen(true);
   }
 
   return (
@@ -592,7 +601,10 @@ export function SpillOverPage() {
 
               {activeTab === "overkill" ? (
                 <div className="flex justify-end">
-                  <Button className="h-11 rounded-[18px]" onClick={() => setIsOverkillFormOpen(true)}>
+                  <Button
+                    className="h-11 rounded-[18px] bg-stone-950 px-5 shadow-[0_10px_24px_rgba(24,24,24,0.14)] transition hover:-translate-y-0.5 hover:bg-stone-900"
+                    onClick={() => setIsOverkillFormOpen(true)}
+                  >
                     Add
                   </Button>
                 </div>
@@ -634,7 +646,7 @@ export function SpillOverPage() {
                           {overflow.ticket_number ? (
                             <Button
                               variant="outline"
-                              className="h-11 min-w-[124px] rounded-[18px]"
+                              className="h-11 min-w-[124px] rounded-[18px] border-stone-200 bg-white shadow-[0_8px_20px_rgba(24,24,24,0.06)] transition hover:-translate-y-0.5 hover:bg-stone-50"
                               onClick={() => openTicketView(overflow.ticket_number)}
                             >
                               <FontAwesomeIcon icon={faReceipt} className="h-3.5 w-3.5" />
@@ -642,14 +654,17 @@ export function SpillOverPage() {
                             </Button>
                           ) : null}
                           {overflow.status === "TCSO" ? (
-                            <Button className="h-11 min-w-[124px] rounded-[18px]" onClick={() => openApproveModal(overflow)}>
+                            <Button
+                              className="h-11 min-w-[124px] rounded-[18px] bg-stone-950 shadow-[0_10px_24px_rgba(24,24,24,0.14)] transition hover:-translate-y-0.5 hover:bg-stone-900"
+                              onClick={() => openApproveModal(overflow)}
+                            >
                               <FontAwesomeIcon icon={faCircleCheck} className="h-3.5 w-3.5" />
                               Approve
                             </Button>
                           ) : null}
                           <Button
                             variant="outline"
-                            className="h-11 min-w-[124px] rounded-[18px]"
+                            className="h-11 min-w-[124px] rounded-[18px] border-stone-200 bg-white shadow-[0_8px_20px_rgba(24,24,24,0.06)] transition hover:-translate-y-0.5 hover:bg-stone-50"
                             onClick={() => setRefundPickerTarget(overflow)}
                           >
                             <FontAwesomeIcon icon={faRotateLeft} className="h-3.5 w-3.5" />
@@ -727,6 +742,37 @@ export function SpillOverPage() {
                       ? "Approved CSO queue"
                       : "Overkill queue"}
                 </p>
+              </div>
+              <div className="rounded-[20px] bg-white px-3.5 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Collaborators</p>
+                  <Button
+                    variant="outline"
+                    className="h-9 rounded-[16px] border-stone-200 bg-stone-50 px-3 shadow-[0_8px_20px_rgba(24,24,24,0.04)] transition hover:-translate-y-0.5 hover:bg-white"
+                    onClick={openStandaloneCollaboratorModal}
+                  >
+                    Add
+                  </Button>
+                </div>
+                <div className="mt-3 space-y-2">
+                  {collaborators.length ? (
+                    collaborators.map((collaborator) => (
+                      <div
+                        key={collaborator.id}
+                        className="rounded-[16px] border border-stone-900/8 bg-stone-50 px-3 py-2"
+                      >
+                        <p className="text-sm font-semibold text-stone-900">
+                          {collaborator.full_name || collaborator.username}
+                        </p>
+                        <p className="mt-0.5 text-xs text-stone-500">{collaborator.username}</p>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="rounded-[16px] border border-dashed border-stone-300 bg-stone-50 px-3 py-3 text-sm text-stone-500">
+                      No collaborators yet.
+                    </div>
+                  )}
+                </div>
               </div>
             </aside>
           </div>
@@ -936,6 +982,67 @@ export function SpillOverPage() {
         }}
         onConfirm={handleRefundAction}
       />
+      {isCollaboratorModalOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/30 px-4"
+          onClick={() => setIsCollaboratorModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-xl rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_18px_48px_rgba(24,24,24,0.18)] sm:p-6"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-500">Create collaborator</p>
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              <Input
+                value={collaboratorDraft.username}
+                onChange={(event) =>
+                  setCollaboratorDraft((current) => ({ ...current, username: event.target.value }))
+                }
+                placeholder="Username"
+              />
+              <Input
+                value={collaboratorDraft.full_name}
+                onChange={(event) =>
+                  setCollaboratorDraft((current) => ({ ...current, full_name: event.target.value }))
+                }
+                placeholder="Full name"
+              />
+              <Input
+                value={collaboratorDraft.email}
+                onChange={(event) =>
+                  setCollaboratorDraft((current) => ({ ...current, email: event.target.value }))
+                }
+                placeholder="Email"
+              />
+              <Input
+                value={collaboratorDraft.phone_number}
+                onChange={(event) =>
+                  setCollaboratorDraft((current) => ({ ...current, phone_number: event.target.value }))
+                }
+                placeholder="Phone number"
+              />
+            </div>
+
+            <div className="mt-5 flex justify-end gap-3">
+              <Button variant="outline" onClick={() => setIsCollaboratorModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleCreateCollaborator}
+                disabled={
+                  Boolean(busyLabel) ||
+                  !collaboratorDraft.username.trim() ||
+                  !collaboratorDraft.full_name.trim() ||
+                  !collaboratorDraft.email.trim() ||
+                  !collaboratorDraft.phone_number.trim()
+                }
+              >
+                Create
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       <AdminConfirmModal
         open={Boolean(pendingOverkillConfirmation)}
         title="Confirm overkill"
