@@ -169,6 +169,12 @@ export function SpillOverPage() {
   const [overkillIdentifierNumber, setOverkillIdentifierNumber] = useState("");
   const [overkillDraftAmount, setOverkillDraftAmount] = useState("");
   const [overkillCollaboratorId, setOverkillCollaboratorId] = useState("");
+  const [isOverkillFormOpen, setIsOverkillFormOpen] = useState(false);
+  const [pendingOverkillConfirmation, setPendingOverkillConfirmation] = useState<{
+    identifierNumber: string;
+    amount: string;
+    collaboratorName: string;
+  } | null>(null);
 
   const requiresOverride = user?.role !== "admin";
 
@@ -375,6 +381,32 @@ export function SpillOverPage() {
       return;
     }
 
+    const collaborator = collaborators.find((item) => item.id === collaboratorId);
+    setPendingOverkillConfirmation({
+      identifierNumber: normalizedIdentifier,
+      amount: overkillDraftAmount.trim(),
+      collaboratorName: collaborator?.full_name || collaborator?.username || "-",
+    });
+  }
+
+  async function submitCreateOverkill() {
+    const normalizedIdentifier = normalizeIdentifierNumber(overkillIdentifierNumber);
+    const matchedIdentifier = identifierOptions.find(
+      (identifier) => identifier.number === normalizedIdentifier,
+    );
+    if (!matchedIdentifier) {
+      setPendingOverkillConfirmation(null);
+      setToast({ type: "error", message: "Choose a valid identifier." });
+      return;
+    }
+
+    const collaboratorId = Number(overkillCollaboratorId);
+    if (!collaboratorId) {
+      setPendingOverkillConfirmation(null);
+      setToast({ type: "error", message: "Choose one collaborator." });
+      return;
+    }
+
     setBusyLabel("Creating overkill");
     try {
       const response = await createDirectOverkill({
@@ -386,6 +418,8 @@ export function SpillOverPage() {
       setOverkillIdentifierNumber("");
       setOverkillDraftAmount("");
       setOverkillCollaboratorId("");
+      setPendingOverkillConfirmation(null);
+      setIsOverkillFormOpen(false);
       await loadPageData();
       setActiveTab("overkill");
     } catch (error) {
@@ -557,56 +591,10 @@ export function SpillOverPage() {
               </div>
 
               {activeTab === "overkill" ? (
-                <div className="rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4">
-                  <div className="grid gap-3 lg:grid-cols-[minmax(0,180px)_minmax(0,160px)_minmax(0,1fr)_auto] lg:items-end">
-                    <label className="space-y-2">
-                      <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Identifier</span>
-                      <Input
-                        list="overkill-identifier-options"
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        value={overkillIdentifierNumber}
-                        onChange={(event) => setOverkillIdentifierNumber(sanitizeWholeNumberInput(event.target.value).slice(0, 3))}
-                        placeholder="000"
-                      />
-                      <datalist id="overkill-identifier-options">
-                        {identifierOptionsList.map((identifierNumber) => (
-                          <option key={identifierNumber} value={identifierNumber} />
-                        ))}
-                      </datalist>
-                    </label>
-
-                    <label className="space-y-2">
-                      <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Amount</span>
-                      <Input
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        value={overkillDraftAmount}
-                        onChange={(event) => setOverkillDraftAmount(sanitizeWholeNumberInput(event.target.value))}
-                        placeholder="Enter amount"
-                      />
-                    </label>
-
-                    <label className="space-y-2">
-                      <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Collaborator</span>
-                      <select
-                        value={overkillCollaboratorId}
-                        onChange={(event) => setOverkillCollaboratorId(event.target.value)}
-                        className="h-11 w-full rounded-[18px] border border-stone-900/8 bg-white px-4 text-sm font-medium text-stone-700 outline-none transition focus:border-stone-950"
-                      >
-                        <option value="">Choose collaborator</option>
-                        {collaborators.map((collaborator) => (
-                          <option key={collaborator.id} value={String(collaborator.id)}>
-                            {collaborator.full_name || collaborator.username}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <Button className="h-11 rounded-[18px]" onClick={handleCreateOverkill}>
-                      Add
-                    </Button>
-                  </div>
+                <div className="flex justify-end">
+                  <Button className="h-11 rounded-[18px]" onClick={() => setIsOverkillFormOpen(true)}>
+                    Add
+                  </Button>
                 </div>
               ) : null}
 
@@ -948,6 +936,88 @@ export function SpillOverPage() {
         }}
         onConfirm={handleRefundAction}
       />
+      <AdminConfirmModal
+        open={Boolean(pendingOverkillConfirmation)}
+        title="Confirm overkill"
+        description={
+          pendingOverkillConfirmation
+            ? `${pendingOverkillConfirmation.identifierNumber}\nAmount ${formatWholeAmount(pendingOverkillConfirmation.amount)}\nCollaborator ${pendingOverkillConfirmation.collaboratorName}`
+            : ""
+        }
+        confirmLabel="Create overkill"
+        showCodeInput={false}
+        busy={Boolean(busyLabel)}
+        onCodeChange={() => {}}
+        onCancel={() => setPendingOverkillConfirmation(null)}
+        onConfirm={submitCreateOverkill}
+      />
+      {isOverkillFormOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/30 px-4"
+          onClick={() => setIsOverkillFormOpen(false)}
+        >
+          <div
+            className="w-full max-w-2xl rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_18px_48px_rgba(24,24,24,0.18)] sm:p-6"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-500">Add overkill</p>
+            <div className="mt-5 grid gap-4 sm:grid-cols-3">
+              <label className="space-y-2">
+                <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Identifier</span>
+                <Input
+                  list="overkill-identifier-options"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={overkillIdentifierNumber}
+                  onChange={(event) => setOverkillIdentifierNumber(sanitizeWholeNumberInput(event.target.value).slice(0, 3))}
+                  placeholder="000"
+                />
+                <datalist id="overkill-identifier-options">
+                  {identifierOptionsList.map((identifierNumber) => (
+                    <option key={identifierNumber} value={identifierNumber} />
+                  ))}
+                </datalist>
+              </label>
+
+              <label className="space-y-2">
+                <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Amount</span>
+                <Input
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={overkillDraftAmount}
+                  onChange={(event) => setOverkillDraftAmount(sanitizeWholeNumberInput(event.target.value))}
+                  placeholder="Enter amount"
+                />
+              </label>
+
+              <label className="space-y-2">
+                <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Collaborator</span>
+                <select
+                  value={overkillCollaboratorId}
+                  onChange={(event) => setOverkillCollaboratorId(event.target.value)}
+                  className="h-11 w-full rounded-[18px] border border-stone-900/8 bg-white px-4 text-sm font-medium text-stone-700 outline-none transition focus:border-stone-950"
+                >
+                  <option value="">Choose collaborator</option>
+                  {collaborators.map((collaborator) => (
+                    <option key={collaborator.id} value={String(collaborator.id)}>
+                      {collaborator.full_name || collaborator.username}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <div className="mt-5 flex justify-end gap-3">
+              <Button variant="outline" onClick={() => setIsOverkillFormOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleCreateOverkill}>
+                Add
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {refundPickerTarget ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/30 px-4"

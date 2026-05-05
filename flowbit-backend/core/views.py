@@ -1766,22 +1766,21 @@ class OverflowViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(self._apply_overflow_limit(approved), many=True)
         return Response(serializer.data)
 
-    @action(detail=False, methods=['get'], url_path='overkill')
+    @action(detail=False, methods=['get', 'post'], url_path='overkill')
     def overkill_overflows(self, request):
-        overkill = Overflow.objects.filter(
-            status=Overflow.STATUS_OVERKILL
-        ).select_related(
-            'transaction__identifier',
-            'transaction__ticket',
-            'identifier',
-        ).filter(
-            owner=request.user
-        ).order_by('-approved_at')
-        serializer = self.get_serializer(self._apply_overflow_limit(overkill), many=True)
-        return Response(serializer.data)
+        if request.method.lower() == 'get':
+            overkill = Overflow.objects.filter(
+                status=Overflow.STATUS_OVERKILL
+            ).select_related(
+                'transaction__identifier',
+                'transaction__ticket',
+                'identifier',
+            ).filter(
+                owner=request.user
+            ).order_by('-approved_at')
+            serializer = self.get_serializer(self._apply_overflow_limit(overkill), many=True)
+            return Response(serializer.data)
 
-    @action(detail=False, methods=['post'], url_path='overkill')
-    def create_overkill(self, request):
         period = Period.get_open_period()
         if not period:
             return Response({"detail": "No open period available."}, status=status.HTTP_400_BAD_REQUEST)
