@@ -1044,36 +1044,50 @@ export function SpillOverPage() {
             className="w-full max-w-xl rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_18px_48px_rgba(24,24,24,0.18)] sm:p-6"
             onClick={(event) => event.stopPropagation()}
           >
-            <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-500">Create collaborator</p>
+            <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-500">
+              {editingCollaboratorId ? "Edit collaborator" : "Create collaborator"}
+            </p>
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              <Input
-                value={collaboratorDraft.username}
-                onChange={(event) =>
-                  setCollaboratorDraft((current) => ({ ...current, username: event.target.value }))
-                }
-                placeholder="Username"
-              />
-              <Input
-                value={collaboratorDraft.full_name}
-                onChange={(event) =>
-                  setCollaboratorDraft((current) => ({ ...current, full_name: event.target.value }))
-                }
-                placeholder="Full name"
-              />
-              <Input
-                value={collaboratorDraft.email}
-                onChange={(event) =>
-                  setCollaboratorDraft((current) => ({ ...current, email: event.target.value }))
-                }
-                placeholder="Email"
-              />
-              <Input
-                value={collaboratorDraft.phone_number}
-                onChange={(event) =>
-                  setCollaboratorDraft((current) => ({ ...current, phone_number: event.target.value }))
-                }
-                placeholder="Phone number"
-              />
+              <label className="space-y-2">
+                <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Username</span>
+                <Input
+                  value={collaboratorDraft.username}
+                  onChange={(event) =>
+                    setCollaboratorDraft((current) => ({ ...current, username: event.target.value }))
+                  }
+                  placeholder="Username"
+                />
+              </label>
+              <label className="space-y-2">
+                <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Full name</span>
+                <Input
+                  value={collaboratorDraft.full_name}
+                  onChange={(event) =>
+                    setCollaboratorDraft((current) => ({ ...current, full_name: event.target.value }))
+                  }
+                  placeholder="Full name"
+                />
+              </label>
+              <label className="space-y-2">
+                <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Email</span>
+                <Input
+                  value={collaboratorDraft.email}
+                  onChange={(event) =>
+                    setCollaboratorDraft((current) => ({ ...current, email: event.target.value }))
+                  }
+                  placeholder="Email"
+                />
+              </label>
+              <label className="space-y-2">
+                <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Phone number</span>
+                <Input
+                  value={collaboratorDraft.phone_number}
+                  onChange={(event) =>
+                    setCollaboratorDraft((current) => ({ ...current, phone_number: event.target.value }))
+                  }
+                  placeholder="Phone number"
+                />
+              </label>
             </div>
 
             <div className="mt-5 flex justify-end gap-3">
@@ -1090,7 +1104,7 @@ export function SpillOverPage() {
                   !collaboratorDraft.phone_number.trim()
                 }
               >
-                Create
+                {editingCollaboratorId ? "Save" : "Create"}
               </Button>
             </div>
           </div>
