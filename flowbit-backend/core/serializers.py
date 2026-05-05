@@ -284,6 +284,7 @@ class IdentifierSerializer(serializers.ModelSerializer):
     remaining_capacity = serializers.SerializerMethodField()
     is_frozen_all_ledgers = serializers.SerializerMethodField()
     freeze_status = serializers.SerializerMethodField()
+    ledger_capacity_rows = serializers.SerializerMethodField()
     current_overflow_amount = serializers.SerializerMethodField()
     total_overflow_amount = serializers.SerializerMethodField()
     confirmed_overflow_amount = serializers.SerializerMethodField()
@@ -296,6 +297,7 @@ class IdentifierSerializer(serializers.ModelSerializer):
             'remaining_capacity',
             'is_frozen_all_ledgers',
             'freeze_status',
+            'ledger_capacity_rows',
             'current_overflow_amount',
             'confirmed_overflow_amount',
             'total_overflow_amount',
@@ -412,6 +414,84 @@ class IdentifierSerializer(serializers.ModelSerializer):
         if freeze_rows.filter(applies_to_all=False, ledger__isnull=False).exists():
             return 'partial'
         return 'none'
+
+    def get_ledger_capacity_rows(self, obj):
+        user = self._request_user()
+        open_period = Period.get_open_period()
+        if user is None or open_period is None:
+            return []
+
+        active_ledgers = list(
+            Ledger.objects.filter(
+                owner=user,
+                is_active=True,
+                period=open_period,
+            ).order_by('priority', 'id')
+        )
+        if not active_ledgers:
+            return []
+
+        freeze_rows = IdentifierLedgerFreeze.objects.filter(
+            identifier=obj,
+            period=open_period,
+            owner=user,
+        )
+        all_ledgers_frozen = freeze_rows.filter(applies_to_all=True).exists()
+        frozen_ledger_ids = set(
+            freeze_rows.filter(applies_to_all=False, ledger__isnull=False).values_list('ledger_id', flat=True)
+        )
+
+        allocation_totals = {
+            row['ledger_id']: row['total'] or Decimal('0.00')
+            for row in LedgerAllocation.objects.filter(
+                transaction__identifier=obj,
+                transaction__created_by=user,
+                ledger__period=open_period,
+                ledger__is_active=True,
+            )
+            .values('ledger_id')
+            .annotate(total=Sum('amount'))
+        }
+
+        reserve_available = IdentifierCapacityAdjustment.get_available_capacity(
+            obj,
+            open_period,
+            user,
+        )
+        if reserve_available < Decimal('0.00'):
+            reserve_available = Decimal('0.00')
+
+        rows = []
+        for ledger in active_ledgers:
+            is_reserve = ledger.is_capacity_reserve
+            if is_reserve:
+                capacity = reserve_available + (allocation_totals.get(ledger.id, Decimal('0.00')) or Decimal('0.00'))
+                allocated = allocation_totals.get(ledger.id, Decimal('0.00')) or Decimal('0.00')
+                remaining = reserve_available
+                is_frozen = False
+            else:
+                capacity = ledger.limit_per_identifier or Decimal('0.00')
+                allocated = allocation_totals.get(ledger.id, Decimal('0.00')) or Decimal('0.00')
+                remaining = capacity - allocated
+                if remaining < Decimal('0.00'):
+                    remaining = Decimal('0.00')
+                is_frozen = all_ledgers_frozen or ledger.id in frozen_ledger_ids
+
+            rows.append(
+                {
+                    'ledger_id': ledger.id,
+                    'ledger_name': ledger.name,
+                    'priority': ledger.priority,
+                    'is_capacity_reserve': ledger.is_capacity_reserve,
+                    'total_capacity': str(capacity),
+                    'allocated_amount': str(allocated),
+                    'remaining_capacity': str(remaining),
+                    'is_frozen': is_frozen,
+                    'is_full': remaining <= Decimal('0.00'),
+                }
+            )
+
+        return rows
 
     def get_current_overflow_amount(self, obj):
         user = self._request_user()

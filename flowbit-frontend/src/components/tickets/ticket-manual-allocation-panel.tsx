@@ -16,7 +16,15 @@ function formatAmount(value: string) {
 }
 
 type TicketManualAllocationPanelProps = {
-  ledgers: FlowBitLedger[];
+  ledgers: Array<
+    FlowBitLedger & {
+      remainingCapacity: string;
+      totalCapacity: string;
+      allocatedAmount: string;
+      isFull: boolean;
+      isFrozen: boolean;
+    }
+  >;
   lineAmount: string;
   values: Record<number, string>;
   onAmountChange: (ledgerId: number, value: string) => void;
@@ -28,6 +36,7 @@ export function TicketManualAllocationPanel({
   values,
   onAmountChange,
 }: TicketManualAllocationPanelProps) {
+  const visibleLedgers = ledgers.filter((ledger) => !ledger.isFull);
   const manualTotal = Object.values(values).reduce((sum, value) => {
     const amount = Number(value);
     return sum + (Number.isNaN(amount) ? 0 : amount);
@@ -50,7 +59,7 @@ export function TicketManualAllocationPanel({
           </span>
         </div>
       ) : null}
-      {ledgers.map((ledger) => (
+      {visibleLedgers.map((ledger) => (
         <div
           key={ledger.id}
           className="grid gap-3 rounded-[18px] border border-white bg-white px-4 py-3 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,180px)] lg:items-center"
@@ -64,7 +73,7 @@ export function TicketManualAllocationPanel({
               </span>
             </div>
             <p className="mt-2 text-sm text-stone-500">
-              Capacity per identifier {formatAmount(ledger.limit_per_identifier)}
+              Left {formatAmount(ledger.remainingCapacity)}
             </p>
           </div>
 
