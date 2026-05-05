@@ -171,6 +171,7 @@ export function SpillOverPage() {
   const [overkillCollaboratorId, setOverkillCollaboratorId] = useState("");
   const [isOverkillFormOpen, setIsOverkillFormOpen] = useState(false);
   const [isCollaboratorModalOpen, setIsCollaboratorModalOpen] = useState(false);
+  const [selectedCollaborator, setSelectedCollaborator] = useState<FlowBitCollaborator | null>(null);
   const [pendingOverkillConfirmation, setPendingOverkillConfirmation] = useState<{
     identifierNumber: string;
     amount: string;
@@ -537,6 +538,16 @@ export function SpillOverPage() {
     setIsCollaboratorModalOpen(true);
   }
 
+  function openCollaboratorDetail(collaborator: FlowBitCollaborator) {
+    setSelectedCollaborator(collaborator);
+  }
+
+  function openCollaboratorEditModal(collaborator: FlowBitCollaborator) {
+    openCollaboratorEditor(collaborator);
+    setSelectedCollaborator(null);
+    setIsCollaboratorModalOpen(true);
+  }
+
   return (
     <>
       <PeriodRequiredPage
@@ -554,7 +565,7 @@ export function SpillOverPage() {
             {pageError}
           </div>
         ) : (
-          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_280px] xl:items-start">
+          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-start">
             <div className="space-y-5 xl:flex xl:h-[calc(100vh-12rem)] xl:min-h-0 xl:flex-col xl:overflow-hidden">
               <div className="flex flex-wrap items-center gap-3 rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-3">
                 <div className="inline-flex rounded-[18px] border border-stone-900/8 bg-white p-1">
@@ -757,15 +768,16 @@ export function SpillOverPage() {
                 <div className="mt-3 space-y-2">
                   {collaborators.length ? (
                     collaborators.map((collaborator) => (
-                      <div
+                      <button
+                        type="button"
                         key={collaborator.id}
-                        className="rounded-[16px] border border-stone-900/8 bg-stone-50 px-3 py-2"
+                        onClick={() => openCollaboratorDetail(collaborator)}
+                        className="w-full rounded-[16px] border border-stone-900/8 bg-stone-50 px-3 py-2 text-left transition hover:border-stone-300 hover:bg-white"
                       >
                         <p className="text-sm font-semibold text-stone-900">
                           {collaborator.full_name || collaborator.username}
                         </p>
-                        <p className="mt-0.5 text-xs text-stone-500">{collaborator.username}</p>
-                      </div>
+                      </button>
                     ))
                   ) : (
                     <div className="rounded-[16px] border border-dashed border-stone-300 bg-stone-50 px-3 py-3 text-sm text-stone-500">
@@ -982,6 +994,42 @@ export function SpillOverPage() {
         }}
         onConfirm={handleRefundAction}
       />
+      {selectedCollaborator ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/30 px-4"
+          onClick={() => setSelectedCollaborator(null)}
+        >
+          <div
+            className="w-full max-w-xl rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_18px_48px_rgba(24,24,24,0.18)] sm:p-6"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-500">Collaborator detail</p>
+            <h2 className="mt-2 text-2xl font-semibold text-stone-950">
+              {selectedCollaborator.full_name || selectedCollaborator.username}
+            </h2>
+            <div className="mt-5 space-y-3 rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4 text-sm">
+              <p className="text-stone-500">
+                Username: <span className="font-medium text-stone-900">{selectedCollaborator.username}</span>
+              </p>
+              <p className="text-stone-500">
+                Email: <span className="font-medium text-stone-900">{selectedCollaborator.email}</span>
+              </p>
+              <p className="text-stone-500">
+                Phone: <span className="font-medium text-stone-900">{selectedCollaborator.phone_number}</span>
+              </p>
+            </div>
+
+            <div className="mt-5 flex justify-end gap-3">
+              <Button variant="outline" onClick={() => setSelectedCollaborator(null)}>
+                Close
+              </Button>
+              <Button onClick={() => openCollaboratorEditModal(selectedCollaborator)}>
+                Edit
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {isCollaboratorModalOpen ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/30 px-4"
