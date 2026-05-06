@@ -3038,6 +3038,24 @@ class TicketListView(generics.ListAPIView):
     serializer_class = TicketSerializer
     permission_classes = [IsAuthenticated]
 
+    def _ticket_page(self):
+        raw_page = self.request.query_params.get('page')
+        if raw_page in {None, ''}:
+            return None
+        try:
+            return max(1, int(raw_page))
+        except (TypeError, ValueError):
+            return 1
+
+    def _ticket_page_size(self):
+        raw_page_size = self.request.query_params.get('page_size')
+        if raw_page_size in {None, ''}:
+            return 20
+        try:
+            return max(1, min(int(raw_page_size), 50))
+        except (TypeError, ValueError):
+            return 20
+
     def _ticket_limit(self):
         raw_limit = self.request.query_params.get('limit')
         if raw_limit in {None, ''}:
@@ -3103,10 +3121,36 @@ class TicketListView(generics.ListAPIView):
                 distinct=True,
             ),
         ).prefetch_related(ticket_transactions).distinct()
+        if self._ticket_page() is not None:
+            return queryset
+
         limit = self._ticket_limit()
         if limit is not None:
             return queryset[:limit]
         return queryset
+
+    def list(self, request, *args, **kwargs):
+        page = self._ticket_page()
+        if page is None:
+            return super().list(request, *args, **kwargs)
+
+        queryset = self.filter_queryset(self.get_queryset())
+        page_size = self._ticket_page_size()
+        total_count = queryset.count()
+        total_pages = max(1, (total_count + page_size - 1) // page_size)
+        safe_page = min(page, total_pages)
+        start = (safe_page - 1) * page_size
+        end = start + page_size
+        serializer = self.get_serializer(queryset[start:end], many=True)
+        return Response(
+            {
+                'results': serializer.data,
+                'count': total_count,
+                'page': safe_page,
+                'page_size': page_size,
+                'total_pages': total_pages,
+            }
+        )
 
 
 class TicketDetailView(generics.RetrieveAPIView):

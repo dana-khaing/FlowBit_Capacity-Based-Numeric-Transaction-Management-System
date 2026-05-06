@@ -108,6 +108,14 @@ export type FlowBitTicketListItem = {
   identifier_numbers: string[];
 };
 
+export type FlowBitTicketListPage = {
+  results: FlowBitTicketListItem[];
+  count: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+};
+
 export type FlowBitTicketDetail = FlowBitTicketListItem & {
   created_by: number | null;
   created_by_username: string | null;
@@ -239,6 +247,24 @@ export async function fetchTickets(filters?: {
 
   const suffix = query.toString() ? `?${query.toString()}` : "";
   return apiRequest<FlowBitTicketListItem[]>(`/tickets/${suffix}`, {
+    method: "GET",
+    headers: authHeaders(),
+  });
+}
+
+export async function fetchTicketPage(filters?: {
+  periodId?: number;
+  page?: number;
+  pageSize?: number;
+}) {
+  const query = new URLSearchParams();
+  if (filters?.periodId) {
+    query.set("period_id", String(filters.periodId));
+  }
+  query.set("page", String(filters?.page ?? 1));
+  query.set("page_size", String(filters?.pageSize ?? 20));
+
+  return apiRequest<FlowBitTicketListPage>(`/tickets/?${query.toString()}`, {
     method: "GET",
     headers: authHeaders(),
   });

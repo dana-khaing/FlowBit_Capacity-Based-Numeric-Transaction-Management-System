@@ -1616,6 +1616,32 @@ class PrivateWorkflowAPITests(APITestCase):
         self.assertEqual(len(transaction_response.data), 1)
         self.assertEqual(transaction_response.data[0]['id'], self.archived_transaction.id)
 
+    def test_ticket_list_can_fetch_second_page(self):
+        for index in range(24):
+            ticket = Ticket.objects.create(
+                customer_name=f'Paged Customer {index}',
+                created_by=self.approver,
+            )
+            Transaction.objects.create(
+                ticket=ticket,
+                identifier=self.identifier if index % 2 == 0 else self.second_identifier,
+                total_amount=Decimal('10.00'),
+                created_by=self.approver,
+            )
+
+        response = self.client.get('/api/tickets/', {
+            'period_id': self.active_period.id,
+            'page': 2,
+            'page_size': 20,
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['page'], 2)
+        self.assertEqual(response.data['page_size'], 20)
+        self.assertEqual(response.data['total_pages'], 2)
+        self.assertEqual(response.data['count'], 25)
+        self.assertEqual(len(response.data['results']), 5)
+
     def test_ticket_detail_returns_receipt_transactions_for_current_user(self):
         response = self.client.get(f'/api/tickets/{self.active_ticket.ticket_number}/')
 
