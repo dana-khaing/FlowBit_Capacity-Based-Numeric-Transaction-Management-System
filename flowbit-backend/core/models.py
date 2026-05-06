@@ -8,6 +8,7 @@ from django.db.models import Q, Sum
 from decimal import Decimal
 from django.core.exceptions import ValidationError
 from django.utils import timezone
+from django.utils.text import slugify
 
 
 DEFAULT_HELPER_NAME = 'system'
@@ -48,7 +49,7 @@ class Period(models.Model):
     def sync_reserve_ledgers(self):
         self.ledgers.filter(is_capacity_reserve=True).update(end_date=self.end_date)
 
-    def close(self, closed_at=None, save=True, helper_name=DEFAULT_HELPER_NAME):
+    def close(self, closed_at=None, save=True, helper_name=DEFAULT_HELPER_NAME, closing_user=None):
         if closed_at is None:
             closed_at = timezone.now()
 
@@ -57,6 +58,7 @@ class Period(models.Model):
                 self,
                 closed_at=closed_at,
                 helper_name=helper_name,
+                closing_user=closing_user,
             )
             _create_reserve_archive_tickets(self)
 
@@ -761,7 +763,57 @@ def _resolve_pending_overflows(period, exclude_ledger_ids=None):
             overflow.save(update_fields=['excess_amount'])
 
 
-def _auto_close_pending_overflows(period, closed_at=None, helper_name=DEFAULT_HELPER_NAME):
+def _normalize_auto_close_collaborator_username(base_value):
+    normalized = slugify((base_value or '').strip()).replace('-', '_')
+    return (normalized or DEFAULT_HELPER_NAME)[:150]
+
+
+def _get_or_create_auto_close_collaborator(owner, closing_user=None, helper_name=DEFAULT_HELPER_NAME):
+    if owner is None:
+        return None
+
+    if closing_user is not None:
+        username = (closing_user.username or '').strip() or _normalize_auto_close_collaborator_username(helper_name)
+        full_name = closing_user.get_full_name().strip() or username
+        email = (closing_user.email or '').strip() or f'{username}@autoclose.flowbit.local'
+        phone_number = getattr(getattr(closing_user, 'profile', None), 'phone_number', '') or ''
+    else:
+        username = _normalize_auto_close_collaborator_username(helper_name)
+        full_name = (helper_name or DEFAULT_HELPER_NAME).strip() or username
+        email = f'{username}@autoclose.flowbit.local'
+        phone_number = ''
+
+    collaborator = None
+    if full_name:
+        collaborator = Collaborator.objects.filter(
+            owner=owner,
+            full_name__iexact=full_name,
+        ).order_by('id').first()
+    if collaborator is None and username:
+        collaborator = Collaborator.objects.filter(
+            owner=owner,
+            username__iexact=username,
+        ).order_by('id').first()
+    if collaborator is not None:
+        return collaborator
+
+    candidate_username = username
+    counter = 2
+    while Collaborator.objects.filter(owner=owner, username__iexact=candidate_username).exists():
+        suffix = f'_{counter}'
+        candidate_username = f'{username[: max(1, 150 - len(suffix))]}{suffix}'
+        counter += 1
+
+    return Collaborator.objects.create(
+        owner=owner,
+        username=candidate_username,
+        full_name=full_name[:150],
+        email=email[:254],
+        phone_number=phone_number[:50],
+    )
+
+
+def _auto_close_pending_overflows(period, closed_at=None, helper_name=DEFAULT_HELPER_NAME, closing_user=None):
     if period is None:
         return
 
@@ -769,13 +821,25 @@ def _auto_close_pending_overflows(period, closed_at=None, helper_name=DEFAULT_HE
     pending_overflows = Overflow.objects.filter(
         _period_overflow_filter(period),
         status=Overflow.STATUS_TCSO,
+    ).select_related(
+        'owner',
+        'owner__profile',
     ).distinct()
 
     for overflow in pending_overflows:
+        collaborator = _get_or_create_auto_close_collaborator(
+            owner=overflow.owner,
+            closing_user=closing_user,
+            helper_name=helper_name,
+        )
         overflow.status = Overflow.STATUS_CSO
         overflow.amount_to_approve = overflow.excess_amount
         overflow.approved_at = closed_at
-        overflow.helper_name = helper_name or DEFAULT_HELPER_NAME
+        overflow.helper_name = (
+            collaborator.full_name.strip()
+            if collaborator and collaborator.full_name.strip()
+            else helper_name or DEFAULT_HELPER_NAME
+        )
         overflow.resolution_type = Overflow.RESOLUTION_AUTO_CLOSE
         overflow.save(update_fields=[
             'status',
@@ -784,6 +848,8 @@ def _auto_close_pending_overflows(period, closed_at=None, helper_name=DEFAULT_HE
             'helper_name',
             'resolution_type',
         ])
+        if collaborator is not None:
+            overflow.collaborators.set([collaborator])
 
 
 class Ticket(models.Model):

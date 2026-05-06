@@ -371,6 +371,7 @@ class PeriodViewSet(viewsets.ModelViewSet):
                 period.close(
                     closed_at=now,
                     helper_name=helper_name_from_request(request),
+                    closing_user=request.user if getattr(request, 'user', None) and request.user.is_authenticated else None,
                 )
                 closed_periods.append({
                     'id': period.id,
@@ -474,6 +475,7 @@ class PeriodViewSet(viewsets.ModelViewSet):
         period.close(
             closed_at=closed_at,
             helper_name=helper_name_from_request(request),
+            closing_user=request.user if request.user.is_authenticated else None,
         )
         record_audit_log(
             request,
