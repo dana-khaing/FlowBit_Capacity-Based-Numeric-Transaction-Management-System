@@ -1673,6 +1673,28 @@ class PrivateWorkflowAPITests(APITestCase):
         self.assertEqual(response.data['count'], 1)
         self.assertEqual(response.data['results'][0]['ticket_number'], self.active_ticket.ticket_number)
 
+    def test_ticket_list_can_sort_by_amount_desc(self):
+        higher_ticket = Ticket.objects.create(
+            customer_name='Higher Amount Customer',
+            created_by=self.approver,
+        )
+        Transaction.objects.create(
+            ticket=higher_ticket,
+            identifier=self.second_identifier,
+            total_amount=Decimal('125.00'),
+            created_by=self.approver,
+        )
+
+        response = self.client.get('/api/tickets/', {
+            'period_id': self.active_period.id,
+            'page': 1,
+            'page_size': 20,
+            'sort': 'amount_desc',
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['results'][0]['ticket_number'], higher_ticket.ticket_number)
+
     def test_ticket_detail_returns_receipt_transactions_for_current_user(self):
         response = self.client.get(f'/api/tickets/{self.active_ticket.ticket_number}/')
 

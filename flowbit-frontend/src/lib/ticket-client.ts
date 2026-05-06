@@ -260,6 +260,7 @@ export async function fetchTicketPage(filters?: {
   refundFilter?: string;
   dateFrom?: string;
   dateTo?: string;
+  sort?: string;
 }) {
   const query = new URLSearchParams();
   if (filters?.periodId) {
@@ -278,6 +279,9 @@ export async function fetchTicketPage(filters?: {
   }
   if (filters?.dateTo) {
     query.set("date_to", filters.dateTo);
+  }
+  if (filters?.sort?.trim()) {
+    query.set("sort", filters.sort.trim());
   }
 
   return apiRequest<FlowBitTicketListPage>(`/tickets/?${query.toString()}`, {
