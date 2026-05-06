@@ -21,6 +21,17 @@ export type FlowBitOverflow = {
   refund_amount: string | null;
 };
 
+function buildOverflowQuery(filters?: { limit?: number; periodId?: number }) {
+  const search = new URLSearchParams();
+  if (filters?.limit) {
+    search.set("limit", String(Math.min(filters.limit, 20)));
+  }
+  if (filters?.periodId) {
+    search.set("period_id", String(filters.periodId));
+  }
+  return search.toString() ? `?${search.toString()}` : "";
+}
+
 export type FlowBitCollaborator = {
   id: number;
   username: string;
@@ -37,24 +48,24 @@ function authHeaders() {
   return { Authorization: `Token ${token}` };
 }
 
-export async function fetchPendingOverflows(limit?: number) {
-  const suffix = limit ? `?limit=${Math.min(limit, 20)}` : "";
+export async function fetchPendingOverflows(filters?: { limit?: number; periodId?: number }) {
+  const suffix = buildOverflowQuery(filters);
   return apiRequest<FlowBitOverflow[]>(`/overflows/pending/${suffix}`, {
     method: "GET",
     headers: authHeaders(),
   });
 }
 
-export async function fetchApprovedOverflows(limit?: number) {
-  const suffix = limit ? `?limit=${Math.min(limit, 20)}` : "";
+export async function fetchApprovedOverflows(filters?: { limit?: number; periodId?: number }) {
+  const suffix = buildOverflowQuery(filters);
   return apiRequest<FlowBitOverflow[]>(`/overflows/approved/${suffix}`, {
     method: "GET",
     headers: authHeaders(),
   });
 }
 
-export async function fetchOverkillOverflows(limit?: number) {
-  const suffix = limit ? `?limit=${Math.min(limit, 20)}` : "";
+export async function fetchOverkillOverflows(filters?: { limit?: number; periodId?: number }) {
+  const suffix = buildOverflowQuery(filters);
   return apiRequest<FlowBitOverflow[]>(`/overflows/overkill/${suffix}`, {
     method: "GET",
     headers: authHeaders(),
