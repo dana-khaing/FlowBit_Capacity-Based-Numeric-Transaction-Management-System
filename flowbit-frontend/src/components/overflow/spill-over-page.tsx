@@ -247,6 +247,26 @@ export function SpillOverPage() {
     [approvedOverflows],
   );
 
+  const summaryApprovedRows = useMemo(
+    () =>
+      collaboratorFilter === "all"
+        ? approvedRows
+        : approvedRows.filter((overflow) =>
+            overflow.collaborator_names.includes(collaboratorFilter),
+          ),
+    [approvedRows, collaboratorFilter],
+  );
+
+  const summaryOverkillRows = useMemo(
+    () =>
+      collaboratorFilter === "all"
+        ? overkillRows
+        : overkillRows.filter((overflow) =>
+            overflow.collaborator_names.includes(collaboratorFilter),
+          ),
+    [overkillRows, collaboratorFilter],
+  );
+
   const visibleOverflows = useMemo(() => {
     const source =
       activeTab === "pending"
@@ -289,20 +309,20 @@ export function SpillOverPage() {
 
   const approvedAmount = useMemo(
     () =>
-      approvedRows.reduce(
+      summaryApprovedRows.reduce(
         (sum, overflow) => sum + (Number(getOverflowApprovedAmount(overflow)) || 0),
         0,
       ),
-    [approvedRows],
+    [summaryApprovedRows],
   );
 
   const overkillAmount = useMemo(
     () =>
-      overkillRows.reduce(
+      summaryOverkillRows.reduce(
         (sum, overflow) => sum + (Number(getOverflowApprovedAmount(overflow)) || 0),
         0,
       ),
-    [overkillRows],
+    [summaryOverkillRows],
   );
 
   const identifierOptionsList = useMemo(
@@ -731,7 +751,7 @@ export function SpillOverPage() {
                     <p className="text-xs font-semibold uppercase tracking-[0.14em]">Approved</p>
                   </div>
                   <div className="mt-2 flex items-end justify-between gap-3">
-                    <p className="text-xl font-semibold text-stone-950">{approvedRows.length}</p>
+                    <p className="text-xl font-semibold text-stone-950">{summaryApprovedRows.length}</p>
                     <p className="text-sm text-stone-500">{formatAmount(String(approvedAmount))}</p>
                   </div>
                 </div>
@@ -741,7 +761,7 @@ export function SpillOverPage() {
                     <p className="text-xs font-semibold uppercase tracking-[0.14em]">Overkill</p>
                   </div>
                   <div className="mt-2 flex items-end justify-between gap-3">
-                    <p className="text-xl font-semibold text-stone-950">{overkillRows.length}</p>
+                    <p className="text-xl font-semibold text-stone-950">{summaryOverkillRows.length}</p>
                     <p className="text-sm text-stone-500">{formatAmount(String(overkillAmount))}</p>
                   </div>
                 </div>
