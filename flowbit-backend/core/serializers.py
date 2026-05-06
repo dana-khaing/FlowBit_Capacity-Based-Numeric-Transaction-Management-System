@@ -22,6 +22,7 @@ from .models import (
     Collaborator,
     Ticket,
     IdentifierCapacityAdjustment,
+    _from_allocation_basis_amount,
 )
 
 
@@ -185,8 +186,8 @@ class LedgerSerializer(serializers.ModelSerializer):
 
 
 class TicketSerializer(serializers.ModelSerializer):
-    total_amount = serializers.ReadOnlyField()
-    transaction_count = serializers.ReadOnlyField()
+    total_amount = serializers.SerializerMethodField()
+    transaction_count = serializers.SerializerMethodField()
     created_by_username = serializers.CharField(source='created_by.username', read_only=True, default=None)
     identifier_numbers = serializers.SerializerMethodField()
     has_spill_over = serializers.SerializerMethodField()
@@ -225,31 +226,104 @@ class TicketSerializer(serializers.ModelSerializer):
             'has_spill_over',
         ]
 
-    def get_identifier_numbers(self, obj):
+    def _get_transactions(self, obj):
+        prefetched_transactions = getattr(obj, '_prefetched_objects_cache', {}).get('transactions')
+        if prefetched_transactions is not None:
+            return list(prefetched_transactions)
         return list(
-            obj.transactions.order_by('id')
-            .values_list('identifier__number', flat=True)
-            .distinct()
+            obj.transactions.select_related('identifier').prefetch_related('overflows').all()
         )
 
+    def _get_overflows(self, obj):
+        overflows = []
+        for transaction in self._get_transactions(obj):
+            prefetched_overflows = getattr(transaction, '_prefetched_objects_cache', {}).get('overflows')
+            if prefetched_overflows is not None:
+                overflows.extend(prefetched_overflows)
+            else:
+                overflows.extend(transaction.overflows.all())
+        return overflows
+
+    def get_total_amount(self, obj):
+        visible_total = Decimal('0.00')
+        refunded_overflow_total = Decimal('0.00')
+        returned_overflow_total = Decimal('0.00')
+
+        transactions = self._get_transactions(obj)
+        for transaction in transactions:
+            if transaction.is_refunded:
+                continue
+            visible_total += transaction.total_amount
+
+        for overflow in self._get_overflows(obj):
+            transaction = getattr(overflow, 'transaction', None)
+            if transaction is None or transaction.is_refunded:
+                continue
+            if overflow.status == Overflow.STATUS_REFUNDED:
+                refunded_overflow_total += overflow.refund_amount or Decimal('0.00')
+            elif (
+                overflow.status == Overflow.STATUS_TCSO
+                and overflow.refunded_at is not None
+                and overflow.resolution_type == Overflow.RESOLUTION_REFUND_OVERFLOW
+            ):
+                returned_overflow_total += overflow.refund_amount or Decimal('0.00')
+
+        active_total = visible_total - _from_allocation_basis_amount(
+            refunded_overflow_total + returned_overflow_total
+        )
+        if active_total < Decimal('0.00'):
+            return Decimal('0.00')
+        return active_total
+
+    def get_transaction_count(self, obj):
+        annotated_count = getattr(obj, 'ticket_transaction_count', None)
+        if annotated_count is not None:
+            return annotated_count
+        return len(self._get_transactions(obj))
+
+    def get_identifier_numbers(self, obj):
+        seen_numbers = set()
+        ordered_numbers = []
+        for transaction in sorted(self._get_transactions(obj), key=lambda item: item.id):
+            identifier_number = transaction.identifier.number
+            if identifier_number in seen_numbers:
+                continue
+            seen_numbers.add(identifier_number)
+            ordered_numbers.append(identifier_number)
+        return ordered_numbers
+
     def get_has_spill_over(self, obj):
-        return Overflow.objects.filter(transaction__ticket=obj).exclude(
-            status=Overflow.STATUS_REFUNDED
-        ).exists()
+        active_count = getattr(obj, 'active_spill_over_count_annotated', None)
+        if active_count is not None:
+            return active_count > 0
+        return any(
+            overflow.status != Overflow.STATUS_REFUNDED
+            for overflow in self._get_overflows(obj)
+        )
 
     def get_active_spill_over_count(self, obj):
-        return Overflow.objects.filter(transaction__ticket=obj).exclude(
-            status=Overflow.STATUS_REFUNDED
-        ).count()
+        annotated_count = getattr(obj, 'active_spill_over_count_annotated', None)
+        if annotated_count is not None:
+            return annotated_count
+        return sum(
+            1 for overflow in self._get_overflows(obj)
+            if overflow.status != Overflow.STATUS_REFUNDED
+        )
 
     def get_refunded_spill_over_count(self, obj):
-        return Overflow.objects.filter(
-            transaction__ticket=obj,
-            status=Overflow.STATUS_REFUNDED,
-        ).count()
+        annotated_count = getattr(obj, 'refunded_spill_over_count_annotated', None)
+        if annotated_count is not None:
+            return annotated_count
+        return sum(
+            1 for overflow in self._get_overflows(obj)
+            if overflow.status == Overflow.STATUS_REFUNDED
+        )
 
     def get_refunded_transaction_count(self, obj):
-        return obj.transactions.filter(is_refunded=True).count()
+        annotated_count = getattr(obj, 'refunded_transaction_count_annotated', None)
+        if annotated_count is not None:
+            return annotated_count
+        return sum(1 for transaction in self._get_transactions(obj) if transaction.is_refunded)
 
 
 class TicketReceiptPdfSerializer(serializers.Serializer):

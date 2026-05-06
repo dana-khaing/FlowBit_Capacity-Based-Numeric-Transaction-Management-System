@@ -15,7 +15,7 @@ from django.db import transaction as db_transaction, transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 from django.http import HttpResponse
-from django.db.models import Count, Q, Sum
+from django.db.models import Count, Prefetch, Q, Sum
 from django.core.exceptions import ValidationError
 from rest_framework.authtoken.models import Token
 from decimal import Decimal, InvalidOperation
@@ -3080,7 +3080,29 @@ class TicketListView(generics.ListAPIView):
         if period_end:
             queryset = queryset.filter(transactions__timestamp__lte=period_end)
 
-        queryset = queryset.distinct()
+        ticket_transactions = Prefetch(
+            'transactions',
+            queryset=Transaction.objects.select_related('identifier').prefetch_related('overflows'),
+        )
+
+        queryset = queryset.annotate(
+            ticket_transaction_count=Count('transactions', distinct=True),
+            active_spill_over_count_annotated=Count(
+                'transactions__overflows',
+                filter=~Q(transactions__overflows__status=Overflow.STATUS_REFUNDED),
+                distinct=True,
+            ),
+            refunded_spill_over_count_annotated=Count(
+                'transactions__overflows',
+                filter=Q(transactions__overflows__status=Overflow.STATUS_REFUNDED),
+                distinct=True,
+            ),
+            refunded_transaction_count_annotated=Count(
+                'transactions',
+                filter=Q(transactions__is_refunded=True),
+                distinct=True,
+            ),
+        ).prefetch_related(ticket_transactions).distinct()
         limit = self._ticket_limit()
         if limit is not None:
             return queryset[:limit]
