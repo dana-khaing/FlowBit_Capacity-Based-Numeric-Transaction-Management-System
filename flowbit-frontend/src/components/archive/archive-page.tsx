@@ -20,7 +20,10 @@ import {
 } from "@/components/tickets/ticket-receipt-card";
 import { Button } from "@/components/ui/button";
 import { fetchLedgers, type FlowBitLedger } from "@/lib/ledger-client";
-import { fetchApprovedOverflows, type FlowBitOverflow } from "@/lib/overflow-client";
+import {
+  fetchApprovedOverflowPage,
+  type FlowBitOverflow,
+} from "@/lib/overflow-client";
 import { fetchPeriods, type FlowBitPeriod } from "@/lib/period-client";
 import {
   fetchTicketDetail,
@@ -33,6 +36,8 @@ type ToastState = {
   type: "success" | "error";
   message: string;
 } | null;
+
+const ARCHIVE_PAGE_SIZE = 20;
 
 function formatArchiveDateTime(value: string | null | undefined) {
   if (!value) {
@@ -63,7 +68,12 @@ export function ArchivePage() {
   const [ticketCount, setTicketCount] = useState(0);
   const [ticketEntries, setTicketEntries] = useState(0);
   const [ticketTotalAmount, setTicketTotalAmount] = useState("0.00");
+  const [ticketPage, setTicketPage] = useState(1);
+  const [ticketTotalPages, setTicketTotalPages] = useState(1);
   const [approvedOverflows, setApprovedOverflows] = useState<FlowBitOverflow[]>([]);
+  const [overflowPage, setOverflowPage] = useState(1);
+  const [overflowTotalPages, setOverflowTotalPages] = useState(1);
+  const [ledgerPage, setLedgerPage] = useState(1);
   const [isLoadingPeriods, setIsLoadingPeriods] = useState(true);
   const [isLoadingArchive, setIsLoadingArchive] = useState(false);
   const [selectedTicketNumber, setSelectedTicketNumber] = useState<string | null>(null);
@@ -85,6 +95,16 @@ export function ArchivePage() {
 
   const selectedPeriod =
     archivedPeriods.find((period) => period.id === selectedPeriodId) ?? null;
+
+  const pagedLedgers = useMemo(() => {
+    const start = (ledgerPage - 1) * ARCHIVE_PAGE_SIZE;
+    return ledgers.slice(start, start + ARCHIVE_PAGE_SIZE);
+  }, [ledgerPage, ledgers]);
+
+  const ledgerTotalPages = useMemo(
+    () => Math.max(1, Math.ceil(ledgers.length / ARCHIVE_PAGE_SIZE)),
+    [ledgers.length],
+  );
 
   useEffect(() => {
     let isMounted = true;
@@ -125,13 +145,24 @@ export function ArchivePage() {
   }, []);
 
   useEffect(() => {
+    setTicketPage(1);
+    setOverflowPage(1);
+    setLedgerPage(1);
+    setSelectedTicketNumber(null);
+    setSelectedTicket(null);
+    setIsTicketLoading(false);
+  }, [selectedPeriodId]);
+
+  useEffect(() => {
     if (!selectedPeriodId) {
       setLedgers([]);
       setTickets([]);
       setTicketCount(0);
       setTicketEntries(0);
       setTicketTotalAmount("0.00");
+      setTicketTotalPages(1);
       setApprovedOverflows([]);
+      setOverflowTotalPages(1);
       return;
     }
 
@@ -142,13 +173,17 @@ export function ArchivePage() {
       fetchLedgers({ period_id: selectedPeriodId, section: "archive" }),
       fetchTicketPage({
         periodId: selectedPeriodId,
-        page: 1,
-        pageSize: 20,
+        page: ticketPage,
+        pageSize: ARCHIVE_PAGE_SIZE,
         sort: "newest",
       }),
-      fetchApprovedOverflows({ periodId: selectedPeriodId, limit: 20 }),
+      fetchApprovedOverflowPage({
+        periodId: selectedPeriodId,
+        page: overflowPage,
+        pageSize: ARCHIVE_PAGE_SIZE,
+      }),
     ])
-      .then(([archivedLedgers, ticketPage, overflows]) => {
+      .then(([archivedLedgers, ticketPageResponse, overflowPageResponse]) => {
         if (!isMounted) {
           return;
         }
@@ -160,11 +195,13 @@ export function ArchivePage() {
             return left.priority - right.priority;
           }),
         );
-        setTickets(ticketPage.results);
-        setTicketCount(ticketPage.summary.ticket_count);
-        setTicketEntries(ticketPage.summary.total_entries);
-        setTicketTotalAmount(ticketPage.summary.total_amount);
-        setApprovedOverflows(overflows);
+        setTickets(ticketPageResponse.results);
+        setTicketCount(ticketPageResponse.summary.ticket_count);
+        setTicketEntries(ticketPageResponse.summary.total_entries);
+        setTicketTotalAmount(ticketPageResponse.summary.total_amount);
+        setTicketTotalPages(ticketPageResponse.total_pages);
+        setApprovedOverflows(overflowPageResponse.results);
+        setOverflowTotalPages(overflowPageResponse.total_pages);
       })
       .catch((error) => {
         if (!isMounted) {
@@ -183,7 +220,13 @@ export function ArchivePage() {
     return () => {
       isMounted = false;
     };
-  }, [selectedPeriodId]);
+  }, [overflowPage, selectedPeriodId, ticketPage]);
+
+  useEffect(() => {
+    if (ledgerPage > ledgerTotalPages) {
+      setLedgerPage(ledgerTotalPages);
+    }
+  }, [ledgerPage, ledgerTotalPages]);
 
   async function openTicket(ticketNumber: string) {
     setSelectedTicketNumber(ticketNumber);
@@ -206,6 +249,42 @@ export function ArchivePage() {
     setSelectedTicketNumber(null);
     setSelectedTicket(null);
     setIsTicketLoading(false);
+  }
+
+  function renderPager(
+    page: number,
+    totalPages: number,
+    onPageChange: (page: number) => void,
+  ) {
+    if (totalPages <= 1) {
+      return null;
+    }
+
+    return (
+      <div className="mt-4 flex items-center justify-between gap-3 border-t border-stone-900/8 pt-3">
+        <Button
+          type="button"
+          variant="outline"
+          className="rounded-full"
+          onClick={() => onPageChange(Math.max(1, page - 1))}
+          disabled={page <= 1}
+        >
+          Previous
+        </Button>
+        <span className="text-sm font-medium text-stone-600">
+          Page {page} of {totalPages}
+        </span>
+        <Button
+          type="button"
+          variant="outline"
+          className="rounded-full"
+          onClick={() => onPageChange(Math.min(totalPages, page + 1))}
+          disabled={page >= totalPages}
+        >
+          Next
+        </Button>
+      </div>
+    );
   }
 
   return (
@@ -405,6 +484,7 @@ export function ArchivePage() {
                     </div>
                   )}
                 </div>
+                {renderPager(overflowPage, overflowTotalPages, setOverflowPage)}
               </article>
             </div>
 
@@ -426,8 +506,8 @@ export function ArchivePage() {
                 <div className="mt-5 max-h-[460px] space-y-3 overflow-y-auto pr-1">
                   {isLoadingArchive ? (
                     <p className="text-sm text-stone-500">Loading archived ledgers...</p>
-                  ) : ledgers.length ? (
-                    ledgers.map((ledger) => (
+                  ) : pagedLedgers.length ? (
+                    pagedLedgers.map((ledger) => (
                       <Link
                         key={ledger.id}
                         href={`/ledgers/${ledger.id}`}
@@ -465,6 +545,7 @@ export function ArchivePage() {
                     </div>
                   )}
                 </div>
+                {renderPager(ledgerPage, ledgerTotalPages, setLedgerPage)}
               </article>
 
               <article className="rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)]">
@@ -519,6 +600,7 @@ export function ArchivePage() {
                     </div>
                   )}
                 </div>
+                {renderPager(ticketPage, ticketTotalPages, setTicketPage)}
               </article>
             </div>
           </div>
