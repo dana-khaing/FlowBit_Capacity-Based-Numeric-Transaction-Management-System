@@ -1,6 +1,6 @@
 from io import StringIO
 from decimal import Decimal
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import patch
 
 from django.core.management import call_command
@@ -1726,6 +1726,66 @@ class PrivateWorkflowAPITests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         overflow_ids = {item['id'] for item in response.data}
         self.assertIn(self.archived_overflow.id, overflow_ids)
+
+    def test_approved_overflows_can_be_paged_for_closed_period(self):
+        first_identifier = Identifier.objects.create(number='771')
+        second_identifier = Identifier.objects.create(number='772')
+
+        first_ticket = Ticket.objects.create(
+            customer_name='Archive Overflow One',
+            created_by=self.approver,
+        )
+        second_ticket = Ticket.objects.create(
+            customer_name='Archive Overflow Two',
+            created_by=self.approver,
+        )
+        first_transaction = Transaction.objects.create(
+            ticket=first_ticket,
+            identifier=first_identifier,
+            total_amount=Decimal('200.00'),
+            created_by=self.approver,
+        )
+        second_transaction = Transaction.objects.create(
+            ticket=second_ticket,
+            identifier=second_identifier,
+            total_amount=Decimal('200.00'),
+            created_by=self.approver,
+        )
+        first_overflow = Overflow.objects.create(
+            transaction=first_transaction,
+            identifier=first_identifier,
+            period=self.archived_period,
+            owner=self.approver,
+            excess_amount=Decimal('25.00'),
+            amount_to_approve=Decimal('25.00'),
+            status=Overflow.STATUS_CSO,
+            approved_at=timezone.now() - timedelta(minutes=2),
+        )
+        second_overflow = Overflow.objects.create(
+            transaction=second_transaction,
+            identifier=second_identifier,
+            period=self.archived_period,
+            owner=self.approver,
+            excess_amount=Decimal('30.00'),
+            amount_to_approve=Decimal('30.00'),
+            status=Overflow.STATUS_CSO,
+            approved_at=timezone.now() - timedelta(minutes=1),
+        )
+
+        response = self.client.get('/api/overflows/approved/', {
+            'period_id': self.archived_period.id,
+            'page': 2,
+            'page_size': 1,
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['count'], 3)
+        self.assertEqual(response.data['page'], 2)
+        self.assertEqual(response.data['page_size'], 1)
+        self.assertEqual(response.data['total_pages'], 3)
+        self.assertEqual(len(response.data['results']), 1)
+        returned_ids = {item['id'] for item in response.data['results']}
+        self.assertEqual(returned_ids, {first_overflow.id})
 
     def test_period_close_auto_approves_pending_overflows_with_current_user_collaborator(self):
         closing_identifier = Identifier.objects.create(number='228')

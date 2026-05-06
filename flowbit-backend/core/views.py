@@ -1736,11 +1736,52 @@ class OverflowViewSet(viewsets.ModelViewSet):
         except (TypeError, ValueError):
             return 20
 
+    def _overflow_page(self):
+        raw_page = self.request.query_params.get('page')
+        if raw_page in {None, ''}:
+            return None
+        try:
+            return max(1, int(raw_page))
+        except (TypeError, ValueError):
+            return 1
+
+    def _overflow_page_size(self):
+        raw_page_size = self.request.query_params.get('page_size')
+        if raw_page_size in {None, ''}:
+            return 20
+        try:
+            return max(1, min(int(raw_page_size), 20))
+        except (TypeError, ValueError):
+            return 20
+
     def _apply_overflow_limit(self, queryset):
         limit = self._overflow_limit()
         if limit is None:
             return queryset
         return queryset[:limit]
+
+    def _overflow_page_response(self, queryset):
+        page = self._overflow_page()
+        if page is None:
+            serializer = self.get_serializer(self._apply_overflow_limit(queryset), many=True)
+            return Response(serializer.data)
+
+        page_size = self._overflow_page_size()
+        total_count = queryset.count()
+        total_pages = max(1, (total_count + page_size - 1) // page_size)
+        safe_page = min(page, total_pages)
+        start = (safe_page - 1) * page_size
+        end = start + page_size
+        serializer = self.get_serializer(queryset[start:end], many=True)
+        return Response(
+            {
+                'results': serializer.data,
+                'count': total_count,
+                'page': safe_page,
+                'page_size': page_size,
+                'total_pages': total_pages,
+            }
+        )
 
     def _selected_period(self, request):
         period_id = request.query_params.get('period_id')
@@ -1783,8 +1824,7 @@ class OverflowViewSet(viewsets.ModelViewSet):
             owner=request.user
         ).order_by('-approved_at')
         approved = self._filter_overflow_period(approved, request)
-        serializer = self.get_serializer(self._apply_overflow_limit(approved), many=True)
-        return Response(serializer.data)
+        return self._overflow_page_response(approved)
 
     @action(detail=False, methods=['get', 'post'], url_path='overkill')
     def overkill_overflows(self, request):
