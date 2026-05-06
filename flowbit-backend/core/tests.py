@@ -1727,6 +1727,42 @@ class PrivateWorkflowAPITests(APITestCase):
         overflow_ids = {item['id'] for item in response.data}
         self.assertIn(self.archived_overflow.id, overflow_ids)
 
+    def test_period_close_auto_approves_pending_overflows_with_current_user_collaborator(self):
+        closing_identifier = Identifier.objects.create(number='228')
+        closing_ticket = Ticket.objects.create(
+            customer_name='Pending Close Customer',
+            created_by=self.approver,
+        )
+        closing_transaction = Transaction.objects.create(
+            ticket=closing_ticket,
+            identifier=closing_identifier,
+            total_amount=Decimal('240.00'),
+            created_by=self.approver,
+        )
+        pending_overflow = Overflow.objects.get(
+            transaction=closing_transaction,
+            status=Overflow.STATUS_TCSO,
+        )
+
+        response = self.client.post(
+            f'/api/periods/{self.active_period.id}/close/',
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        pending_overflow.refresh_from_db()
+        self.assertEqual(pending_overflow.status, Overflow.STATUS_CSO)
+        self.assertEqual(pending_overflow.amount_to_approve, Decimal('100.00'))
+        auto_collaborator = Collaborator.objects.get(
+            owner=self.approver,
+            username=self.approver.username,
+        )
+        self.assertEqual(auto_collaborator.full_name, 'Approver User')
+        self.assertEqual(
+            list(pending_overflow.collaborators.values_list('id', flat=True)),
+            [auto_collaborator.id],
+        )
+
     def test_ticket_detail_returns_receipt_transactions_for_current_user(self):
         response = self.client.get(f'/api/tickets/{self.active_ticket.ticket_number}/')
 
