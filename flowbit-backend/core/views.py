@@ -3071,6 +3071,10 @@ class TicketListView(generics.ListAPIView):
         period_start = parse_period_value(self.request.query_params.get('period_start'))
         period_end = parse_period_value(self.request.query_params.get('period_end'))
         period_id = self.request.query_params.get('period_id')
+        search = (self.request.query_params.get('search') or '').strip()
+        refund_filter = (self.request.query_params.get('refund_filter') or '').strip().lower()
+        date_from = parse_date((self.request.query_params.get('date_from') or '').strip())
+        date_to = parse_date((self.request.query_params.get('date_to') or '').strip())
 
         selected_period = None
         if period_id:
@@ -3097,6 +3101,32 @@ class TicketListView(generics.ListAPIView):
 
         if period_end:
             queryset = queryset.filter(transactions__timestamp__lte=period_end)
+
+        if search:
+            queryset = queryset.filter(
+                Q(ticket_number__icontains=search)
+                | Q(customer_name__icontains=search)
+                | Q(transactions__identifier__number__icontains=search)
+            )
+
+        if date_from:
+            queryset = queryset.filter(created_at__date__gte=date_from)
+
+        if date_to:
+            queryset = queryset.filter(created_at__date__lte=date_to)
+
+        if refund_filter == 'active':
+            queryset = queryset.filter(is_refunded=False)
+        elif refund_filter == 'refunded':
+            queryset = queryset.filter(is_refunded=True)
+        elif refund_filter == 'partial':
+            queryset = queryset.filter(is_refunded=False, transactions__is_refunded=True)
+        elif refund_filter == 'spill_over':
+            queryset = queryset.filter(
+                transactions__overflows__isnull=False
+            ).exclude(transactions__overflows__status=Overflow.STATUS_REFUNDED)
+        elif refund_filter == 'spill_over_refunded':
+            queryset = queryset.filter(transactions__overflows__status=Overflow.STATUS_REFUNDED)
 
         ticket_transactions = Prefetch(
             'transactions',
