@@ -21,6 +21,14 @@ export type FlowBitOverflow = {
   refund_amount: string | null;
 };
 
+export type FlowBitOverflowPage = {
+  results: FlowBitOverflow[];
+  count: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+};
+
 function buildOverflowQuery(filters?: { limit?: number; periodId?: number }) {
   const search = new URLSearchParams();
   if (filters?.limit) {
@@ -59,6 +67,23 @@ export async function fetchPendingOverflows(filters?: { limit?: number; periodId
 export async function fetchApprovedOverflows(filters?: { limit?: number; periodId?: number }) {
   const suffix = buildOverflowQuery(filters);
   return apiRequest<FlowBitOverflow[]>(`/overflows/approved/${suffix}`, {
+    method: "GET",
+    headers: authHeaders(),
+  });
+}
+
+export async function fetchApprovedOverflowPage(filters?: {
+  periodId?: number;
+  page?: number;
+  pageSize?: number;
+}) {
+  const search = new URLSearchParams();
+  if (filters?.periodId) {
+    search.set("period_id", String(filters.periodId));
+  }
+  search.set("page", String(filters?.page ?? 1));
+  search.set("page_size", String(Math.min(filters?.pageSize ?? 20, 20)));
+  return apiRequest<FlowBitOverflowPage>(`/overflows/approved/?${search.toString()}`, {
     method: "GET",
     headers: authHeaders(),
   });
