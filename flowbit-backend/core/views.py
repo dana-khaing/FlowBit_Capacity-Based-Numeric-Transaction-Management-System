@@ -15,7 +15,7 @@ from django.db import transaction as db_transaction, transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 from django.http import HttpResponse
-from django.db.models import Count, DecimalField, ExpressionWrapper, F, OuterRef, Prefetch, Q, Subquery, Sum, Value
+from django.db.models import Count, DecimalField, ExpressionWrapper, F, IntegerField, OuterRef, Prefetch, Q, Subquery, Sum, Value
 from django.db.models.functions import Coalesce, Greatest
 from django.core.exceptions import ValidationError
 from rest_framework.authtoken.models import Token
@@ -3241,6 +3241,18 @@ class TicketListView(generics.ListAPIView):
         safe_page = min(page, total_pages)
         start = (safe_page - 1) * page_size
         end = start + page_size
+        summary = queryset.aggregate(
+            total_entries=Coalesce(
+                Sum('ticket_transaction_count'),
+                Value(0),
+                output_field=IntegerField(),
+            ),
+            total_amount=Coalesce(
+                Sum('active_total_amount_annotated'),
+                Value(Decimal('0.00')),
+                output_field=DecimalField(max_digits=14, decimal_places=2),
+            ),
+        )
         serializer = self.get_serializer(queryset[start:end], many=True)
         return Response(
             {
@@ -3249,6 +3261,11 @@ class TicketListView(generics.ListAPIView):
                 'page': safe_page,
                 'page_size': page_size,
                 'total_pages': total_pages,
+                'summary': {
+                    'ticket_count': total_count,
+                    'total_entries': summary['total_entries'],
+                    'total_amount': summary['total_amount'],
+                },
             }
         )
 

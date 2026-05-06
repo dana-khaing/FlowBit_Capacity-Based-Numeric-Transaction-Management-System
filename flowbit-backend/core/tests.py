@@ -1695,6 +1695,29 @@ class PrivateWorkflowAPITests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['results'][0]['ticket_number'], higher_ticket.ticket_number)
 
+    def test_ticket_list_page_summary_reflects_full_filtered_result(self):
+        extra_ticket = Ticket.objects.create(
+            customer_name='Summary Customer',
+            created_by=self.approver,
+        )
+        Transaction.objects.create(
+            ticket=extra_ticket,
+            identifier=self.second_identifier,
+            total_amount=Decimal('25.00'),
+            created_by=self.approver,
+        )
+
+        response = self.client.get('/api/tickets/', {
+            'period_id': self.active_period.id,
+            'page': 1,
+            'page_size': 1,
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['summary']['ticket_count'], 2)
+        self.assertEqual(response.data['summary']['total_entries'], 2)
+        self.assertEqual(Decimal(response.data['summary']['total_amount']), Decimal('100.00'))
+
     def test_ticket_detail_returns_receipt_transactions_for_current_user(self):
         response = self.client.get(f'/api/tickets/{self.active_ticket.ticket_number}/')
 
