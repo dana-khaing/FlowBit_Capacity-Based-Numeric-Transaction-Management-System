@@ -1740,6 +1740,21 @@ class OverflowViewSet(viewsets.ModelViewSet):
             return queryset
         return queryset[:limit]
 
+    def _selected_period(self, request):
+        period_id = request.query_params.get('period_id')
+        if not period_id:
+            return None
+        try:
+            return Period.objects.get(id=period_id)
+        except (Period.DoesNotExist, ValueError):
+            return None
+
+    def _filter_overflow_period(self, queryset, request):
+        selected_period = self._selected_period(request)
+        if selected_period is not None:
+            return queryset.filter(period=selected_period)
+        return queryset
+
     @action(detail=False, methods=['get'], url_path='pending')
     def pending_overflows(self, request):
         """GET /api/overflows/pending/ - Get all TCSO (red) overflows"""
@@ -1749,6 +1764,7 @@ class OverflowViewSet(viewsets.ModelViewSet):
         ).filter(
             owner=request.user
         ).order_by('-transaction__timestamp')
+        pending = self._filter_overflow_period(pending, request)
         serializer = self.get_serializer(self._apply_overflow_limit(pending), many=True)
         return Response(serializer.data)
 
@@ -1764,6 +1780,7 @@ class OverflowViewSet(viewsets.ModelViewSet):
         ).filter(
             owner=request.user
         ).order_by('-approved_at')
+        approved = self._filter_overflow_period(approved, request)
         serializer = self.get_serializer(self._apply_overflow_limit(approved), many=True)
         return Response(serializer.data)
 
@@ -1779,6 +1796,7 @@ class OverflowViewSet(viewsets.ModelViewSet):
             ).filter(
                 owner=request.user
             ).order_by('-approved_at')
+            overkill = self._filter_overflow_period(overkill, request)
             serializer = self.get_serializer(self._apply_overflow_limit(overkill), many=True)
             return Response(serializer.data)
 

@@ -1718,6 +1718,15 @@ class PrivateWorkflowAPITests(APITestCase):
         self.assertEqual(response.data['summary']['total_entries'], 2)
         self.assertEqual(Decimal(response.data['summary']['total_amount']), Decimal('100.00'))
 
+    def test_approved_overflows_can_be_filtered_by_closed_period(self):
+        response = self.client.get('/api/overflows/approved/', {
+            'period_id': self.archived_period.id,
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        overflow_ids = {item['id'] for item in response.data}
+        self.assertIn(self.archived_overflow.id, overflow_ids)
+
     def test_ticket_detail_returns_receipt_transactions_for_current_user(self):
         response = self.client.get(f'/api/tickets/{self.active_ticket.ticket_number}/')
 
