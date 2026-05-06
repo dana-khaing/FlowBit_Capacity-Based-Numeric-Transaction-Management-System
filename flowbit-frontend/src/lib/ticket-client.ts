@@ -225,10 +225,16 @@ export async function createTicket(payload: TicketCreatePayload) {
   });
 }
 
-export async function fetchTickets(filters?: { periodId?: number }) {
+export async function fetchTickets(filters?: {
+  periodId?: number;
+  limit?: number;
+}) {
   const query = new URLSearchParams();
   if (filters?.periodId) {
     query.set("period_id", String(filters.periodId));
+  }
+  if (filters?.limit) {
+    query.set("limit", String(filters.limit));
   }
 
   const suffix = query.toString() ? `?${query.toString()}` : "";
