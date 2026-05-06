@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -396,17 +397,6 @@ export function ArchivePage() {
                           </span>
                           <span>Approved: {formatArchiveDateTime(overflow.approved_at)}</span>
                         </div>
-                        {overflow.ticket_number ? (
-                          <div className="mt-4">
-                            <Button
-                              variant="outline"
-                              className="rounded-[16px]"
-                              onClick={() => openTicket(overflow.ticket_number!)}
-                            >
-                              Ticket
-                            </Button>
-                          </div>
-                        ) : null}
                       </div>
                     ))
                   ) : (
@@ -438,9 +428,10 @@ export function ArchivePage() {
                     <p className="text-sm text-stone-500">Loading archived ledgers...</p>
                   ) : ledgers.length ? (
                     ledgers.map((ledger) => (
-                      <div
+                      <Link
                         key={ledger.id}
-                        className="rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4"
+                        href={`/ledgers/${ledger.id}`}
+                        className="block rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4 transition hover:border-stone-300 hover:bg-white"
                       >
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <div>
@@ -466,7 +457,7 @@ export function ArchivePage() {
                             </span>
                           </div>
                         </div>
-                      </div>
+                      </Link>
                     ))
                   ) : (
                     <div className="rounded-[22px] border border-dashed border-stone-300 bg-stone-50 px-4 py-4 text-sm text-stone-500">
