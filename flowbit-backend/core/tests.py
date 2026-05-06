@@ -1642,6 +1642,37 @@ class PrivateWorkflowAPITests(APITestCase):
         self.assertEqual(response.data['count'], 25)
         self.assertEqual(len(response.data['results']), 5)
 
+    def test_ticket_list_can_search_identifier_across_active_period(self):
+        response = self.client.get('/api/tickets/', {
+            'period_id': self.active_period.id,
+            'page': 1,
+            'page_size': 20,
+            'search': self.identifier.number,
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['count'], 1)
+        self.assertEqual(response.data['results'][0]['ticket_number'], self.active_ticket.ticket_number)
+
+    def test_ticket_list_can_filter_refunded_tickets(self):
+        refund_response = self.client.post(
+            f'/api/tickets/{self.active_ticket.ticket_number}/refund/',
+            {'action': 'refund_ticket'},
+            format='json',
+        )
+        self.assertEqual(refund_response.status_code, status.HTTP_200_OK)
+
+        response = self.client.get('/api/tickets/', {
+            'period_id': self.active_period.id,
+            'page': 1,
+            'page_size': 20,
+            'refund_filter': 'refunded',
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['count'], 1)
+        self.assertEqual(response.data['results'][0]['ticket_number'], self.active_ticket.ticket_number)
+
     def test_ticket_detail_returns_receipt_transactions_for_current_user(self):
         response = self.client.get(f'/api/tickets/{self.active_ticket.ticket_number}/')
 

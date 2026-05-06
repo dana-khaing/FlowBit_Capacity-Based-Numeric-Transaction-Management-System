@@ -256,6 +256,10 @@ export async function fetchTicketPage(filters?: {
   periodId?: number;
   page?: number;
   pageSize?: number;
+  search?: string;
+  refundFilter?: string;
+  dateFrom?: string;
+  dateTo?: string;
 }) {
   const query = new URLSearchParams();
   if (filters?.periodId) {
@@ -263,6 +267,18 @@ export async function fetchTicketPage(filters?: {
   }
   query.set("page", String(filters?.page ?? 1));
   query.set("page_size", String(filters?.pageSize ?? 20));
+  if (filters?.search?.trim()) {
+    query.set("search", filters.search.trim());
+  }
+  if (filters?.refundFilter?.trim()) {
+    query.set("refund_filter", filters.refundFilter.trim());
+  }
+  if (filters?.dateFrom) {
+    query.set("date_from", filters.dateFrom);
+  }
+  if (filters?.dateTo) {
+    query.set("date_to", filters.dateTo);
+  }
 
   return apiRequest<FlowBitTicketListPage>(`/tickets/?${query.toString()}`, {
     method: "GET",

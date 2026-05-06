@@ -83,6 +83,14 @@ export function TicketHistoryPage() {
 
   useEffect(() => {
     if (!hasActivePeriod || !activePeriod) {
+      return;
+    }
+
+    setCurrentPage(1);
+  }, [activePeriod?.id, dateFrom, dateTo, deferredSearchTerm, hasActivePeriod, refundFilter]);
+
+  useEffect(() => {
+    if (!hasActivePeriod || !activePeriod) {
       setTickets([]);
       setSelectedTicket(null);
       setSelectedTicketNumber(null);
@@ -97,6 +105,10 @@ export function TicketHistoryPage() {
       periodId: activePeriod.id,
       page: currentPage,
       pageSize,
+      search: deferredSearchTerm,
+      refundFilter,
+      dateFrom,
+      dateTo,
     })
       .then((response) => {
         if (!isMounted) {
@@ -130,47 +142,19 @@ export function TicketHistoryPage() {
     return () => {
       isMounted = false;
     };
-  }, [activePeriod?.id, currentPage, hasActivePeriod, pageSize]);
+  }, [
+    activePeriod?.id,
+    currentPage,
+    dateFrom,
+    dateTo,
+    deferredSearchTerm,
+    hasActivePeriod,
+    pageSize,
+    refundFilter,
+  ]);
 
   const filteredTickets = useMemo(() => {
-    const normalizedSearch = deferredSearchTerm.trim().toLowerCase();
-
-    const filtered = tickets.filter((ticket) => {
-      const ticketDate = new Date(ticket.created_at);
-      const matchesSearch =
-        !normalizedSearch ||
-        [
-          ticket.ticket_number,
-          ticket.customer_name || "",
-          ticket.total_amount,
-          ...(ticket.identifier_numbers || []),
-        ].some((value) =>
-          String(value ?? "")
-            .toLowerCase()
-            .includes(normalizedSearch),
-        );
-
-      const isPartialRefund =
-        !ticket.is_refunded && ticket.refunded_transaction_count > 0;
-      const hasSpillOverRefunded = ticket.refunded_spill_over_count > 0;
-      const matchesRefundFilter =
-        (refundFilter === "active" && !ticket.is_refunded) ||
-        (refundFilter === "refunded" && ticket.is_refunded) ||
-        (refundFilter === "partial" && isPartialRefund) ||
-        (refundFilter === "spill_over" && ticket.active_spill_over_count > 0) ||
-        (refundFilter === "spill_over_refunded" && hasSpillOverRefunded);
-
-      const matchesDateFrom =
-        !dateFrom || ticketDate >= new Date(`${dateFrom}T00:00:00`);
-      const matchesDateTo =
-        !dateTo || ticketDate <= new Date(`${dateTo}T23:59:59`);
-
-      return (
-        matchesSearch && matchesRefundFilter && matchesDateFrom && matchesDateTo
-      );
-    });
-
-    return filtered.slice().sort((left, right) => {
+    return tickets.slice().sort((left, right) => {
       if (sortBy === "oldest") {
         return (
           new Date(left.created_at).getTime() -
@@ -191,7 +175,7 @@ export function TicketHistoryPage() {
         new Date(left.created_at).getTime()
       );
     });
-  }, [dateFrom, dateTo, deferredSearchTerm, refundFilter, sortBy, tickets]);
+  }, [sortBy, tickets]);
 
   const groupedTickets = useMemo(() => {
     const groups: Array<{ label: string; tickets: FlowBitTicketListItem[] }> =
@@ -256,6 +240,10 @@ export function TicketHistoryPage() {
         periodId: activePeriod.id,
         page: currentPage,
         pageSize,
+        search: deferredSearchTerm,
+        refundFilter,
+        dateFrom,
+        dateTo,
       });
       setTickets(response.results);
       setServerTotalPages(response.total_pages);
