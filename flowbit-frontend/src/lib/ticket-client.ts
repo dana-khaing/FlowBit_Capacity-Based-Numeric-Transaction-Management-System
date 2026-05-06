@@ -114,6 +114,11 @@ export type FlowBitTicketListPage = {
   page: number;
   page_size: number;
   total_pages: number;
+  summary: {
+    ticket_count: number;
+    total_entries: number;
+    total_amount: string;
+  };
 };
 
 export type FlowBitTicketDetail = FlowBitTicketListItem & {

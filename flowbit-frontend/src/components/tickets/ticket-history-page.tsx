@@ -53,6 +53,8 @@ export function TicketHistoryPage() {
   const [tickets, setTickets] = useState<FlowBitTicketListItem[]>([]);
   const [serverTotalPages, setServerTotalPages] = useState(1);
   const [serverTicketCount, setServerTicketCount] = useState(0);
+  const [serverTotalEntries, setServerTotalEntries] = useState(0);
+  const [serverTotalAmount, setServerTotalAmount] = useState("0.00");
   const [selectedTicketNumber, setSelectedTicketNumber] = useState<
     string | null
   >(null);
@@ -119,6 +121,8 @@ export function TicketHistoryPage() {
         setTickets(nextTickets);
         setServerTotalPages(response.total_pages);
         setServerTicketCount(response.count);
+        setServerTotalEntries(response.summary.total_entries);
+        setServerTotalAmount(response.summary.total_amount);
         setSelectedTicketNumber((current) =>
           current &&
           nextTickets.some((ticket) => ticket.ticket_number === current)
@@ -226,6 +230,8 @@ export function TicketHistoryPage() {
       setTickets(response.results);
       setServerTotalPages(response.total_pages);
       setServerTicketCount(response.count);
+      setServerTotalEntries(response.summary.total_entries);
+      setServerTotalAmount(response.summary.total_amount);
     }
     if (selectedTicketNumber) {
       const detail = await fetchTicketDetail(selectedTicketNumber);
@@ -344,20 +350,6 @@ export function TicketHistoryPage() {
       isMounted = false;
     };
   }, [selectedTicketNumber]);
-
-  const totalAmount = useMemo(
-    () =>
-      tickets.reduce((sum, ticket) => {
-        const amount = Number(ticket.total_amount);
-        return sum + (Number.isNaN(amount) ? 0 : amount);
-      }, 0),
-    [tickets],
-  );
-
-  const totalEntries = useMemo(
-    () => tickets.reduce((sum, ticket) => sum + ticket.transaction_count, 0),
-    [tickets],
-  );
 
   useEffect(() => {
     if (!tickets.length) {
@@ -575,7 +567,7 @@ export function TicketHistoryPage() {
               Entries
             </p>
             <p className="mt-2 text-3xl font-semibold text-stone-950">
-              {totalEntries}
+              {serverTotalEntries}
             </p>
           </div>
           <div className="rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4">
@@ -583,7 +575,7 @@ export function TicketHistoryPage() {
               Total amount
             </p>
             <p className="mt-2 text-3xl font-semibold text-stone-950">
-              {formatTicketAmount(String(totalAmount))}
+              {formatTicketAmount(serverTotalAmount)}
             </p>
           </div>
         </div>
