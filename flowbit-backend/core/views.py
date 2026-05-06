@@ -3038,6 +3038,15 @@ class TicketListView(generics.ListAPIView):
     serializer_class = TicketSerializer
     permission_classes = [IsAuthenticated]
 
+    def _ticket_limit(self):
+        raw_limit = self.request.query_params.get('limit')
+        if raw_limit in {None, ''}:
+            return None
+        try:
+            return max(1, min(int(raw_limit), 50))
+        except (TypeError, ValueError):
+            return 20
+
     def get_queryset(self):
         queryset = super().get_queryset().filter(created_by=self.request.user)
         section = (self.request.query_params.get('section') or '').strip().lower()
@@ -3071,7 +3080,11 @@ class TicketListView(generics.ListAPIView):
         if period_end:
             queryset = queryset.filter(transactions__timestamp__lte=period_end)
 
-        return queryset.distinct()
+        queryset = queryset.distinct()
+        limit = self._ticket_limit()
+        if limit is not None:
+            return queryset[:limit]
+        return queryset
 
 
 class TicketDetailView(generics.RetrieveAPIView):

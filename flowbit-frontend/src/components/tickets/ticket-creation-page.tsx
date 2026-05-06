@@ -356,8 +356,8 @@ export function TicketCreationPage() {
   async function loadRecentTickets() {
     setIsRecentTicketsLoading(true);
     try {
-      const tickets = await fetchTickets();
-      setRecentTickets(tickets.slice(0, 5));
+      const tickets = await fetchTickets({ periodId: activePeriod?.id, limit: 5 });
+      setRecentTickets(tickets);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Request failed.";
@@ -433,12 +433,12 @@ export function TicketCreationPage() {
         }
       });
 
-    fetchTickets({ periodId: activePeriod.id })
+    fetchTickets({ periodId: activePeriod.id, limit: 5 })
       .then((tickets) => {
         if (!isMounted) {
           return;
         }
-        setRecentTickets(tickets.slice(0, 5));
+        setRecentTickets(tickets);
       })
       .catch((error) => {
         if (!isMounted) {
