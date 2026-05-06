@@ -15,7 +15,8 @@ from django.db import transaction as db_transaction, transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 from django.http import HttpResponse
-from django.db.models import Count, Prefetch, Q, Sum
+from django.db.models import Count, DecimalField, ExpressionWrapper, F, OuterRef, Prefetch, Q, Subquery, Sum, Value
+from django.db.models.functions import Coalesce, Greatest
 from django.core.exceptions import ValidationError
 from rest_framework.authtoken.models import Token
 from decimal import Decimal, InvalidOperation
@@ -3065,6 +3066,12 @@ class TicketListView(generics.ListAPIView):
         except (TypeError, ValueError):
             return 20
 
+    def _ticket_sort(self):
+        sort_value = (self.request.query_params.get('sort') or '').strip().lower()
+        if sort_value in {'oldest', 'amount_desc', 'amount_asc'}:
+            return sort_value
+        return 'newest'
+
     def get_queryset(self):
         queryset = super().get_queryset().filter(created_by=self.request.user)
         section = (self.request.query_params.get('section') or '').strip().lower()
@@ -3133,6 +3140,31 @@ class TicketListView(generics.ListAPIView):
             queryset=Transaction.objects.select_related('identifier').prefetch_related('overflows'),
         )
 
+        visible_total_subquery = Transaction.objects.filter(
+            ticket=OuterRef('pk'),
+            is_refunded=False,
+        ).values('ticket').annotate(
+            total=Sum('total_amount'),
+        ).values('total')[:1]
+
+        refunded_overflow_total_subquery = Overflow.objects.filter(
+            transaction__ticket=OuterRef('pk'),
+            transaction__is_refunded=False,
+            status=Overflow.STATUS_REFUNDED,
+        ).values('transaction__ticket').annotate(
+            total=Sum('refund_amount'),
+        ).values('total')[:1]
+
+        returned_overflow_total_subquery = Overflow.objects.filter(
+            transaction__ticket=OuterRef('pk'),
+            transaction__is_refunded=False,
+            status=Overflow.STATUS_TCSO,
+            refunded_at__isnull=False,
+            resolution_type=Overflow.RESOLUTION_REFUND_OVERFLOW,
+        ).values('transaction__ticket').annotate(
+            total=Sum('refund_amount'),
+        ).values('total')[:1]
+
         queryset = queryset.annotate(
             ticket_transaction_count=Count('transactions', distinct=True),
             active_spill_over_count_annotated=Count(
@@ -3150,7 +3182,45 @@ class TicketListView(generics.ListAPIView):
                 filter=Q(transactions__is_refunded=True),
                 distinct=True,
             ),
+            visible_total_amount_annotated=Coalesce(
+                Subquery(visible_total_subquery),
+                Value(Decimal('0.00')),
+                output_field=DecimalField(max_digits=14, decimal_places=2),
+            ),
+            refunded_overflow_total_annotated=Coalesce(
+                Subquery(refunded_overflow_total_subquery),
+                Value(Decimal('0.00')),
+                output_field=DecimalField(max_digits=14, decimal_places=2),
+            ),
+            returned_overflow_total_annotated=Coalesce(
+                Subquery(returned_overflow_total_subquery),
+                Value(Decimal('0.00')),
+                output_field=DecimalField(max_digits=14, decimal_places=2),
+            ),
         ).prefetch_related(ticket_transactions).distinct()
+
+        queryset = queryset.annotate(
+            active_total_amount_annotated=Greatest(
+                Value(Decimal('0.00')),
+                ExpressionWrapper(
+                    F('visible_total_amount_annotated') - ExpressionWrapper(
+                        (F('refunded_overflow_total_annotated') + F('returned_overflow_total_annotated')) / Value(Decimal('1.25')),
+                        output_field=DecimalField(max_digits=14, decimal_places=2),
+                    ),
+                    output_field=DecimalField(max_digits=14, decimal_places=2),
+                ),
+            )
+        )
+
+        ticket_sort = self._ticket_sort()
+        if ticket_sort == 'oldest':
+            queryset = queryset.order_by('created_at', 'id')
+        elif ticket_sort == 'amount_desc':
+            queryset = queryset.order_by('-active_total_amount_annotated', '-created_at', '-id')
+        elif ticket_sort == 'amount_asc':
+            queryset = queryset.order_by('active_total_amount_annotated', '-created_at', '-id')
+        else:
+            queryset = queryset.order_by('-created_at', '-id')
         if self._ticket_page() is not None:
             return queryset
 

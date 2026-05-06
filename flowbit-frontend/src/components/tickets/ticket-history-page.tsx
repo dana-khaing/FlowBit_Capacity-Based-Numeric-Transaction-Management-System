@@ -87,7 +87,7 @@ export function TicketHistoryPage() {
     }
 
     setCurrentPage(1);
-  }, [activePeriod?.id, dateFrom, dateTo, deferredSearchTerm, hasActivePeriod, refundFilter]);
+  }, [activePeriod?.id, dateFrom, dateTo, deferredSearchTerm, hasActivePeriod, refundFilter, sortBy]);
 
   useEffect(() => {
     if (!hasActivePeriod || !activePeriod) {
@@ -109,6 +109,7 @@ export function TicketHistoryPage() {
       refundFilter,
       dateFrom,
       dateTo,
+      sort: sortBy,
     })
       .then((response) => {
         if (!isMounted) {
@@ -153,34 +154,10 @@ export function TicketHistoryPage() {
     refundFilter,
   ]);
 
-  const filteredTickets = useMemo(() => {
-    return tickets.slice().sort((left, right) => {
-      if (sortBy === "oldest") {
-        return (
-          new Date(left.created_at).getTime() -
-          new Date(right.created_at).getTime()
-        );
-      }
-
-      if (sortBy === "amount_desc") {
-        return Number(right.total_amount) - Number(left.total_amount);
-      }
-
-      if (sortBy === "amount_asc") {
-        return Number(left.total_amount) - Number(right.total_amount);
-      }
-
-      return (
-        new Date(right.created_at).getTime() -
-        new Date(left.created_at).getTime()
-      );
-    });
-  }, [sortBy, tickets]);
-
   const groupedTickets = useMemo(() => {
     const groups: Array<{ label: string; tickets: FlowBitTicketListItem[] }> =
       [];
-    for (const ticket of filteredTickets) {
+    for (const ticket of tickets) {
       const label = new Date(ticket.created_at).toLocaleDateString("en-GB", {
         day: "2-digit",
         month: "long",
@@ -194,10 +171,10 @@ export function TicketHistoryPage() {
       }
     }
     return groups;
-  }, [filteredTickets]);
+  }, [tickets]);
 
   useEffect(() => {
-    if (!filteredTickets.length) {
+    if (!tickets.length) {
       setSelectedTicketNumber(null);
       setSelectedTicket(null);
       return;
@@ -205,13 +182,13 @@ export function TicketHistoryPage() {
 
     if (
       !selectedTicketNumber ||
-      !filteredTickets.some(
+      !tickets.some(
         (ticket) => ticket.ticket_number === selectedTicketNumber,
       )
     ) {
-      setSelectedTicketNumber(filteredTickets[0].ticket_number);
+      setSelectedTicketNumber(tickets[0].ticket_number);
     }
-  }, [filteredTickets, selectedTicketNumber]);
+  }, [tickets, selectedTicketNumber]);
 
   async function downloadSelectedTicket() {
     if (!selectedTicket) {
@@ -244,6 +221,7 @@ export function TicketHistoryPage() {
         refundFilter,
         dateFrom,
         dateTo,
+        sort: sortBy,
       });
       setTickets(response.results);
       setServerTotalPages(response.total_pages);
@@ -382,7 +360,7 @@ export function TicketHistoryPage() {
   );
 
   useEffect(() => {
-    if (!filteredTickets.length) {
+    if (!tickets.length) {
       return;
     }
 
@@ -402,21 +380,21 @@ export function TicketHistoryPage() {
       }
 
       event.preventDefault();
-      const currentIndex = filteredTickets.findIndex(
+      const currentIndex = tickets.findIndex(
         (ticket) => ticket.ticket_number === selectedTicketNumber,
       );
       const fallbackIndex = currentIndex === -1 ? 0 : currentIndex;
       const nextIndex =
         event.key === "ArrowDown"
-          ? Math.min(fallbackIndex + 1, filteredTickets.length - 1)
+          ? Math.min(fallbackIndex + 1, tickets.length - 1)
           : Math.max(fallbackIndex - 1, 0);
 
-      setSelectedTicketNumber(filteredTickets[nextIndex].ticket_number);
+      setSelectedTicketNumber(tickets[nextIndex].ticket_number);
     }
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [filteredTickets, selectedTicketNumber]);
+  }, [tickets, selectedTicketNumber]);
 
   if (isPeriodLoading) {
     return (
@@ -681,7 +659,7 @@ export function TicketHistoryPage() {
                 </div>
               ))}
             </div>
-          ) : filteredTickets.length ? (
+          ) : tickets.length ? (
             <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-2">
               {groupedTickets.map((group, groupIndex) => (
                 <section
