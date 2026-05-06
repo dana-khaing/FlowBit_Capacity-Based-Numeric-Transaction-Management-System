@@ -214,6 +214,7 @@ export function ArchivePage() {
         title="Archive"
         description="Review closed periods, archived ledgers, tickets, and approved spill over."
         headerClassName="hidden"
+        showDefaultAside={false}
       >
         {toast ? (
           <AdminActionToast
