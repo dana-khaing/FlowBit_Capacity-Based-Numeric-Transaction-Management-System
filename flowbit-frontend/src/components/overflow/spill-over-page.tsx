@@ -196,9 +196,9 @@ export function SpillOverPage() {
     setIsLoading(true);
     try {
       const [nextPending, nextApproved, nextOverkill, nextCollaborators, nextUser, nextIdentifiers] = await Promise.all([
-        fetchPendingOverflows(20),
-        fetchApprovedOverflows(20),
-        fetchOverkillOverflows(20),
+        fetchPendingOverflows({ limit: 20 }),
+        fetchApprovedOverflows({ limit: 20 }),
+        fetchOverkillOverflows({ limit: 20 }),
         fetchCollaborators(),
         fetchCurrentUser(),
         fetchIdentifierOptions(),
