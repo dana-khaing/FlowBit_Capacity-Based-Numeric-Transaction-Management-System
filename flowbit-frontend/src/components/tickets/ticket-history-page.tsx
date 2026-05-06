@@ -91,7 +91,7 @@ export function TicketHistoryPage() {
     let isMounted = true;
     setIsLoading(true);
 
-    fetchTickets({ periodId: activePeriod.id })
+    fetchTickets({ periodId: activePeriod.id, limit: 20 })
       .then((nextTickets) => {
         if (!isMounted) {
           return;
@@ -259,7 +259,7 @@ export function TicketHistoryPage() {
 
   async function refreshTicketHistoryState() {
     if (activePeriod) {
-      const nextTickets = await fetchTickets({ periodId: activePeriod.id });
+      const nextTickets = await fetchTickets({ periodId: activePeriod.id, limit: 20 });
       setTickets(nextTickets);
     }
     if (selectedTicketNumber) {
