@@ -76,6 +76,7 @@ export async function fetchApprovedOverflowPage(filters?: {
   periodId?: number;
   page?: number;
   pageSize?: number;
+  search?: string;
 }) {
   const search = new URLSearchParams();
   if (filters?.periodId) {
@@ -83,6 +84,9 @@ export async function fetchApprovedOverflowPage(filters?: {
   }
   search.set("page", String(filters?.page ?? 1));
   search.set("page_size", String(Math.min(filters?.pageSize ?? 20, 20)));
+  if (filters?.search?.trim()) {
+    search.set("search", filters.search.trim());
+  }
   return apiRequest<FlowBitOverflowPage>(`/overflows/approved/?${search.toString()}`, {
     method: "GET",
     headers: authHeaders(),

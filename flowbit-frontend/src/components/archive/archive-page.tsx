@@ -7,6 +7,7 @@ import {
   faBoxArchive,
   faCircleNotch,
   faListCheck,
+  faMagnifyingGlass,
   faReceipt,
   faTicket,
   faTrophy,
@@ -36,6 +37,8 @@ type ToastState = {
   type: "success" | "error";
   message: string;
 } | null;
+
+type ArchiveSearchType = "ledgers" | "tickets" | "spillover";
 
 const ARCHIVE_PAGE_SIZE = 20;
 const ARCHIVE_SECTION_CARD_CLASS =
@@ -81,6 +84,11 @@ export function ArchivePage() {
   const [selectedTicketNumber, setSelectedTicketNumber] = useState<string | null>(null);
   const [selectedTicket, setSelectedTicket] = useState<FlowBitTicketDetail | null>(null);
   const [isTicketLoading, setIsTicketLoading] = useState(false);
+  const [searchType, setSearchType] = useState<ArchiveSearchType | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isSearchLoading, setIsSearchLoading] = useState(false);
+  const [searchedTickets, setSearchedTickets] = useState<FlowBitTicketListItem[]>([]);
+  const [searchedOverflows, setSearchedOverflows] = useState<FlowBitOverflow[]>([]);
   const [toast, setToast] = useState<ToastState>(null);
 
   const archivedPeriods = useMemo(
@@ -107,6 +115,23 @@ export function ArchivePage() {
     () => Math.max(1, Math.ceil(ledgers.length / ARCHIVE_PAGE_SIZE)),
     [ledgers.length],
   );
+
+  const searchedLedgers = useMemo(() => {
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+    const candidates = normalizedQuery
+      ? ledgers.filter((ledger) => {
+          const searchable = [
+            ledger.name,
+            ledger.is_capacity_reserve ? "reserve" : "",
+            `priority ${ledger.priority}`,
+          ]
+            .join(" ")
+            .toLowerCase();
+          return searchable.includes(normalizedQuery);
+        })
+      : ledgers;
+    return candidates.slice(0, 20);
+  }, [ledgers, searchQuery]);
 
   useEffect(() => {
     let isMounted = true;
@@ -230,6 +255,84 @@ export function ArchivePage() {
     }
   }, [ledgerPage, ledgerTotalPages]);
 
+  useEffect(() => {
+    if (!searchType || !selectedPeriodId) {
+      setSearchedTickets([]);
+      setSearchedOverflows([]);
+      setIsSearchLoading(false);
+      return;
+    }
+
+    if (searchType === "ledgers") {
+      setSearchedTickets([]);
+      setSearchedOverflows([]);
+      setIsSearchLoading(false);
+      return;
+    }
+
+    let isMounted = true;
+    setIsSearchLoading(true);
+
+    if (searchType === "tickets") {
+      fetchTicketPage({
+        periodId: selectedPeriodId,
+        page: 1,
+        pageSize: 20,
+        sort: "newest",
+        search: searchQuery.trim(),
+      })
+        .then((response) => {
+          if (!isMounted) {
+            return;
+          }
+          setSearchedTickets(response.results);
+          setSearchedOverflows([]);
+        })
+        .catch((error) => {
+          if (!isMounted) {
+            return;
+          }
+          const message = error instanceof Error ? error.message : "Request failed.";
+          setToast({ type: "error", message });
+        })
+        .finally(() => {
+          if (isMounted) {
+            setIsSearchLoading(false);
+          }
+        });
+    } else {
+      fetchApprovedOverflowPage({
+        periodId: selectedPeriodId,
+        page: 1,
+        pageSize: 20,
+        search: searchQuery.trim(),
+      })
+        .then((response) => {
+          if (!isMounted) {
+            return;
+          }
+          setSearchedOverflows(response.results);
+          setSearchedTickets([]);
+        })
+        .catch((error) => {
+          if (!isMounted) {
+            return;
+          }
+          const message = error instanceof Error ? error.message : "Request failed.";
+          setToast({ type: "error", message });
+        })
+        .finally(() => {
+          if (isMounted) {
+            setIsSearchLoading(false);
+          }
+        });
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, [searchQuery, searchType, selectedPeriodId]);
+
   async function openTicket(ticketNumber: string) {
     setSelectedTicketNumber(ticketNumber);
     setSelectedTicket(null);
@@ -251,6 +354,19 @@ export function ArchivePage() {
     setSelectedTicketNumber(null);
     setSelectedTicket(null);
     setIsTicketLoading(false);
+  }
+
+  function openSearch(type: ArchiveSearchType) {
+    setSearchType(type);
+    setSearchQuery("");
+  }
+
+  function closeSearch() {
+    setSearchType(null);
+    setSearchQuery("");
+    setIsSearchLoading(false);
+    setSearchedTickets([]);
+    setSearchedOverflows([]);
   }
 
   function renderPager(
@@ -445,7 +561,17 @@ export function ArchivePage() {
                       Approved only
                     </p>
                   </div>
-                  <FontAwesomeIcon icon={faListCheck} className="h-5 w-5 text-stone-300" />
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-10 w-10 rounded-full p-0"
+                      onClick={() => openSearch("spillover")}
+                    >
+                      <FontAwesomeIcon icon={faMagnifyingGlass} className="h-4 w-4" />
+                    </Button>
+                    <FontAwesomeIcon icon={faListCheck} className="h-5 w-5 text-stone-300" />
+                  </div>
                 </div>
                 <div className="mt-5 min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
                   {isLoadingArchive ? (
@@ -503,9 +629,19 @@ export function ArchivePage() {
                       Archived ledgers
                     </p>
                   </div>
-                  <span className="rounded-full bg-stone-100 px-3 py-1 text-xs font-semibold text-stone-600">
-                    {ledgers.length}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-10 w-10 rounded-full p-0"
+                      onClick={() => openSearch("ledgers")}
+                    >
+                      <FontAwesomeIcon icon={faMagnifyingGlass} className="h-4 w-4" />
+                    </Button>
+                    <span className="rounded-full bg-stone-100 px-3 py-1 text-xs font-semibold text-stone-600">
+                      {ledgers.length}
+                    </span>
+                  </div>
                 </div>
                 <div className="mt-5 min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
                   {isLoadingArchive ? (
@@ -562,9 +698,19 @@ export function ArchivePage() {
                       Archived tickets
                     </p>
                   </div>
-                  <span className="rounded-full bg-stone-100 px-3 py-1 text-xs font-semibold text-stone-600">
-                    {ticketCount}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-10 w-10 rounded-full p-0"
+                      onClick={() => openSearch("tickets")}
+                    >
+                      <FontAwesomeIcon icon={faMagnifyingGlass} className="h-4 w-4" />
+                    </Button>
+                    <span className="rounded-full bg-stone-100 px-3 py-1 text-xs font-semibold text-stone-600">
+                      {ticketCount}
+                    </span>
+                  </div>
                 </div>
                 <div className="mt-5 min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
                   {isLoadingArchive ? (
@@ -656,6 +802,175 @@ export function ArchivePage() {
                 />
               </div>
             ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {searchType ? (
+        <div
+          className="fixed inset-0 z-40 bg-stone-950/45 px-4 py-6 backdrop-blur-sm"
+          onClick={closeSearch}
+        >
+          <div
+            className="mx-auto flex max-h-[90vh] w-full max-w-3xl flex-col rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_30px_90px_rgba(15,23,42,0.22)]"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">
+                  Search
+                </p>
+                <h2 className="mt-2 text-2xl font-semibold text-stone-950">
+                  {searchType === "tickets"
+                    ? "Archived tickets"
+                    : searchType === "ledgers"
+                      ? "Archived ledgers"
+                      : "Approved spill over"}
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={closeSearch}
+                className="rounded-full border border-stone-900/10 bg-stone-50 p-3 text-stone-500 transition hover:bg-stone-100 hover:text-stone-700"
+              >
+                <FontAwesomeIcon icon={faXmark} className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="mt-5">
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder={
+                  searchType === "tickets"
+                    ? "Search ticket, customer, or identifier"
+                    : searchType === "ledgers"
+                      ? "Search ledger name or priority"
+                      : "Search identifier, ticket, customer, or collaborator"
+                }
+                className="w-full rounded-[18px] border border-stone-900/10 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-400 focus:bg-white"
+              />
+            </div>
+
+            <div className="mt-5 min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+              {isSearchLoading ? (
+                <div className="inline-flex items-center gap-3 rounded-full border border-stone-900/8 bg-stone-50 px-4 py-3 text-sm text-stone-600">
+                  <FontAwesomeIcon
+                    icon={faCircleNotch}
+                    className="h-4 w-4 animate-spin text-stone-400"
+                  />
+                  Searching archive.
+                </div>
+              ) : searchType === "ledgers" ? (
+                searchedLedgers.length ? (
+                  searchedLedgers.map((ledger) => (
+                    <Link
+                      key={ledger.id}
+                      href={`/ledgers/${ledger.id}`}
+                      onClick={closeSearch}
+                      className="block rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4 transition hover:border-stone-300 hover:bg-white"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className="text-lg font-semibold text-stone-950">{ledger.name}</p>
+                          <p className="mt-2 text-sm text-stone-600">
+                            Closed {formatArchiveDateTime(ledger.closed_at)}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {ledger.is_capacity_reserve ? (
+                            <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-sky-700">
+                              Reserve
+                            </span>
+                          ) : (
+                            <span className="rounded-full bg-stone-200 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-stone-700">
+                              Priority {ledger.priority}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </Link>
+                  ))
+                ) : (
+                  <div className="rounded-[22px] border border-dashed border-stone-300 bg-stone-50 px-4 py-4 text-sm text-stone-500">
+                    No archived ledgers matched that search.
+                  </div>
+                )
+              ) : searchType === "tickets" ? (
+                searchedTickets.length ? (
+                  searchedTickets.map((ticket) => (
+                    <button
+                      key={ticket.id}
+                      type="button"
+                      onClick={() => {
+                        closeSearch();
+                        void openTicket(ticket.ticket_number);
+                      }}
+                      className="w-full rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4 text-left transition hover:border-stone-300 hover:bg-white"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className="text-lg font-semibold text-stone-950">
+                            {ticket.ticket_number}
+                          </p>
+                          <p className="mt-2 text-sm text-stone-600">
+                            {ticket.customer_name?.trim() || "-"}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-base font-semibold text-stone-950">
+                            {formatTicketAmount(ticket.total_amount)}
+                          </p>
+                          <p className="mt-2 text-sm text-stone-600">
+                            {ticket.transaction_count}{" "}
+                            {ticket.transaction_count === 1 ? "entry" : "entries"}
+                          </p>
+                        </div>
+                      </div>
+                    </button>
+                  ))
+                ) : (
+                  <div className="rounded-[22px] border border-dashed border-stone-300 bg-stone-50 px-4 py-4 text-sm text-stone-500">
+                    No archived tickets matched that search.
+                  </div>
+                )
+              ) : searchedOverflows.length ? (
+                searchedOverflows.map((overflow) => (
+                  <div
+                    key={overflow.id}
+                    className="rounded-[22px] border border-emerald-200 bg-emerald-50 px-4 py-4"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <span className="text-lg font-semibold text-stone-950">
+                          {overflow.identifier_number}
+                        </span>
+                        <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700">
+                          {overflow.status}
+                        </span>
+                      </div>
+                      <span className="text-base font-semibold text-stone-950">
+                        {formatTicketAmount(overflow.amount_to_approve || overflow.excess_amount)}
+                      </span>
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-stone-600">
+                      <span>
+                        Collaborator:{" "}
+                        {overflow.collaborator_names.length
+                          ? overflow.collaborator_names.join(", ")
+                          : "-"}
+                      </span>
+                      <span>Approved: {formatArchiveDateTime(overflow.approved_at)}</span>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-[22px] border border-dashed border-stone-300 bg-stone-50 px-4 py-4 text-sm text-stone-500">
+                  No approved spill over matched that search.
+                </div>
+              )}
+            </div>
           </div>
         </div>
       ) : null}
