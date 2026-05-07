@@ -80,6 +80,7 @@ export async function fetchApprovedOverflowPage(filters?: {
   ticketNumber?: string;
   customerName?: string;
   identifierNumber?: string;
+  collaboratorName?: string;
 }) {
   const search = new URLSearchParams();
   if (filters?.periodId) {
@@ -98,6 +99,9 @@ export async function fetchApprovedOverflowPage(filters?: {
   }
   if (filters?.identifierNumber?.trim()) {
     search.set("identifier_number", filters.identifierNumber.trim());
+  }
+  if (filters?.collaboratorName?.trim()) {
+    search.set("collaborator_name", filters.collaboratorName.trim());
   }
   return apiRequest<FlowBitOverflowPage>(`/overflows/approved/?${search.toString()}`, {
     method: "GET",
