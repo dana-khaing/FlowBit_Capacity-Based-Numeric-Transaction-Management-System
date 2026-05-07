@@ -1833,6 +1833,71 @@ class PrivateWorkflowAPITests(APITestCase):
         returned_ids = {item['id'] for item in response.data['results']}
         self.assertIn(searchable_overflow.id, returned_ids)
 
+    def test_approved_overflows_can_be_filtered_by_identifier_field_for_closed_period(self):
+        searchable_identifier = Identifier.objects.create(number='991')
+        searchable_ticket = Ticket.objects.create(
+            customer_name='Archive Filtered Overflow',
+            created_by=self.approver,
+        )
+        searchable_transaction = Transaction.objects.create(
+            ticket=searchable_ticket,
+            identifier=searchable_identifier,
+            total_amount=Decimal('200.00'),
+            created_by=self.approver,
+        )
+        searchable_overflow = Overflow.objects.create(
+            transaction=searchable_transaction,
+            identifier=searchable_identifier,
+            period=self.archived_period,
+            owner=self.approver,
+            excess_amount=Decimal('25.00'),
+            amount_to_approve=Decimal('25.00'),
+            status=Overflow.STATUS_CSO,
+            approved_at=timezone.now(),
+        )
+
+        response = self.client.get('/api/overflows/approved/', {
+            'period_id': self.archived_period.id,
+            'identifier_number': '991',
+            'page': 1,
+            'page_size': 20,
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        returned_ids = {item['id'] for item in response.data['results']}
+        self.assertIn(searchable_overflow.id, returned_ids)
+        self.assertNotIn(self.archived_overflow.id, returned_ids)
+
+    def test_ticket_list_can_filter_by_ticket_customer_and_identifier_fields(self):
+        ticket = Ticket.objects.create(
+            customer_name='Archive Search Customer',
+            created_by=self.approver,
+        )
+        transaction = Transaction.objects.create(
+            ticket=ticket,
+            identifier=Identifier.objects.create(number='992'),
+            total_amount=Decimal('120.00'),
+            created_by=self.approver,
+        )
+        LedgerAllocation.objects.create(
+            ledger=self.archived_ledger,
+            transaction=transaction,
+            amount=Decimal('100.00'),
+        )
+
+        response = self.client.get('/api/tickets/', {
+            'period_id': self.archived_period.id,
+            'page': 1,
+            'page_size': 20,
+            'ticket_number': ticket.ticket_number,
+            'customer_name': 'Archive Search Customer',
+            'identifier_number': '992',
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        returned_ticket_numbers = {item['ticket_number'] for item in response.data['results']}
+        self.assertEqual(returned_ticket_numbers, {ticket.ticket_number})
+
     def test_period_close_auto_approves_pending_overflows_with_current_user_collaborator(self):
         closing_identifier = Identifier.objects.create(number='228')
         closing_ticket = Ticket.objects.create(
