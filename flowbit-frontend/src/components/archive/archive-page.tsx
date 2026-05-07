@@ -23,6 +23,8 @@ import { Button } from "@/components/ui/button";
 import { fetchLedgers, type FlowBitLedger } from "@/lib/ledger-client";
 import {
   fetchApprovedOverflowPage,
+  fetchCollaborators,
+  type FlowBitCollaborator,
   type FlowBitOverflow,
 } from "@/lib/overflow-client";
 import { fetchPeriods, type FlowBitPeriod } from "@/lib/period-client";
@@ -98,6 +100,7 @@ export function ArchivePage() {
     identifier: "",
     collaborator: "",
   });
+  const [collaborators, setCollaborators] = useState<FlowBitCollaborator[]>([]);
   const [isSearchLoading, setIsSearchLoading] = useState(false);
   const [searchedTickets, setSearchedTickets] = useState<FlowBitTicketListItem[]>([]);
   const [searchedOverflows, setSearchedOverflows] = useState<FlowBitOverflow[]>([]);
@@ -149,12 +152,17 @@ export function ArchivePage() {
     let isMounted = true;
     setIsLoadingPeriods(true);
 
-    fetchPeriods()
-      .then((allPeriods) => {
+    Promise.all([fetchPeriods(), fetchCollaborators()])
+      .then(([allPeriods, collaboratorRows]) => {
         if (!isMounted) {
           return;
         }
         setPeriods(allPeriods);
+        setCollaborators(
+          collaboratorRows.slice().sort((left, right) =>
+            left.full_name.localeCompare(right.full_name),
+          ),
+        );
         const closedPeriods = allPeriods
           .filter((period) => !period.is_open)
           .slice()
@@ -430,6 +438,42 @@ export function ArchivePage() {
     );
   }
 
+  function renderLedgerRow(ledger: FlowBitLedger, closeHandler?: () => void) {
+    return (
+      <Link
+        key={ledger.id}
+        href={`/ledgers/${ledger.id}`}
+        onClick={closeHandler}
+        className="block rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4 transition hover:border-stone-300 hover:bg-white"
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-lg font-semibold text-stone-950">
+              {ledger.name}
+            </p>
+            <p className="mt-2 text-sm text-stone-600">
+              Closed {formatArchiveDateTime(ledger.closed_at)}
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <span
+              className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${
+                ledger.is_capacity_reserve
+                  ? "bg-sky-100 text-sky-700"
+                  : "bg-stone-200 text-stone-700"
+              }`}
+            >
+              {ledger.is_capacity_reserve ? "Reserve" : `Priority ${ledger.priority}`}
+            </span>
+            <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700">
+              {formatTicketAmount(ledger.limit_per_identifier)}
+            </span>
+          </div>
+        </div>
+      </Link>
+    );
+  }
+
   return (
     <>
       <AppSectionPage
@@ -680,38 +724,7 @@ export function ArchivePage() {
                   {isLoadingArchive ? (
                     <p className="text-sm text-stone-500">Loading archived ledgers...</p>
                   ) : pagedLedgers.length ? (
-                    pagedLedgers.map((ledger) => (
-                      <Link
-                        key={ledger.id}
-                        href={`/ledgers/${ledger.id}`}
-                        className="block rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4 transition hover:border-stone-300 hover:bg-white"
-                      >
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <div>
-                            <p className="text-lg font-semibold text-stone-950">
-                              {ledger.name}
-                            </p>
-                            <p className="mt-2 text-sm text-stone-600">
-                              Closed {formatArchiveDateTime(ledger.closed_at)}
-                            </p>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            {ledger.is_capacity_reserve ? (
-                              <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-sky-700">
-                                Reserve
-                              </span>
-                            ) : (
-                              <span className="rounded-full bg-stone-200 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-stone-700">
-                                Priority {ledger.priority}
-                              </span>
-                            )}
-                            <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700">
-                              {formatTicketAmount(ledger.limit_per_identifier)}
-                            </span>
-                          </div>
-                        </div>
-                      </Link>
-                    ))
+                    pagedLedgers.map((ledger) => renderLedgerRow(ledger))
                   ) : (
                     <div className="rounded-[22px] border border-dashed border-stone-300 bg-stone-50 px-4 py-4 text-sm text-stone-500">
                       No archived ledgers for this period.
@@ -934,7 +947,7 @@ export function ArchivePage() {
                   </label>
                 </div>
               ) : (
-                <div className="grid gap-3 md:grid-cols-2">
+                <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
                   <label className="space-y-2">
                     <span className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">
                       Identifier
@@ -956,8 +969,7 @@ export function ArchivePage() {
                     <span className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">
                       Collaborator
                     </span>
-                    <input
-                      type="search"
+                    <select
                       value={searchFields.collaborator}
                       onChange={(event) =>
                         setSearchFields((current) => ({
@@ -965,9 +977,15 @@ export function ArchivePage() {
                           collaborator: event.target.value,
                         }))
                       }
-                      placeholder="Collaborator name"
                       className="w-full rounded-[18px] border border-stone-900/10 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-400 focus:bg-white"
-                    />
+                    >
+                      <option value="">All collaborators</option>
+                      {collaborators.map((collaborator) => (
+                        <option key={collaborator.id} value={collaborator.full_name}>
+                          {collaborator.full_name}
+                        </option>
+                      ))}
+                    </select>
                   </label>
                 </div>
               )}
@@ -984,34 +1002,7 @@ export function ArchivePage() {
                 </div>
               ) : searchType === "ledgers" ? (
                 searchedLedgers.length ? (
-                  searchedLedgers.map((ledger) => (
-                    <Link
-                      key={ledger.id}
-                      href={`/ledgers/${ledger.id}`}
-                      onClick={closeSearch}
-                      className="block rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4 transition hover:border-stone-300 hover:bg-white"
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                          <p className="text-lg font-semibold text-stone-950">{ledger.name}</p>
-                          <p className="mt-2 text-sm text-stone-600">
-                            Closed {formatArchiveDateTime(ledger.closed_at)}
-                          </p>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          {ledger.is_capacity_reserve ? (
-                            <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-sky-700">
-                              Reserve
-                            </span>
-                          ) : (
-                            <span className="rounded-full bg-stone-200 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-stone-700">
-                              Priority {ledger.priority}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </Link>
-                  ))
+                  searchedLedgers.map((ledger) => renderLedgerRow(ledger, closeSearch))
                 ) : (
                   <div className="rounded-[22px] border border-dashed border-stone-300 bg-stone-50 px-4 py-4 text-sm text-stone-500">
                     No archived ledgers matched that search.
