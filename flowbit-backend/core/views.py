@@ -1824,6 +1824,15 @@ class OverflowViewSet(viewsets.ModelViewSet):
             owner=request.user
         ).order_by('-approved_at')
         approved = self._filter_overflow_period(approved, request)
+        search = (request.query_params.get('search') or '').strip()
+        if search:
+            approved = approved.filter(
+                Q(identifier__number__icontains=search)
+                | Q(transaction__ticket__ticket_number__icontains=search)
+                | Q(transaction__ticket__customer_name__icontains=search)
+                | Q(collaborators__full_name__icontains=search)
+                | Q(collaborators__username__icontains=search)
+            ).distinct()
         return self._overflow_page_response(approved)
 
     @action(detail=False, methods=['get', 'post'], url_path='overkill')

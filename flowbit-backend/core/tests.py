@@ -1787,6 +1787,41 @@ class PrivateWorkflowAPITests(APITestCase):
         returned_ids = {item['id'] for item in response.data['results']}
         self.assertEqual(returned_ids, {first_overflow.id})
 
+    def test_approved_overflows_can_be_searched_for_closed_period(self):
+        searchable_identifier = Identifier.objects.create(number='889')
+        searchable_ticket = Ticket.objects.create(
+            customer_name='Searchable Archive Customer',
+            created_by=self.approver,
+        )
+        searchable_transaction = Transaction.objects.create(
+            ticket=searchable_ticket,
+            identifier=searchable_identifier,
+            total_amount=Decimal('200.00'),
+            created_by=self.approver,
+        )
+        searchable_overflow = Overflow.objects.create(
+            transaction=searchable_transaction,
+            identifier=searchable_identifier,
+            period=self.archived_period,
+            owner=self.approver,
+            excess_amount=Decimal('25.00'),
+            amount_to_approve=Decimal('25.00'),
+            status=Overflow.STATUS_CSO,
+            approved_at=timezone.now(),
+        )
+        searchable_overflow.collaborators.add(self.collaborator)
+
+        response = self.client.get('/api/overflows/approved/', {
+            'period_id': self.archived_period.id,
+            'search': '889',
+            'page': 1,
+            'page_size': 20,
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        returned_ids = {item['id'] for item in response.data['results']}
+        self.assertIn(searchable_overflow.id, returned_ids)
+
     def test_period_close_auto_approves_pending_overflows_with_current_user_collaborator(self):
         closing_identifier = Identifier.objects.create(number='228')
         closing_ticket = Ticket.objects.create(
