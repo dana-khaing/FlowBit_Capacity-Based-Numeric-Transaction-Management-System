@@ -1826,6 +1826,7 @@ class OverflowViewSet(viewsets.ModelViewSet):
         ticket_number = (request.query_params.get('ticket_number') or '').strip()
         customer_name = (request.query_params.get('customer_name') or '').strip()
         identifier_number = (request.query_params.get('identifier_number') or '').strip()
+        collaborator_name = (request.query_params.get('collaborator_name') or '').strip()
         if search:
             approved = approved.filter(
                 Q(identifier__number__icontains=search)
@@ -1840,6 +1841,11 @@ class OverflowViewSet(viewsets.ModelViewSet):
             approved = approved.filter(transaction__ticket__customer_name__icontains=customer_name)
         if identifier_number:
             approved = approved.filter(identifier__number__icontains=identifier_number)
+        if collaborator_name:
+            approved = approved.filter(
+                Q(collaborators__full_name__icontains=collaborator_name)
+                | Q(collaborators__username__icontains=collaborator_name)
+            ).distinct()
         return self._overflow_page_response(approved)
 
     @action(detail=False, methods=['get', 'post'], url_path='overkill')
