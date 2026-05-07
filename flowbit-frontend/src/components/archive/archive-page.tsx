@@ -369,6 +369,14 @@ export function ArchivePage() {
     setSearchedOverflows([]);
   }
 
+  function openOverflowTicket(overflow: FlowBitOverflow) {
+    if (!overflow.ticket_number) {
+      return;
+    }
+    closeSearch();
+    void openTicket(overflow.ticket_number);
+  }
+
   function renderPager(
     page: number,
     totalPages: number,
@@ -578,9 +586,16 @@ export function ArchivePage() {
                     <p className="text-sm text-stone-500">Loading spill over...</p>
                   ) : approvedOverflows.length ? (
                     approvedOverflows.map((overflow) => (
-                      <div
+                      <button
                         key={overflow.id}
-                        className="rounded-[22px] border border-emerald-200 bg-emerald-50 px-4 py-4"
+                        type="button"
+                        onClick={() => openOverflowTicket(overflow)}
+                        disabled={!overflow.ticket_number}
+                        className={`w-full rounded-[22px] border border-emerald-200 bg-emerald-50 px-4 py-4 text-left transition ${
+                          overflow.ticket_number
+                            ? "hover:border-emerald-300 hover:bg-emerald-100"
+                            : "cursor-default"
+                        }`}
                       >
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <div className="flex items-center gap-3">
@@ -598,6 +613,7 @@ export function ArchivePage() {
                           </span>
                         </div>
                         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-stone-600">
+                          <span>Ticket: {overflow.ticket_number || "-"}</span>
                           <span>
                             Collaborator:{" "}
                             {overflow.collaborator_names.length
@@ -606,7 +622,7 @@ export function ArchivePage() {
                           </span>
                           <span>Approved: {formatArchiveDateTime(overflow.approved_at)}</span>
                         </div>
-                      </div>
+                      </button>
                     ))
                   ) : (
                     <div className="rounded-[22px] border border-dashed border-stone-300 bg-stone-50 px-4 py-4 text-sm text-stone-500">
@@ -937,9 +953,16 @@ export function ArchivePage() {
                 )
               ) : searchedOverflows.length ? (
                 searchedOverflows.map((overflow) => (
-                  <div
+                  <button
                     key={overflow.id}
-                    className="rounded-[22px] border border-emerald-200 bg-emerald-50 px-4 py-4"
+                    type="button"
+                    onClick={() => openOverflowTicket(overflow)}
+                    disabled={!overflow.ticket_number}
+                    className={`w-full rounded-[22px] border border-emerald-200 bg-emerald-50 px-4 py-4 text-left transition ${
+                      overflow.ticket_number
+                        ? "hover:border-emerald-300 hover:bg-emerald-100"
+                        : "cursor-default"
+                    }`}
                   >
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div className="flex items-center gap-3">
@@ -955,6 +978,7 @@ export function ArchivePage() {
                       </span>
                     </div>
                     <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-stone-600">
+                      <span>Ticket: {overflow.ticket_number || "-"}</span>
                       <span>
                         Collaborator:{" "}
                         {overflow.collaborator_names.length
@@ -963,7 +987,7 @@ export function ArchivePage() {
                       </span>
                       <span>Approved: {formatArchiveDateTime(overflow.approved_at)}</span>
                     </div>
-                  </div>
+                  </button>
                 ))
               ) : (
                 <div className="rounded-[22px] border border-dashed border-stone-300 bg-stone-50 px-4 py-4 text-sm text-stone-500">
