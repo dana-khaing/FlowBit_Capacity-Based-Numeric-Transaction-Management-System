@@ -262,6 +262,9 @@ export async function fetchTicketPage(filters?: {
   page?: number;
   pageSize?: number;
   search?: string;
+  ticketNumber?: string;
+  customerName?: string;
+  identifierNumber?: string;
   refundFilter?: string;
   dateFrom?: string;
   dateTo?: string;
@@ -275,6 +278,15 @@ export async function fetchTicketPage(filters?: {
   query.set("page_size", String(filters?.pageSize ?? 20));
   if (filters?.search?.trim()) {
     query.set("search", filters.search.trim());
+  }
+  if (filters?.ticketNumber?.trim()) {
+    query.set("ticket_number", filters.ticketNumber.trim());
+  }
+  if (filters?.customerName?.trim()) {
+    query.set("customer_name", filters.customerName.trim());
+  }
+  if (filters?.identifierNumber?.trim()) {
+    query.set("identifier_number", filters.identifierNumber.trim());
   }
   if (filters?.refundFilter?.trim()) {
     query.set("refund_filter", filters.refundFilter.trim());

@@ -39,6 +39,11 @@ type ToastState = {
 } | null;
 
 type ArchiveSearchType = "ledgers" | "tickets" | "spillover";
+type ArchiveSearchFields = {
+  ticket: string;
+  customer: string;
+  identifier: string;
+};
 
 const ARCHIVE_PAGE_SIZE = 20;
 const ARCHIVE_SECTION_CARD_CLASS =
@@ -86,6 +91,11 @@ export function ArchivePage() {
   const [isTicketLoading, setIsTicketLoading] = useState(false);
   const [searchType, setSearchType] = useState<ArchiveSearchType | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchFields, setSearchFields] = useState<ArchiveSearchFields>({
+    ticket: "",
+    customer: "",
+    identifier: "",
+  });
   const [isSearchLoading, setIsSearchLoading] = useState(false);
   const [searchedTickets, setSearchedTickets] = useState<FlowBitTicketListItem[]>([]);
   const [searchedOverflows, setSearchedOverflows] = useState<FlowBitOverflow[]>([]);
@@ -279,7 +289,9 @@ export function ArchivePage() {
         page: 1,
         pageSize: 20,
         sort: "newest",
-        search: searchQuery.trim(),
+        ticketNumber: searchFields.ticket.trim(),
+        customerName: searchFields.customer.trim(),
+        identifierNumber: searchFields.identifier.trim(),
       })
         .then((response) => {
           if (!isMounted) {
@@ -305,7 +317,9 @@ export function ArchivePage() {
         periodId: selectedPeriodId,
         page: 1,
         pageSize: 20,
-        search: searchQuery.trim(),
+        ticketNumber: searchFields.ticket.trim(),
+        customerName: searchFields.customer.trim(),
+        identifierNumber: searchFields.identifier.trim(),
       })
         .then((response) => {
           if (!isMounted) {
@@ -331,7 +345,7 @@ export function ArchivePage() {
     return () => {
       isMounted = false;
     };
-  }, [searchQuery, searchType, selectedPeriodId]);
+  }, [searchFields, searchQuery, searchType, selectedPeriodId]);
 
   async function openTicket(ticketNumber: string) {
     setSelectedTicketNumber(ticketNumber);
@@ -359,11 +373,13 @@ export function ArchivePage() {
   function openSearch(type: ArchiveSearchType) {
     setSearchType(type);
     setSearchQuery("");
+    setSearchFields({ ticket: "", customer: "", identifier: "" });
   }
 
   function closeSearch() {
     setSearchType(null);
     setSearchQuery("");
+    setSearchFields({ ticket: "", customer: "", identifier: "" });
     setIsSearchLoading(false);
     setSearchedTickets([]);
     setSearchedOverflows([]);
@@ -854,19 +870,69 @@ export function ArchivePage() {
             </div>
 
             <div className="mt-5">
-              <input
-                type="search"
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder={
-                  searchType === "tickets"
-                    ? "Search ticket, customer, or identifier"
-                    : searchType === "ledgers"
-                      ? "Search ledger name or priority"
-                      : "Search identifier, ticket, customer, or collaborator"
-                }
-                className="w-full rounded-[18px] border border-stone-900/10 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-400 focus:bg-white"
-              />
+              {searchType === "ledgers" ? (
+                <input
+                  type="search"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="Search ledger name or priority"
+                  className="w-full rounded-[18px] border border-stone-900/10 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-400 focus:bg-white"
+                />
+              ) : (
+                <div className="grid gap-3 md:grid-cols-3">
+                  <label className="space-y-2">
+                    <span className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">
+                      Ticket
+                    </span>
+                    <input
+                      type="search"
+                      value={searchFields.ticket}
+                      onChange={(event) =>
+                        setSearchFields((current) => ({
+                          ...current,
+                          ticket: event.target.value,
+                        }))
+                      }
+                      placeholder="Ticket number"
+                      className="w-full rounded-[18px] border border-stone-900/10 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-400 focus:bg-white"
+                    />
+                  </label>
+                  <label className="space-y-2">
+                    <span className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">
+                      Customer
+                    </span>
+                    <input
+                      type="search"
+                      value={searchFields.customer}
+                      onChange={(event) =>
+                        setSearchFields((current) => ({
+                          ...current,
+                          customer: event.target.value,
+                        }))
+                      }
+                      placeholder="Customer name"
+                      className="w-full rounded-[18px] border border-stone-900/10 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-400 focus:bg-white"
+                    />
+                  </label>
+                  <label className="space-y-2">
+                    <span className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">
+                      Identifier
+                    </span>
+                    <input
+                      type="search"
+                      value={searchFields.identifier}
+                      onChange={(event) =>
+                        setSearchFields((current) => ({
+                          ...current,
+                          identifier: event.target.value.replace(/\D/g, "").slice(0, 3),
+                        }))
+                      }
+                      placeholder="000"
+                      className="w-full rounded-[18px] border border-stone-900/10 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-400 focus:bg-white"
+                    />
+                  </label>
+                </div>
+              )}
             </div>
 
             <div className="mt-5 min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
