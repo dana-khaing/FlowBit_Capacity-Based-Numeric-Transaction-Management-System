@@ -1823,6 +1823,9 @@ class OverflowViewSet(viewsets.ModelViewSet):
         ).order_by('-approved_at')
         approved = self._filter_overflow_period(approved, request)
         search = (request.query_params.get('search') or '').strip()
+        ticket_number = (request.query_params.get('ticket_number') or '').strip()
+        customer_name = (request.query_params.get('customer_name') or '').strip()
+        identifier_number = (request.query_params.get('identifier_number') or '').strip()
         if search:
             approved = approved.filter(
                 Q(identifier__number__icontains=search)
@@ -1831,6 +1834,12 @@ class OverflowViewSet(viewsets.ModelViewSet):
                 | Q(collaborators__full_name__icontains=search)
                 | Q(collaborators__username__icontains=search)
             ).distinct()
+        if ticket_number:
+            approved = approved.filter(transaction__ticket__ticket_number__icontains=ticket_number)
+        if customer_name:
+            approved = approved.filter(transaction__ticket__customer_name__icontains=customer_name)
+        if identifier_number:
+            approved = approved.filter(identifier__number__icontains=identifier_number)
         return self._overflow_page_response(approved)
 
     @action(detail=False, methods=['get', 'post'], url_path='overkill')
@@ -3146,6 +3155,9 @@ class TicketListView(generics.ListAPIView):
         period_end = parse_period_value(self.request.query_params.get('period_end'))
         period_id = self.request.query_params.get('period_id')
         search = (self.request.query_params.get('search') or '').strip()
+        ticket_number = (self.request.query_params.get('ticket_number') or '').strip()
+        customer_name = (self.request.query_params.get('customer_name') or '').strip()
+        identifier_number = (self.request.query_params.get('identifier_number') or '').strip()
         refund_filter = (self.request.query_params.get('refund_filter') or '').strip().lower()
         date_from = parse_date((self.request.query_params.get('date_from') or '').strip())
         date_to = parse_date((self.request.query_params.get('date_to') or '').strip())
@@ -3182,6 +3194,12 @@ class TicketListView(generics.ListAPIView):
                 | Q(customer_name__icontains=search)
                 | Q(transactions__identifier__number__icontains=search)
             )
+        if ticket_number:
+            queryset = queryset.filter(ticket_number__icontains=ticket_number)
+        if customer_name:
+            queryset = queryset.filter(customer_name__icontains=customer_name)
+        if identifier_number:
+            queryset = queryset.filter(transactions__identifier__number__icontains=identifier_number)
 
         if date_from:
             queryset = queryset.filter(created_at__date__gte=date_from)
