@@ -902,6 +902,13 @@ class LedgerViewSet(viewsets.ModelViewSet):
     def view_ledger(self, request, pk=None):
         ledger = self.get_object()
         identifiers = list(Identifier.objects.all().order_by('number'))
+        period_standard_ledgers = Ledger.objects.filter(
+            period=ledger.period,
+            owner=ledger.owner,
+            is_capacity_reserve=False,
+        )
+        if ledger.is_active:
+            period_standard_ledgers = period_standard_ledgers.filter(is_active=True)
         freeze_rows = list(
             IdentifierLedgerFreeze.objects.filter(
                 period=ledger.period,
@@ -909,28 +916,19 @@ class LedgerViewSet(viewsets.ModelViewSet):
             ).values('identifier_id', 'ledger_id', 'applies_to_all')
         )
         active_ledger_ids = list(
-            Ledger.objects.filter(
-                period=ledger.period,
-                owner=ledger.owner,
-                is_active=True,
-                is_capacity_reserve=False,
-            ).values_list('id', flat=True)
+            period_standard_ledgers.values_list('id', flat=True)
         )
         active_ledger_capacities = {
             item['id']: item['limit_per_identifier']
-            for item in Ledger.objects.filter(
-                period=ledger.period,
-                owner=ledger.owner,
-                is_active=True,
-                is_capacity_reserve=False,
-            ).values('id', 'limit_per_identifier')
+            for item in period_standard_ledgers.values('id', 'limit_per_identifier')
         }
         allocation_queryset = LedgerAllocation.objects.filter(
             ledger__period=ledger.period,
             ledger__owner=ledger.owner,
-            ledger__is_active=True,
             ledger__is_capacity_reserve=ledger.is_capacity_reserve,
         )
+        if ledger.is_active:
+            allocation_queryset = allocation_queryset.filter(ledger__is_active=True)
         allocations = list(
             allocation_queryset
             .select_related('transaction__identifier', 'transaction__ticket')

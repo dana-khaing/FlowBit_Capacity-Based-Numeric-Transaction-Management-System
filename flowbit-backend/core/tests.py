@@ -1616,6 +1616,17 @@ class PrivateWorkflowAPITests(APITestCase):
         self.assertEqual(len(transaction_response.data), 1)
         self.assertEqual(transaction_response.data[0]['id'], self.archived_transaction.id)
 
+    def test_archived_ledger_view_keeps_closed_allocations(self):
+        response = self.client.get(f'/api/ledgers/{self.archived_ledger.id}/view/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(Decimal(response.data['summary']['allocated_total']), Decimal('100.00'))
+        identifier_row = next(
+            row for row in response.data['identifiers']
+            if row['number'] == self.identifier.number
+        )
+        self.assertEqual(Decimal(identifier_row['allocated_amount']), Decimal('100.00'))
+
     def test_ticket_list_can_fetch_second_page(self):
         for index in range(24):
             ticket = Ticket.objects.create(
