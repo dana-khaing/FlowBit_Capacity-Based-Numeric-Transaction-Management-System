@@ -1868,6 +1868,41 @@ class PrivateWorkflowAPITests(APITestCase):
         self.assertIn(searchable_overflow.id, returned_ids)
         self.assertNotIn(self.archived_overflow.id, returned_ids)
 
+    def test_approved_overflows_can_be_filtered_by_collaborator_field_for_closed_period(self):
+        searchable_identifier = Identifier.objects.create(number='993')
+        searchable_ticket = Ticket.objects.create(
+            customer_name='Archive Collaborator Filter',
+            created_by=self.approver,
+        )
+        searchable_transaction = Transaction.objects.create(
+            ticket=searchable_ticket,
+            identifier=searchable_identifier,
+            total_amount=Decimal('200.00'),
+            created_by=self.approver,
+        )
+        searchable_overflow = Overflow.objects.create(
+            transaction=searchable_transaction,
+            identifier=searchable_identifier,
+            period=self.archived_period,
+            owner=self.approver,
+            excess_amount=Decimal('25.00'),
+            amount_to_approve=Decimal('25.00'),
+            status=Overflow.STATUS_CSO,
+            approved_at=timezone.now(),
+        )
+        searchable_overflow.collaborators.add(self.collaborator)
+
+        response = self.client.get('/api/overflows/approved/', {
+            'period_id': self.archived_period.id,
+            'collaborator_name': self.collaborator.full_name,
+            'page': 1,
+            'page_size': 20,
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        returned_ids = {item['id'] for item in response.data['results']}
+        self.assertIn(searchable_overflow.id, returned_ids)
+
     def test_ticket_list_can_filter_by_ticket_customer_and_identifier_fields(self):
         ticket = Ticket.objects.create(
             customer_name='Archive Search Customer',
