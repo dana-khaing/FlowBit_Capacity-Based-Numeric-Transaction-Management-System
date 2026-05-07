@@ -43,6 +43,7 @@ type ArchiveSearchFields = {
   ticket: string;
   customer: string;
   identifier: string;
+  collaborator: string;
 };
 
 const ARCHIVE_PAGE_SIZE = 20;
@@ -95,6 +96,7 @@ export function ArchivePage() {
     ticket: "",
     customer: "",
     identifier: "",
+    collaborator: "",
   });
   const [isSearchLoading, setIsSearchLoading] = useState(false);
   const [searchedTickets, setSearchedTickets] = useState<FlowBitTicketListItem[]>([]);
@@ -317,9 +319,8 @@ export function ArchivePage() {
         periodId: selectedPeriodId,
         page: 1,
         pageSize: 20,
-        ticketNumber: searchFields.ticket.trim(),
-        customerName: searchFields.customer.trim(),
         identifierNumber: searchFields.identifier.trim(),
+        collaboratorName: searchFields.collaborator.trim(),
       })
         .then((response) => {
           if (!isMounted) {
@@ -373,13 +374,13 @@ export function ArchivePage() {
   function openSearch(type: ArchiveSearchType) {
     setSearchType(type);
     setSearchQuery("");
-    setSearchFields({ ticket: "", customer: "", identifier: "" });
+    setSearchFields({ ticket: "", customer: "", identifier: "", collaborator: "" });
   }
 
   function closeSearch() {
     setSearchType(null);
     setSearchQuery("");
-    setSearchFields({ ticket: "", customer: "", identifier: "" });
+    setSearchFields({ ticket: "", customer: "", identifier: "", collaborator: "" });
     setIsSearchLoading(false);
     setSearchedTickets([]);
     setSearchedOverflows([]);
@@ -878,7 +879,7 @@ export function ArchivePage() {
                   placeholder="Search ledger name or priority"
                   className="w-full rounded-[18px] border border-stone-900/10 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-400 focus:bg-white"
                 />
-              ) : (
+              ) : searchType === "tickets" ? (
                 <div className="grid gap-3 md:grid-cols-3">
                   <label className="space-y-2">
                     <span className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">
@@ -928,6 +929,43 @@ export function ArchivePage() {
                         }))
                       }
                       placeholder="000"
+                      className="w-full rounded-[18px] border border-stone-900/10 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-400 focus:bg-white"
+                    />
+                  </label>
+                </div>
+              ) : (
+                <div className="grid gap-3 md:grid-cols-2">
+                  <label className="space-y-2">
+                    <span className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">
+                      Identifier
+                    </span>
+                    <input
+                      type="search"
+                      value={searchFields.identifier}
+                      onChange={(event) =>
+                        setSearchFields((current) => ({
+                          ...current,
+                          identifier: event.target.value.replace(/\D/g, "").slice(0, 3),
+                        }))
+                      }
+                      placeholder="000"
+                      className="w-full rounded-[18px] border border-stone-900/10 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-400 focus:bg-white"
+                    />
+                  </label>
+                  <label className="space-y-2">
+                    <span className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">
+                      Collaborator
+                    </span>
+                    <input
+                      type="search"
+                      value={searchFields.collaborator}
+                      onChange={(event) =>
+                        setSearchFields((current) => ({
+                          ...current,
+                          collaborator: event.target.value,
+                        }))
+                      }
+                      placeholder="Collaborator name"
                       className="w-full rounded-[18px] border border-stone-900/10 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-400 focus:bg-white"
                     />
                   </label>
