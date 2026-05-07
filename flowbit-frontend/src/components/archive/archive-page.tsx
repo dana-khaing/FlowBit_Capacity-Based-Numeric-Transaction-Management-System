@@ -947,7 +947,7 @@ export function ArchivePage() {
                   </label>
                 </div>
               ) : (
-                <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
+                <div className="grid gap-3 md:grid-cols-2">
                   <label className="space-y-2">
                     <span className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">
                       Identifier
@@ -969,23 +969,28 @@ export function ArchivePage() {
                     <span className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">
                       Collaborator
                     </span>
-                    <select
-                      value={searchFields.collaborator}
-                      onChange={(event) =>
-                        setSearchFields((current) => ({
-                          ...current,
-                          collaborator: event.target.value,
-                        }))
-                      }
-                      className="w-full rounded-[18px] border border-stone-900/10 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-400 focus:bg-white"
-                    >
-                      <option value="">All collaborators</option>
-                      {collaborators.map((collaborator) => (
-                        <option key={collaborator.id} value={collaborator.full_name}>
-                          {collaborator.full_name}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="relative">
+                      <select
+                        value={searchFields.collaborator}
+                        onChange={(event) =>
+                          setSearchFields((current) => ({
+                            ...current,
+                            collaborator: event.target.value,
+                          }))
+                        }
+                        className="h-[50px] w-full appearance-none rounded-[18px] border border-stone-900/10 bg-stone-50 px-4 pr-10 text-sm text-stone-900 outline-none transition focus:border-stone-400 focus:bg-white"
+                      >
+                        <option value="">All collaborators</option>
+                        {collaborators.map((collaborator) => (
+                          <option key={collaborator.id} value={collaborator.full_name}>
+                            {collaborator.full_name}
+                          </option>
+                        ))}
+                      </select>
+                      <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-stone-400">
+                        ▾
+                      </span>
+                    </div>
                   </label>
                 </div>
               )}
