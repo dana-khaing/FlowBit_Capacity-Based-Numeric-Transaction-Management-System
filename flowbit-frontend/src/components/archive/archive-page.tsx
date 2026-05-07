@@ -38,6 +38,8 @@ type ToastState = {
 } | null;
 
 const ARCHIVE_PAGE_SIZE = 20;
+const ARCHIVE_SECTION_CARD_CLASS =
+  "flex h-[32rem] flex-col rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)]";
 
 function formatArchiveDateTime(value: string | null | undefined) {
   if (!value) {
@@ -413,8 +415,8 @@ export function ArchivePage() {
               </article>
             </div>
 
-            <div className="grid gap-5 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
-              <article className="rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)]">
+            <div className="grid auto-rows-fr gap-5 xl:grid-cols-2">
+              <article className={ARCHIVE_SECTION_CARD_CLASS}>
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">
@@ -426,12 +428,14 @@ export function ArchivePage() {
                   </div>
                   <FontAwesomeIcon icon={faTrophy} className="h-5 w-5 text-stone-300" />
                 </div>
-                <div className="mt-5 rounded-[22px] border border-dashed border-stone-300 bg-stone-50 px-4 py-4 text-sm text-stone-500">
-                  No archived lucky draw numbers are stored yet.
+                <div className="mt-5 flex min-h-0 flex-1 flex-col">
+                  <div className="flex flex-1 items-center rounded-[22px] border border-dashed border-stone-300 bg-stone-50 px-4 py-4 text-sm text-stone-500">
+                    No archived lucky draw numbers are stored yet.
+                  </div>
                 </div>
               </article>
 
-              <article className="rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)]">
+              <article className={ARCHIVE_SECTION_CARD_CLASS}>
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">
@@ -443,7 +447,7 @@ export function ArchivePage() {
                   </div>
                   <FontAwesomeIcon icon={faListCheck} className="h-5 w-5 text-stone-300" />
                 </div>
-                <div className="mt-5 max-h-[360px] space-y-3 overflow-y-auto pr-1">
+                <div className="mt-5 min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
                   {isLoadingArchive ? (
                     <p className="text-sm text-stone-500">Loading spill over...</p>
                   ) : approvedOverflows.length ? (
@@ -488,8 +492,8 @@ export function ArchivePage() {
               </article>
             </div>
 
-            <div className="grid gap-5 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
-              <article className="rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)]">
+            <div className="grid auto-rows-fr gap-5 xl:grid-cols-2">
+              <article className={ARCHIVE_SECTION_CARD_CLASS}>
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">
@@ -503,7 +507,7 @@ export function ArchivePage() {
                     {ledgers.length}
                   </span>
                 </div>
-                <div className="mt-5 max-h-[460px] space-y-3 overflow-y-auto pr-1">
+                <div className="mt-5 min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
                   {isLoadingArchive ? (
                     <p className="text-sm text-stone-500">Loading archived ledgers...</p>
                   ) : pagedLedgers.length ? (
@@ -548,7 +552,7 @@ export function ArchivePage() {
                 {renderPager(ledgerPage, ledgerTotalPages, setLedgerPage)}
               </article>
 
-              <article className="rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)]">
+              <article className={ARCHIVE_SECTION_CARD_CLASS}>
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">
@@ -562,7 +566,7 @@ export function ArchivePage() {
                     {ticketCount}
                   </span>
                 </div>
-                <div className="mt-5 max-h-[460px] space-y-3 overflow-y-auto pr-1">
+                <div className="mt-5 min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
                   {isLoadingArchive ? (
                     <p className="text-sm text-stone-500">Loading archived tickets...</p>
                   ) : tickets.length ? (
