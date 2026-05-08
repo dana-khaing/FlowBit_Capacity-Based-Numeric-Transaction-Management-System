@@ -1941,6 +1941,47 @@ class PrivateWorkflowAPITests(APITestCase):
         self.assertEqual(response.data['total_pages'], 2)
         self.assertEqual(Decimal(response.data['summary']['total_amount']), Decimal('55.00'))
 
+    def test_spill_over_export_summary_can_scope_to_collaborator_and_all(self):
+        tx = Transaction.objects.create(
+            ticket=Ticket.objects.create(customer_name='Spill Export Ticket', created_by=self.approver),
+            identifier=self.second_identifier,
+            total_amount=Decimal('250.00'),
+            created_by=self.approver,
+        )
+        overflow = Overflow.objects.get(transaction=tx)
+        approval_response = self.client.post(
+            f'/api/overflows/{overflow.id}/approve/',
+            {
+                'amount_to_approve': '180.00',
+                'collaborator_ids': [self.collaborator.id],
+            },
+            format='json'
+        )
+        self.assertEqual(approval_response.status_code, status.HTTP_200_OK)
+
+        collaborator_response = self.client.get(
+            '/api/collaborators/spill-over-export/',
+            {
+                'period_id': self.active_period.id,
+                'collaborator_id': self.collaborator.id,
+            }
+        )
+        all_response = self.client.get(
+            '/api/collaborators/spill-over-export/',
+            {
+                'period_id': self.active_period.id,
+                'collaborator_id': 'all',
+            }
+        )
+
+        self.assertEqual(collaborator_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(collaborator_response.data['collaborator_label'], self.collaborator.full_name)
+        self.assertGreaterEqual(Decimal(collaborator_response.data['summary']['total_amount']), Decimal('180.00'))
+        self.assertTrue(any(row['identifier_number'] == self.second_identifier.number for row in collaborator_response.data['rows']))
+
+        self.assertEqual(all_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(all_response.data['collaborator_label'], 'All collaborators')
+
     def test_approved_overflows_can_be_searched_for_closed_period(self):
         searchable_identifier = Identifier.objects.create(number='889')
         searchable_ticket = Ticket.objects.create(
