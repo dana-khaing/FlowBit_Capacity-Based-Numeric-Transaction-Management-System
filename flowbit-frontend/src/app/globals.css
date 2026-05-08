@@ -140,4 +140,14 @@ button {
     background: transparent !important;
     box-shadow: none !important;
   }
+
+  body.ticket-receipt-printing .ticket-history-browser {
+    display: none !important;
+  }
+
+  body.ticket-receipt-printing .ticket-history-print-shell {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
 }
