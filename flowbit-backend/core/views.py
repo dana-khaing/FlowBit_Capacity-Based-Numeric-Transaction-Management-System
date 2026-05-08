@@ -2364,18 +2364,27 @@ class CollaboratorViewSet(viewsets.ModelViewSet):
         else:
             period_label = 'All Periods'
 
-        identifier_rows = list(
-            overflows
-            .values('identifier__number')
-            .annotate(
-                total_amount=Coalesce(
-                    Sum(Coalesce('amount_to_approve', 'excess_amount')),
-                    Value(Decimal('0.00')),
-                    output_field=DecimalField(max_digits=14, decimal_places=2),
+        if collaborator is None:
+            identifier_rows = [
+                {
+                    'identifier_number': overflow.identifier.number,
+                    'amount': overflow.amount_to_approve or overflow.excess_amount or Decimal('0.00'),
+                }
+                for overflow in overflows.select_related('identifier').order_by('identifier__number', 'approved_at', 'id')
+            ]
+        else:
+            identifier_rows = list(
+                overflows
+                .values('identifier__number')
+                .annotate(
+                    total_amount=Coalesce(
+                        Sum(Coalesce('amount_to_approve', 'excess_amount')),
+                        Value(Decimal('0.00')),
+                        output_field=DecimalField(max_digits=14, decimal_places=2),
+                    )
                 )
+                .order_by('identifier__number')
             )
-            .order_by('identifier__number')
-        )
 
         approved_total = overflows.filter(status=Overflow.STATUS_CSO).aggregate(
             total=Coalesce(
@@ -2402,13 +2411,17 @@ class CollaboratorViewSet(viewsets.ModelViewSet):
                 'overkill_total': overkill_total,
                 'total_amount': total_amount,
             },
-            'rows': [
-                {
-                    'identifier_number': row['identifier__number'],
-                    'amount': row['total_amount'],
-                }
-                for row in identifier_rows
-            ],
+            'rows': (
+                identifier_rows
+                if collaborator is None
+                else [
+                    {
+                        'identifier_number': row['identifier__number'],
+                        'amount': row['total_amount'],
+                    }
+                    for row in identifier_rows
+                ]
+            ),
         }
 
     @action(detail=False, methods=['get'], url_path='spill-over-export')
