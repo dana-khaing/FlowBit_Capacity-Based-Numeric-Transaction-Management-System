@@ -1806,8 +1806,7 @@ class OverflowViewSet(viewsets.ModelViewSet):
             owner=request.user
         ).order_by('-transaction__timestamp')
         pending = self._filter_overflow_period(pending, request)
-        serializer = self.get_serializer(self._apply_overflow_limit(pending), many=True)
-        return Response(serializer.data)
+        return self._overflow_page_response(pending)
 
     @action(detail=False, methods=['get'], url_path='approved')
     def approved_overflows(self, request):
@@ -1861,8 +1860,7 @@ class OverflowViewSet(viewsets.ModelViewSet):
                 owner=request.user
             ).order_by('-approved_at')
             overkill = self._filter_overflow_period(overkill, request)
-            serializer = self.get_serializer(self._apply_overflow_limit(overkill), many=True)
-            return Response(serializer.data)
+            return self._overflow_page_response(overkill)
 
         period = Period.get_open_period()
         if not period:
