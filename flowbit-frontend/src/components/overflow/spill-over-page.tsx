@@ -28,10 +28,10 @@ import {
   approveOverflow,
   createCollaborator,
   createDirectOverkill,
-  fetchApprovedOverflows,
+  fetchApprovedOverflowPage,
   fetchCollaborators,
-  fetchOverkillOverflows,
-  fetchPendingOverflows,
+  fetchOverkillOverflowPage,
+  fetchPendingOverflowPage,
   resolveOverflowAction,
   updateCollaborator,
   type FlowBitCollaborator,
@@ -135,10 +135,56 @@ function getOverflowStatusTone(status: FlowBitOverflow["status"]) {
   return "bg-stone-200 text-stone-700";
 }
 
+function renderOverflowPager(
+  page: number,
+  totalPages: number,
+  onPageChange: (page: number) => void,
+) {
+  if (totalPages <= 1) {
+    return null;
+  }
+
+  return (
+    <div className="mt-4 flex items-center justify-between gap-3 border-t border-stone-900/8 pt-3">
+      <Button
+        type="button"
+        variant="outline"
+        className="rounded-full"
+        onClick={() => onPageChange(Math.max(1, page - 1))}
+        disabled={page <= 1}
+      >
+        Previous
+      </Button>
+      <span className="text-sm font-medium text-stone-600">
+        Page {page} of {totalPages}
+      </span>
+      <Button
+        type="button"
+        variant="outline"
+        className="rounded-full"
+        onClick={() => onPageChange(Math.min(totalPages, page + 1))}
+        disabled={page >= totalPages}
+      >
+        Next
+      </Button>
+    </div>
+  );
+}
+
 export function SpillOverPage() {
   const [user, setUser] = useState<AuthUser | null>(getStoredUser());
   const [pendingOverflows, setPendingOverflows] = useState<FlowBitOverflow[]>([]);
-  const [approvedOverflows, setApprovedOverflows] = useState<FlowBitOverflow[]>([]);
+  const [approvedRowsState, setApprovedRowsState] = useState<FlowBitOverflow[]>([]);
+  const [overkillRowsState, setOverkillRowsState] = useState<FlowBitOverflow[]>([]);
+  const [pendingPage, setPendingPage] = useState(1);
+  const [approvedPage, setApprovedPage] = useState(1);
+  const [overkillPage, setOverkillPage] = useState(1);
+  const [pendingTotalPages, setPendingTotalPages] = useState(1);
+  const [approvedTotalPages, setApprovedTotalPages] = useState(1);
+  const [overkillTotalPages, setOverkillTotalPages] = useState(1);
+  const [pendingCount, setPendingCount] = useState(0);
+  const [approvedCount, setApprovedCount] = useState(0);
+  const [overkillCount, setOverkillCount] = useState(0);
   const [collaborators, setCollaborators] = useState<FlowBitCollaborator[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [pageError, setPageError] = useState<string | null>(null);
@@ -196,15 +242,22 @@ export function SpillOverPage() {
     setIsLoading(true);
     try {
       const [nextPending, nextApproved, nextOverkill, nextCollaborators, nextUser, nextIdentifiers] = await Promise.all([
-        fetchPendingOverflows({ limit: 20 }),
-        fetchApprovedOverflows({ limit: 20 }),
-        fetchOverkillOverflows({ limit: 20 }),
+        fetchPendingOverflowPage({ page: pendingPage, pageSize: 20 }),
+        fetchApprovedOverflowPage({ page: approvedPage, pageSize: 20 }),
+        fetchOverkillOverflowPage({ page: overkillPage, pageSize: 20 }),
         fetchCollaborators(),
         fetchCurrentUser(),
         fetchIdentifierOptions(),
       ]);
-      setPendingOverflows(nextPending);
-      setApprovedOverflows([...nextApproved, ...nextOverkill]);
+      setPendingOverflows(nextPending.results);
+      setApprovedRowsState(nextApproved.results);
+      setOverkillRowsState(nextOverkill.results);
+      setPendingTotalPages(nextPending.total_pages);
+      setApprovedTotalPages(nextApproved.total_pages);
+      setOverkillTotalPages(nextOverkill.total_pages);
+      setPendingCount(nextPending.count);
+      setApprovedCount(nextApproved.count);
+      setOverkillCount(nextOverkill.count);
       setCollaborators(nextCollaborators);
       setUser(nextUser);
       setIdentifierOptions(nextIdentifiers);
@@ -220,13 +273,11 @@ export function SpillOverPage() {
 
   useEffect(() => {
     loadPageData();
-  }, []);
+  }, [pendingPage, approvedPage, overkillPage]);
 
   const collaboratorFilterOptions = useMemo(() => {
     const names = new Set<string>();
-    approvedOverflows
-      .filter((overflow) => overflow.status !== "TCSO")
-      .forEach((overflow) => {
+    [...approvedRowsState, ...overkillRowsState].forEach((overflow) => {
       overflow.collaborator_names.forEach((name) => {
         const trimmed = name.trim();
         if (trimmed) {
@@ -235,17 +286,10 @@ export function SpillOverPage() {
       });
       });
     return Array.from(names).sort((left, right) => left.localeCompare(right));
-  }, [approvedOverflows]);
+  }, [approvedRowsState, overkillRowsState]);
 
-  const approvedRows = useMemo(
-    () => approvedOverflows.filter((overflow) => overflow.status === "CSO"),
-    [approvedOverflows],
-  );
-
-  const overkillRows = useMemo(
-    () => approvedOverflows.filter((overflow) => overflow.status === "OVRK"),
-    [approvedOverflows],
-  );
+  const approvedRows = approvedRowsState;
+  const overkillRows = overkillRowsState;
 
   const summaryApprovedRows = useMemo(
     () =>
@@ -324,6 +368,10 @@ export function SpillOverPage() {
       ),
     [summaryOverkillRows],
   );
+
+  const activePage = activeTab === "pending" ? pendingPage : activeTab === "approved" ? approvedPage : overkillPage;
+  const activeTotalPages =
+    activeTab === "pending" ? pendingTotalPages : activeTab === "approved" ? approvedTotalPages : overkillTotalPages;
 
   const identifierOptionsList = useMemo(
     () => identifierOptions.map((identifier) => identifier.number),
@@ -595,9 +643,9 @@ export function SpillOverPage() {
               <div className="flex flex-wrap items-center gap-3 rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-3">
                 <div className="inline-flex rounded-[18px] border border-stone-900/8 bg-white p-1">
                   {[
-                    { label: `Pending ${pendingOverflows.length}`, value: "pending" },
-                    { label: `Approved ${approvedRows.length}`, value: "approved" },
-                    { label: `Overkill ${overkillRows.length}`, value: "overkill" },
+                    { label: `Pending ${pendingCount}`, value: "pending" },
+                    { label: `Approved ${approvedCount}`, value: "approved" },
+                    { label: `Overkill ${overkillCount}`, value: "overkill" },
                   ].map((option) => (
                     <button
                       key={option.value}
@@ -729,6 +777,15 @@ export function SpillOverPage() {
                     ))}
                   </div>
                 )}
+                {renderOverflowPager(
+                  activePage,
+                  activeTotalPages,
+                  activeTab === "pending"
+                    ? setPendingPage
+                    : activeTab === "approved"
+                      ? setApprovedPage
+                      : setOverkillPage,
+                )}
               </div>
             </div>
 
@@ -741,7 +798,7 @@ export function SpillOverPage() {
                     <p className="text-xs font-semibold uppercase tracking-[0.14em]">Pending</p>
                   </div>
                   <div className="mt-2 flex items-end justify-between gap-3">
-                    <p className="text-xl font-semibold text-stone-950">{pendingOverflows.length}</p>
+                    <p className="text-xl font-semibold text-stone-950">{pendingCount}</p>
                     <p className="text-sm text-stone-500">{formatAmount(String(pendingAmount))}</p>
                   </div>
                 </div>
@@ -751,7 +808,7 @@ export function SpillOverPage() {
                     <p className="text-xs font-semibold uppercase tracking-[0.14em]">Approved</p>
                   </div>
                   <div className="mt-2 flex items-end justify-between gap-3">
-                    <p className="text-xl font-semibold text-stone-950">{summaryApprovedRows.length}</p>
+                    <p className="text-xl font-semibold text-stone-950">{approvedCount}</p>
                     <p className="text-sm text-stone-500">{formatAmount(String(approvedAmount))}</p>
                   </div>
                 </div>
@@ -761,7 +818,7 @@ export function SpillOverPage() {
                     <p className="text-xs font-semibold uppercase tracking-[0.14em]">Overkill</p>
                   </div>
                   <div className="mt-2 flex items-end justify-between gap-3">
-                    <p className="text-xl font-semibold text-stone-950">{summaryOverkillRows.length}</p>
+                    <p className="text-xl font-semibold text-stone-950">{overkillCount}</p>
                     <p className="text-sm text-stone-500">{formatAmount(String(overkillAmount))}</p>
                   </div>
                 </div>

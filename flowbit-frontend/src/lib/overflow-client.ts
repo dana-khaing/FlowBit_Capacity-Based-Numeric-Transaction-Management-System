@@ -64,6 +64,23 @@ export async function fetchPendingOverflows(filters?: { limit?: number; periodId
   });
 }
 
+export async function fetchPendingOverflowPage(filters?: {
+  periodId?: number;
+  page?: number;
+  pageSize?: number;
+}) {
+  const search = new URLSearchParams();
+  if (filters?.periodId) {
+    search.set("period_id", String(filters.periodId));
+  }
+  search.set("page", String(filters?.page ?? 1));
+  search.set("page_size", String(Math.min(filters?.pageSize ?? 20, 20)));
+  return apiRequest<FlowBitOverflowPage>(`/overflows/pending/?${search.toString()}`, {
+    method: "GET",
+    headers: authHeaders(),
+  });
+}
+
 export async function fetchApprovedOverflows(filters?: { limit?: number; periodId?: number }) {
   const suffix = buildOverflowQuery(filters);
   return apiRequest<FlowBitOverflow[]>(`/overflows/approved/${suffix}`, {
@@ -112,6 +129,23 @@ export async function fetchApprovedOverflowPage(filters?: {
 export async function fetchOverkillOverflows(filters?: { limit?: number; periodId?: number }) {
   const suffix = buildOverflowQuery(filters);
   return apiRequest<FlowBitOverflow[]>(`/overflows/overkill/${suffix}`, {
+    method: "GET",
+    headers: authHeaders(),
+  });
+}
+
+export async function fetchOverkillOverflowPage(filters?: {
+  periodId?: number;
+  page?: number;
+  pageSize?: number;
+}) {
+  const search = new URLSearchParams();
+  if (filters?.periodId) {
+    search.set("period_id", String(filters.periodId));
+  }
+  search.set("page", String(filters?.page ?? 1));
+  search.set("page_size", String(Math.min(filters?.pageSize ?? 20, 20)));
+  return apiRequest<FlowBitOverflowPage>(`/overflows/overkill/?${search.toString()}`, {
     method: "GET",
     headers: authHeaders(),
   });
