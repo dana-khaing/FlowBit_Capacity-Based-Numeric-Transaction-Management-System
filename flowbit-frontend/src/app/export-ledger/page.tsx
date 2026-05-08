@@ -110,6 +110,18 @@ export default function ExportLedgerPage() {
   const { activePeriod, hasActivePeriod, isLoading: isPeriodLoading, error: periodError } = usePeriodState();
 
   useEffect(() => {
+    const handleAfterPrint = () => {
+      document.body.classList.remove("spillover-export-printing");
+    };
+
+    window.addEventListener("afterprint", handleAfterPrint);
+    return () => {
+      window.removeEventListener("afterprint", handleAfterPrint);
+      document.body.classList.remove("spillover-export-printing");
+    };
+  }, []);
+
+  useEffect(() => {
     if (!hasActivePeriod || !activePeriod) {
       setLedgers([]);
       setCollaborators([]);
@@ -258,43 +270,45 @@ export default function ExportLedgerPage() {
   }
 
   function handleSpillOverPrint() {
+    document.body.classList.add("spillover-export-printing");
     window.print();
   }
 
   return (
     <>
-      <AppSectionPage
-        eyebrow="Exports"
-        title="Export"
-        description=""
-        workspaceLabel="Export"
-        layoutClassName="print:block"
-        workspaceClassName="print:hidden"
-        asideClassName="print:hidden"
-        aside={
-          <aside className="rounded-[28px] border border-stone-900/8 bg-[#f3f0ea] p-5 shadow-[0_8px_24px_rgba(28,24,20,0.03)] sm:p-6">
-            <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Current period</p>
-            <div className="mt-4 space-y-4">
-              <div className="rounded-[22px] bg-white px-4 py-4">
-                <p className="text-sm text-stone-500">Active term</p>
-                <p className="mt-1 text-lg font-semibold text-stone-900">
-                  {activePeriod?.name ?? "No active period"}
-                </p>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+      <div className="spillover-export-page">
+        <AppSectionPage
+          eyebrow="Exports"
+          title="Export"
+          description=""
+          workspaceLabel="Export"
+          layoutClassName="print:block"
+          workspaceClassName="print:hidden"
+          asideClassName="print:hidden"
+          aside={
+            <aside className="rounded-[28px] border border-stone-900/8 bg-[#f3f0ea] p-5 shadow-[0_8px_24px_rgba(28,24,20,0.03)] sm:p-6">
+              <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Current period</p>
+              <div className="mt-4 space-y-4">
                 <div className="rounded-[22px] bg-white px-4 py-4">
-                  <p className="text-sm text-stone-500">Ledgers</p>
-                  <p className="mt-1 text-lg font-semibold text-stone-900">{ledgers.length}</p>
+                  <p className="text-sm text-stone-500">Active term</p>
+                  <p className="mt-1 text-lg font-semibold text-stone-900">
+                    {activePeriod?.name ?? "No active period"}
+                  </p>
                 </div>
-                <div className="rounded-[22px] bg-white px-4 py-4">
-                  <p className="text-sm text-stone-500">Active</p>
-                  <p className="mt-1 text-lg font-semibold text-stone-900">{activeCount}</p>
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+                  <div className="rounded-[22px] bg-white px-4 py-4">
+                    <p className="text-sm text-stone-500">Ledgers</p>
+                    <p className="mt-1 text-lg font-semibold text-stone-900">{ledgers.length}</p>
+                  </div>
+                  <div className="rounded-[22px] bg-white px-4 py-4">
+                    <p className="text-sm text-stone-500">Active</p>
+                    <p className="mt-1 text-lg font-semibold text-stone-900">{activeCount}</p>
+                  </div>
                 </div>
               </div>
-            </div>
-          </aside>
-        }
-      >
+            </aside>
+          }
+        >
         {isPeriodLoading || isLoading ? (
           <div className="rounded-[24px] border border-dashed border-stone-300 bg-stone-50 px-5 py-10 text-sm text-stone-500">
             Loading ledgers for export.
@@ -469,7 +483,8 @@ export default function ExportLedgerPage() {
             </section>
           </div>
         )}
-      </AppSectionPage>
+        </AppSectionPage>
+      </div>
 
       <ActionLoadingModal
         open={downloadState !== null}
@@ -491,11 +506,11 @@ export default function ExportLedgerPage() {
       />
       {spillOverModal ? (
         <div
-          className="fixed inset-0 z-[70] flex items-center justify-center bg-stone-950/50 px-4 py-6 print:static print:block print:bg-transparent print:px-0 print:py-0"
+          className="spillover-export-print-shell fixed inset-0 z-[70] flex items-center justify-center bg-stone-950/50 px-4 py-6 print:static print:block print:bg-transparent print:px-0 print:py-0"
           onClick={() => setSpillOverModal(null)}
         >
           <div
-            className="max-h-[90vh] w-full max-w-[520px] overflow-y-auto rounded-[28px] bg-white p-5 shadow-[0_24px_60px_rgba(15,23,42,0.28)] print:max-h-none print:max-w-none print:overflow-visible print:rounded-none print:border-0 print:bg-transparent print:p-0 print:shadow-none"
+            className="spillover-export-print-panel max-h-[90vh] w-full max-w-[520px] overflow-y-auto rounded-[28px] bg-white p-5 shadow-[0_24px_60px_rgba(15,23,42,0.28)] print:max-h-none print:max-w-none print:overflow-visible print:rounded-none print:border-0 print:bg-transparent print:p-0 print:shadow-none"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="mb-4 flex items-start justify-between gap-3 print:hidden">
