@@ -185,6 +185,9 @@ export function SpillOverPage() {
   const [pendingCount, setPendingCount] = useState(0);
   const [approvedCount, setApprovedCount] = useState(0);
   const [overkillCount, setOverkillCount] = useState(0);
+  const [pendingAmountTotal, setPendingAmountTotal] = useState("0.00");
+  const [approvedAmountTotal, setApprovedAmountTotal] = useState("0.00");
+  const [overkillAmountTotal, setOverkillAmountTotal] = useState("0.00");
   const [collaborators, setCollaborators] = useState<FlowBitCollaborator[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [pageError, setPageError] = useState<string | null>(null);
@@ -242,9 +245,23 @@ export function SpillOverPage() {
     setIsLoading(true);
     try {
       const [nextPending, nextApproved, nextOverkill, nextCollaborators, nextUser, nextIdentifiers] = await Promise.all([
-        fetchPendingOverflowPage({ page: pendingPage, pageSize: 20 }),
-        fetchApprovedOverflowPage({ page: approvedPage, pageSize: 20 }),
-        fetchOverkillOverflowPage({ page: overkillPage, pageSize: 20 }),
+        fetchPendingOverflowPage({
+          page: pendingPage,
+          pageSize: 20,
+          search: searchQuery.trim(),
+        }),
+        fetchApprovedOverflowPage({
+          page: approvedPage,
+          pageSize: 20,
+          search: searchQuery.trim(),
+          collaboratorName: collaboratorFilter === "all" ? "" : collaboratorFilter,
+        }),
+        fetchOverkillOverflowPage({
+          page: overkillPage,
+          pageSize: 20,
+          search: searchQuery.trim(),
+          collaboratorName: collaboratorFilter === "all" ? "" : collaboratorFilter,
+        }),
         fetchCollaborators(),
         fetchCurrentUser(),
         fetchIdentifierOptions(),
@@ -258,6 +275,9 @@ export function SpillOverPage() {
       setPendingCount(nextPending.count);
       setApprovedCount(nextApproved.count);
       setOverkillCount(nextOverkill.count);
+      setPendingAmountTotal(nextPending.summary.total_amount);
+      setApprovedAmountTotal(nextApproved.summary.total_amount);
+      setOverkillAmountTotal(nextOverkill.summary.total_amount);
       setCollaborators(nextCollaborators);
       setUser(nextUser);
       setIdentifierOptions(nextIdentifiers);
@@ -273,101 +293,30 @@ export function SpillOverPage() {
 
   useEffect(() => {
     loadPageData();
-  }, [pendingPage, approvedPage, overkillPage]);
+  }, [approvedPage, collaboratorFilter, overkillPage, pendingPage, searchQuery]);
 
   const collaboratorFilterOptions = useMemo(() => {
-    const names = new Set<string>();
-    [...approvedRowsState, ...overkillRowsState].forEach((overflow) => {
-      overflow.collaborator_names.forEach((name) => {
-        const trimmed = name.trim();
-        if (trimmed) {
-          names.add(trimmed);
-        }
-      });
-      });
-    return Array.from(names).sort((left, right) => left.localeCompare(right));
-  }, [approvedRowsState, overkillRowsState]);
+    return collaborators
+      .map((collaborator) => getCollaboratorDisplayName(collaborator).trim())
+      .filter(Boolean)
+      .sort((left, right) => left.localeCompare(right));
+  }, [collaborators]);
+
+  useEffect(() => {
+    setPendingPage(1);
+    setApprovedPage(1);
+    setOverkillPage(1);
+  }, [searchQuery, collaboratorFilter]);
 
   const approvedRows = approvedRowsState;
   const overkillRows = overkillRowsState;
 
-  const summaryApprovedRows = useMemo(
-    () =>
-      collaboratorFilter === "all"
+  const visibleOverflows =
+    activeTab === "pending"
+      ? pendingOverflows
+      : activeTab === "approved"
         ? approvedRows
-        : approvedRows.filter((overflow) =>
-            overflow.collaborator_names.includes(collaboratorFilter),
-          ),
-    [approvedRows, collaboratorFilter],
-  );
-
-  const summaryOverkillRows = useMemo(
-    () =>
-      collaboratorFilter === "all"
-        ? overkillRows
-        : overkillRows.filter((overflow) =>
-            overflow.collaborator_names.includes(collaboratorFilter),
-          ),
-    [overkillRows, collaboratorFilter],
-  );
-
-  const visibleOverflows = useMemo(() => {
-    const source =
-      activeTab === "pending"
-        ? pendingOverflows
-        : activeTab === "approved"
-          ? approvedRows
-          : overkillRows;
-    const query = searchQuery.trim().toLowerCase();
-    return source.filter((overflow) => {
-      const matchesQuery = !query
-        ? true
-        : [
-            overflow.identifier_number,
-            overflow.order_number,
-            overflow.ticket_number || "",
-            overflow.customer_name || "",
-            overflow.collaborator_names.join(" "),
-          ]
-            .join(" ")
-            .toLowerCase()
-            .includes(query);
-
-      const matchesCollaborator =
-        collaboratorFilter === "all"
-          ? true
-          : overflow.collaborator_names.includes(collaboratorFilter);
-
-      return matchesQuery && matchesCollaborator;
-    });
-  }, [activeTab, approvedRows, collaboratorFilter, overkillRows, pendingOverflows, searchQuery]);
-
-  const pendingAmount = useMemo(
-    () =>
-      pendingOverflows.reduce(
-        (sum, overflow) => sum + (Number(overflow.excess_amount) || 0),
-        0,
-      ),
-    [pendingOverflows],
-  );
-
-  const approvedAmount = useMemo(
-    () =>
-      summaryApprovedRows.reduce(
-        (sum, overflow) => sum + (Number(getOverflowApprovedAmount(overflow)) || 0),
-        0,
-      ),
-    [summaryApprovedRows],
-  );
-
-  const overkillAmount = useMemo(
-    () =>
-      summaryOverkillRows.reduce(
-        (sum, overflow) => sum + (Number(getOverflowApprovedAmount(overflow)) || 0),
-        0,
-      ),
-    [summaryOverkillRows],
-  );
+        : overkillRows;
 
   const activePage = activeTab === "pending" ? pendingPage : activeTab === "approved" ? approvedPage : overkillPage;
   const activeTotalPages =
@@ -799,7 +748,7 @@ export function SpillOverPage() {
                   </div>
                   <div className="mt-2 flex items-end justify-between gap-3">
                     <p className="text-xl font-semibold text-stone-950">{pendingCount}</p>
-                    <p className="text-sm text-stone-500">{formatAmount(String(pendingAmount))}</p>
+                    <p className="text-sm text-stone-500">{formatAmount(pendingAmountTotal)}</p>
                   </div>
                 </div>
                 <div className="rounded-[20px] bg-white px-3.5 py-3">
@@ -809,7 +758,7 @@ export function SpillOverPage() {
                   </div>
                   <div className="mt-2 flex items-end justify-between gap-3">
                     <p className="text-xl font-semibold text-stone-950">{approvedCount}</p>
-                    <p className="text-sm text-stone-500">{formatAmount(String(approvedAmount))}</p>
+                    <p className="text-sm text-stone-500">{formatAmount(approvedAmountTotal)}</p>
                   </div>
                 </div>
                 <div className="rounded-[20px] bg-white px-3.5 py-3">
@@ -819,7 +768,7 @@ export function SpillOverPage() {
                   </div>
                   <div className="mt-2 flex items-end justify-between gap-3">
                     <p className="text-xl font-semibold text-stone-950">{overkillCount}</p>
-                    <p className="text-sm text-stone-500">{formatAmount(String(overkillAmount))}</p>
+                    <p className="text-sm text-stone-500">{formatAmount(overkillAmountTotal)}</p>
                   </div>
                 </div>
               </div>

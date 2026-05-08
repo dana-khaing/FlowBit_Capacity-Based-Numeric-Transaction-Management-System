@@ -27,6 +27,10 @@ export type FlowBitOverflowPage = {
   page: number;
   page_size: number;
   total_pages: number;
+  summary: {
+    count: number;
+    total_amount: string;
+  };
 };
 
 function buildOverflowQuery(filters?: { limit?: number; periodId?: number }) {
@@ -68,6 +72,7 @@ export async function fetchPendingOverflowPage(filters?: {
   periodId?: number;
   page?: number;
   pageSize?: number;
+  search?: string;
 }) {
   const search = new URLSearchParams();
   if (filters?.periodId) {
@@ -75,6 +80,9 @@ export async function fetchPendingOverflowPage(filters?: {
   }
   search.set("page", String(filters?.page ?? 1));
   search.set("page_size", String(Math.min(filters?.pageSize ?? 20, 20)));
+  if (filters?.search?.trim()) {
+    search.set("search", filters.search.trim());
+  }
   return apiRequest<FlowBitOverflowPage>(`/overflows/pending/?${search.toString()}`, {
     method: "GET",
     headers: authHeaders(),
@@ -138,6 +146,8 @@ export async function fetchOverkillOverflowPage(filters?: {
   periodId?: number;
   page?: number;
   pageSize?: number;
+  search?: string;
+  collaboratorName?: string;
 }) {
   const search = new URLSearchParams();
   if (filters?.periodId) {
@@ -145,6 +155,12 @@ export async function fetchOverkillOverflowPage(filters?: {
   }
   search.set("page", String(filters?.page ?? 1));
   search.set("page_size", String(Math.min(filters?.pageSize ?? 20, 20)));
+  if (filters?.search?.trim()) {
+    search.set("search", filters.search.trim());
+  }
+  if (filters?.collaboratorName?.trim()) {
+    search.set("collaborator_name", filters.collaboratorName.trim());
+  }
   return apiRequest<FlowBitOverflowPage>(`/overflows/overkill/?${search.toString()}`, {
     method: "GET",
     headers: authHeaders(),
