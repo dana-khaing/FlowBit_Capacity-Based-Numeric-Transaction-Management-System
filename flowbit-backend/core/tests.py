@@ -1798,6 +1798,82 @@ class PrivateWorkflowAPITests(APITestCase):
         returned_ids = {item['id'] for item in response.data['results']}
         self.assertEqual(returned_ids, {first_overflow.id})
 
+    def test_pending_and_overkill_overflows_can_be_paged(self):
+        first_pending_identifier = Identifier.objects.create(number='781')
+        second_pending_identifier = Identifier.objects.create(number='782')
+        first_pending_ticket = Ticket.objects.create(
+            customer_name='Pending One',
+            created_by=self.approver,
+        )
+        second_pending_ticket = Ticket.objects.create(
+            customer_name='Pending Two',
+            created_by=self.approver,
+        )
+        first_pending_transaction = Transaction.objects.create(
+            ticket=first_pending_ticket,
+            identifier=first_pending_identifier,
+            total_amount=Decimal('200.00'),
+            created_by=self.approver,
+        )
+        second_pending_transaction = Transaction.objects.create(
+            ticket=second_pending_ticket,
+            identifier=second_pending_identifier,
+            total_amount=Decimal('200.00'),
+            created_by=self.approver,
+        )
+        first_pending = Overflow.objects.get(
+            transaction=first_pending_transaction,
+            status=Overflow.STATUS_TCSO,
+        )
+        second_pending = Overflow.objects.get(
+            transaction=second_pending_transaction,
+            status=Overflow.STATUS_TCSO,
+        )
+
+        overkill_identifier_one = Identifier.objects.create(number='783')
+        overkill_identifier_two = Identifier.objects.create(number='784')
+        first_overkill = Overflow.objects.create(
+            identifier=overkill_identifier_one,
+            period=self.active_period,
+            owner=self.approver,
+            excess_amount=Decimal('25.00'),
+            amount_to_approve=Decimal('25.00'),
+            status=Overflow.STATUS_OVERKILL,
+            approved_at=timezone.now() - timedelta(minutes=2),
+        )
+        second_overkill = Overflow.objects.create(
+            identifier=overkill_identifier_two,
+            period=self.active_period,
+            owner=self.approver,
+            excess_amount=Decimal('30.00'),
+            amount_to_approve=Decimal('30.00'),
+            status=Overflow.STATUS_OVERKILL,
+            approved_at=timezone.now() - timedelta(minutes=1),
+        )
+
+        pending_response = self.client.get('/api/overflows/pending/', {
+            'page': 2,
+            'page_size': 1,
+        })
+        overkill_response = self.client.get('/api/overflows/overkill/', {
+            'page': 2,
+            'page_size': 1,
+        })
+
+        self.assertEqual(pending_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(pending_response.data['count'], 2)
+        self.assertEqual(pending_response.data['page'], 2)
+        self.assertEqual(pending_response.data['page_size'], 1)
+        self.assertEqual(pending_response.data['total_pages'], 2)
+        self.assertEqual({item['id'] for item in pending_response.data['results']}, {first_pending.id})
+
+        self.assertEqual(overkill_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(overkill_response.data['count'], 2)
+        self.assertEqual(overkill_response.data['page'], 2)
+        self.assertEqual(overkill_response.data['page_size'], 1)
+        self.assertEqual(overkill_response.data['total_pages'], 2)
+        self.assertEqual({item['id'] for item in overkill_response.data['results']}, {first_overkill.id})
+
     def test_approved_overflows_can_be_searched_for_closed_period(self):
         searchable_identifier = Identifier.objects.create(number='889')
         searchable_ticket = Ticket.objects.create(
