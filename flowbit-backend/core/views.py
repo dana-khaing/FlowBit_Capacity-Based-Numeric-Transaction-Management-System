@@ -1766,6 +1766,13 @@ class OverflowViewSet(viewsets.ModelViewSet):
 
         page_size = self._overflow_page_size()
         total_count = queryset.count()
+        total_amount = queryset.aggregate(
+            total=Coalesce(
+                Sum(Coalesce('amount_to_approve', 'excess_amount')),
+                Value(Decimal('0.00')),
+                output_field=DecimalField(max_digits=14, decimal_places=2),
+            )
+        )['total']
         total_pages = max(1, (total_count + page_size - 1) // page_size)
         safe_page = min(page, total_pages)
         start = (safe_page - 1) * page_size
@@ -1778,6 +1785,10 @@ class OverflowViewSet(viewsets.ModelViewSet):
                 'page': safe_page,
                 'page_size': page_size,
                 'total_pages': total_pages,
+                'summary': {
+                    'count': total_count,
+                    'total_amount': total_amount,
+                },
             }
         )
 
@@ -1796,6 +1807,36 @@ class OverflowViewSet(viewsets.ModelViewSet):
             return queryset.filter(period=selected_period)
         return queryset
 
+    def _filter_overflow_search(self, queryset, request):
+        search = (request.query_params.get('search') or '').strip()
+        ticket_number = (request.query_params.get('ticket_number') or '').strip()
+        customer_name = (request.query_params.get('customer_name') or '').strip()
+        identifier_number = (request.query_params.get('identifier_number') or '').strip()
+        collaborator_name = (request.query_params.get('collaborator_name') or '').strip()
+
+        if search:
+            queryset = queryset.filter(
+                Q(identifier__number__icontains=search)
+                | Q(transaction__ticket__ticket_number__icontains=search)
+                | Q(transaction__ticket__customer_name__icontains=search)
+                | Q(transaction__order_number__icontains=search)
+                | Q(collaborators__full_name__icontains=search)
+                | Q(collaborators__username__icontains=search)
+            ).distinct()
+        if ticket_number:
+            queryset = queryset.filter(transaction__ticket__ticket_number__icontains=ticket_number)
+        if customer_name:
+            queryset = queryset.filter(transaction__ticket__customer_name__icontains=customer_name)
+        if identifier_number:
+            queryset = queryset.filter(identifier__number__icontains=identifier_number)
+        if collaborator_name:
+            queryset = queryset.filter(
+                Q(collaborators__full_name__icontains=collaborator_name)
+                | Q(collaborators__username__icontains=collaborator_name)
+            ).distinct()
+
+        return queryset
+
     @action(detail=False, methods=['get'], url_path='pending')
     def pending_overflows(self, request):
         """GET /api/overflows/pending/ - Get all TCSO (red) overflows"""
@@ -1806,6 +1847,7 @@ class OverflowViewSet(viewsets.ModelViewSet):
             owner=request.user
         ).order_by('-transaction__timestamp')
         pending = self._filter_overflow_period(pending, request)
+        pending = self._filter_overflow_search(pending, request)
         return self._overflow_page_response(pending)
 
     @action(detail=False, methods=['get'], url_path='approved')
@@ -1821,30 +1863,7 @@ class OverflowViewSet(viewsets.ModelViewSet):
             owner=request.user
         ).order_by('-approved_at')
         approved = self._filter_overflow_period(approved, request)
-        search = (request.query_params.get('search') or '').strip()
-        ticket_number = (request.query_params.get('ticket_number') or '').strip()
-        customer_name = (request.query_params.get('customer_name') or '').strip()
-        identifier_number = (request.query_params.get('identifier_number') or '').strip()
-        collaborator_name = (request.query_params.get('collaborator_name') or '').strip()
-        if search:
-            approved = approved.filter(
-                Q(identifier__number__icontains=search)
-                | Q(transaction__ticket__ticket_number__icontains=search)
-                | Q(transaction__ticket__customer_name__icontains=search)
-                | Q(collaborators__full_name__icontains=search)
-                | Q(collaborators__username__icontains=search)
-            ).distinct()
-        if ticket_number:
-            approved = approved.filter(transaction__ticket__ticket_number__icontains=ticket_number)
-        if customer_name:
-            approved = approved.filter(transaction__ticket__customer_name__icontains=customer_name)
-        if identifier_number:
-            approved = approved.filter(identifier__number__icontains=identifier_number)
-        if collaborator_name:
-            approved = approved.filter(
-                Q(collaborators__full_name__icontains=collaborator_name)
-                | Q(collaborators__username__icontains=collaborator_name)
-            ).distinct()
+        approved = self._filter_overflow_search(approved, request)
         return self._overflow_page_response(approved)
 
     @action(detail=False, methods=['get', 'post'], url_path='overkill')
@@ -1860,6 +1879,7 @@ class OverflowViewSet(viewsets.ModelViewSet):
                 owner=request.user
             ).order_by('-approved_at')
             overkill = self._filter_overflow_period(overkill, request)
+            overkill = self._filter_overflow_search(overkill, request)
             return self._overflow_page_response(overkill)
 
         period = Period.get_open_period()
