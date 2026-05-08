@@ -2509,7 +2509,7 @@ class CollaboratorViewSet(viewsets.ModelViewSet):
             ('FONTSIZE', (0, 0), (-1, -1), 8),
             ('LINEBELOW', (0, 0), (-1, 0), 0.75, colors.black),
             ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-            ('ALIGN', (1, 1), (1, -1), 'RIGHT'),
+            ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
             ('TOPPADDING', (0, 0), (-1, -1), 2),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
         ]))
