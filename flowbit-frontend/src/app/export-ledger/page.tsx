@@ -564,7 +564,7 @@ export default function ExportLedgerPage() {
 
                   <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
                     <div className="rounded-[18px] bg-white px-3 py-3">
-                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-400">Identifiers</p>
+                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-400">Number of spill over</p>
                       <p className="mt-1 text-lg font-semibold text-stone-950">
                         {spillOverPreview.summary.identifier_count}
                       </p>
