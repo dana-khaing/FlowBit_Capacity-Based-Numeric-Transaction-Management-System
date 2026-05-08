@@ -2337,6 +2337,192 @@ class CollaboratorViewSet(viewsets.ModelViewSet):
 
         return overflows, period_label
 
+    def _get_spillover_export_payload(self, request, collaborator=None):
+        period_id = request.query_params.get('period_id')
+        if period_id:
+            try:
+                selected_period = Period.objects.get(id=period_id)
+            except Period.DoesNotExist as exc:
+                raise Period.DoesNotExist("Period not found.") from exc
+        else:
+            selected_period = Period.get_open_period()
+
+        overflows = Overflow.objects.filter(
+            owner=request.user,
+            status__in=[Overflow.STATUS_CSO, Overflow.STATUS_OVERKILL],
+        ).select_related('identifier')
+
+        if collaborator is not None:
+            overflows = overflows.filter(collaborators=collaborator)
+            collaborator_label = collaborator.full_name.strip() or collaborator.username
+        else:
+            collaborator_label = 'All collaborators'
+
+        if selected_period:
+            overflows = overflows.filter(period=selected_period)
+            period_label = selected_period.name
+        else:
+            period_label = 'All Periods'
+
+        identifier_rows = list(
+            overflows
+            .values('identifier__number')
+            .annotate(
+                total_amount=Coalesce(
+                    Sum(Coalesce('amount_to_approve', 'excess_amount')),
+                    Value(Decimal('0.00')),
+                    output_field=DecimalField(max_digits=14, decimal_places=2),
+                )
+            )
+            .order_by('identifier__number')
+        )
+
+        approved_total = overflows.filter(status=Overflow.STATUS_CSO).aggregate(
+            total=Coalesce(
+                Sum(Coalesce('amount_to_approve', 'excess_amount')),
+                Value(Decimal('0.00')),
+                output_field=DecimalField(max_digits=14, decimal_places=2),
+            )
+        )['total']
+        overkill_total = overflows.filter(status=Overflow.STATUS_OVERKILL).aggregate(
+            total=Coalesce(
+                Sum(Coalesce('amount_to_approve', 'excess_amount')),
+                Value(Decimal('0.00')),
+                output_field=DecimalField(max_digits=14, decimal_places=2),
+            )
+        )['total']
+        total_amount = approved_total + overkill_total
+
+        return {
+            'collaborator_label': collaborator_label,
+            'period_label': period_label,
+            'summary': {
+                'identifier_count': len(identifier_rows),
+                'approved_total': approved_total,
+                'overkill_total': overkill_total,
+                'total_amount': total_amount,
+            },
+            'rows': [
+                {
+                    'identifier_number': row['identifier__number'],
+                    'amount': row['total_amount'],
+                }
+                for row in identifier_rows
+            ],
+        }
+
+    @action(detail=False, methods=['get'], url_path='spill-over-export')
+    def spill_over_export(self, request):
+        collaborator_id = request.query_params.get('collaborator_id')
+        collaborator = None
+        if collaborator_id and collaborator_id != 'all':
+            collaborator = self.get_queryset().filter(id=collaborator_id).first()
+            if collaborator is None:
+                return Response({"detail": "Collaborator not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            payload = self._get_spillover_export_payload(request, collaborator=collaborator)
+        except Period.DoesNotExist as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response(
+            {
+                'collaborator_label': payload['collaborator_label'],
+                'period_label': payload['period_label'],
+                'summary': {
+                    'identifier_count': payload['summary']['identifier_count'],
+                    'approved_total': str(payload['summary']['approved_total']),
+                    'overkill_total': str(payload['summary']['overkill_total']),
+                    'total_amount': str(payload['summary']['total_amount']),
+                },
+                'rows': [
+                    {
+                        'identifier_number': row['identifier_number'],
+                        'amount': str(row['amount']),
+                    }
+                    for row in payload['rows']
+                ],
+            }
+        )
+
+    @action(detail=False, methods=['get'], url_path='spill-over-export-pdf')
+    def spill_over_export_pdf(self, request):
+        collaborator_id = request.query_params.get('collaborator_id')
+        collaborator = None
+        if collaborator_id and collaborator_id != 'all':
+            collaborator = self.get_queryset().filter(id=collaborator_id).first()
+            if collaborator is None:
+                return Response({"detail": "Collaborator not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            payload = self._get_spillover_export_payload(request, collaborator=collaborator)
+        except Period.DoesNotExist as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_404_NOT_FOUND)
+
+        receipt_width = 3.15 * inch
+        receipt_height = max(5.0 * inch, (2.6 + len(payload['rows']) * 0.24) * inch)
+        response = HttpResponse(content_type='application/pdf')
+        response['Content-Disposition'] = 'attachment; filename="spill_over_export.pdf"'
+
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(
+            buffer,
+            pagesize=(receipt_width, receipt_height),
+            topMargin=0.2 * inch,
+            bottomMargin=0.2 * inch,
+            leftMargin=0.22 * inch,
+            rightMargin=0.22 * inch,
+        )
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle(
+            'SpillOverExportTitle',
+            parent=styles['Heading2'],
+            fontSize=11,
+            alignment=TA_CENTER,
+            spaceAfter=8,
+        )
+        body_style = ParagraphStyle(
+            'SpillOverExportBody',
+            parent=styles['BodyText'],
+            fontSize=8,
+            leading=10,
+            alignment=TA_LEFT,
+        )
+
+        elements = [
+            Paragraph("Spill-over export", title_style),
+            Paragraph(payload['collaborator_label'], body_style),
+            Paragraph(payload['period_label'], body_style),
+            Spacer(1, 0.1 * inch),
+            Paragraph(f"Identifiers: {payload['summary']['identifier_count']}", body_style),
+            Paragraph(f"Approved: {payload['summary']['approved_total']:.2f}", body_style),
+            Paragraph(f"Overkill: {payload['summary']['overkill_total']:.2f}", body_style),
+            Paragraph(f"Total: {payload['summary']['total_amount']:.2f}", body_style),
+            Spacer(1, 0.12 * inch),
+        ]
+
+        table_rows = [['Identifier', 'Amount']]
+        table_rows.extend(
+            [[row['identifier_number'], f"{row['amount']:.2f}"] for row in payload['rows']]
+        )
+        table = Table(table_rows, colWidths=[1.0 * inch, 1.45 * inch])
+        table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ('LINEBELOW', (0, 0), (-1, 0), 0.75, colors.black),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('ALIGN', (1, 1), (1, -1), 'RIGHT'),
+            ('TOPPADDING', (0, 0), (-1, -1), 2),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+        ]))
+        elements.append(table)
+
+        doc.build(elements)
+        pdf = buffer.getvalue()
+        buffer.close()
+        response.write(pdf)
+        return response
+
     @action(detail=True, methods=['get'], url_path='export-transactions')
     def export_transactions(self, request, pk=None):
         collaborator = self.get_object()
