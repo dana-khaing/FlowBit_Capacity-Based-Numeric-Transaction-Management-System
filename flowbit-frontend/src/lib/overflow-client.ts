@@ -52,12 +52,58 @@ export type FlowBitCollaborator = {
   phone_number: string;
 };
 
+export type FlowBitSpillOverExportPreview = {
+  collaborator_label: string;
+  period_label: string;
+  summary: {
+    identifier_count: number;
+    approved_total: string;
+    overkill_total: string;
+    total_amount: string;
+  };
+  rows: Array<{
+    identifier_number: string;
+    amount: string;
+  }>;
+};
+
 function authHeaders() {
   const token = getStoredToken();
   if (!token) {
     throw new Error("No session found.");
   }
   return { Authorization: `Token ${token}` };
+}
+
+async function downloadOverflowAsset(path: string, filenameFallback: string) {
+  const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000/api"}${path}`, {
+    method: "GET",
+    headers: authHeaders(),
+  });
+
+  if (!response.ok) {
+    let detail = "Request failed.";
+    try {
+      const data = await response.json();
+      detail =
+        typeof data?.detail === "string"
+          ? data.detail
+          : typeof data?.message === "string"
+            ? data.message
+            : detail;
+    } catch {
+      // Ignore non-JSON error bodies.
+    }
+    throw new Error(detail);
+  }
+
+  const blob = await response.blob();
+  const contentDisposition = response.headers.get("Content-Disposition") || "";
+  const matchedFilename = contentDisposition.match(/filename=\"?([^"]+)\"?/i)?.[1];
+  return {
+    blob,
+    filename: matchedFilename || filenameFallback,
+  };
 }
 
 export async function fetchPendingOverflows(filters?: { limit?: number; periodId?: number }) {
@@ -249,4 +295,38 @@ export async function createDirectOverkill(payload: {
       collaborator_ids: payload.collaboratorIds,
     }),
   });
+}
+
+export async function fetchSpillOverExportPreview(filters?: {
+  periodId?: number;
+  collaboratorId?: string;
+}) {
+  const search = new URLSearchParams();
+  if (filters?.periodId) {
+    search.set("period_id", String(filters.periodId));
+  }
+  if (filters?.collaboratorId) {
+    search.set("collaborator_id", filters.collaboratorId);
+  }
+  return apiRequest<FlowBitSpillOverExportPreview>(`/collaborators/spill-over-export/?${search.toString()}`, {
+    method: "GET",
+    headers: authHeaders(),
+  });
+}
+
+export async function downloadSpillOverExportPdf(filters?: {
+  periodId?: number;
+  collaboratorId?: string;
+}) {
+  const search = new URLSearchParams();
+  if (filters?.periodId) {
+    search.set("period_id", String(filters.periodId));
+  }
+  if (filters?.collaboratorId) {
+    search.set("collaborator_id", filters.collaboratorId);
+  }
+  return downloadOverflowAsset(
+    `/collaborators/spill-over-export-pdf/?${search.toString()}`,
+    "spill_over_export.pdf",
+  );
 }
