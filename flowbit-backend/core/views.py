@@ -28,7 +28,7 @@ from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-from reportlab.lib.enums import TA_CENTER, TA_LEFT
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from .models import (
     DEFAULT_HELPER_NAME,
     Period,
@@ -3817,24 +3817,23 @@ class TicketReceiptPdfExportView(APIView):
                                 leading=16,
                             ),
                         ),
-                        '',
                         Paragraph(
-                            f"<b>{_ticket_visible_line_amount(transaction_obj):,.0f}</b>",
+                            f"<b>{_ticket_visible_line_amount(transaction_obj):.0f}</b>",
                             ParagraphStyle(
                                 'TicketReceiptRowAmount',
                                 parent=styles['BodyText'],
                                 fontSize=13,
                                 textColor=colors.HexColor('#1c1814'),
-                                alignment=TA_LEFT,
+                                alignment=TA_RIGHT,
                                 leading=16,
                             ),
                         ),
                     ]
-                ], colWidths=[1.0 * inch, 4.0 * inch, 1.0 * inch])
+                ], colWidths=[1.0 * inch, 5.0 * inch])
                 row_table.setStyle(TableStyle([
                     ('LINEBELOW', (0, 0), (-1, 0), 0.7, colors.HexColor('#d7d0c7')),
                     ('VALIGN', (0, 0), (-1, -1), 'BOTTOM'),
-                    ('ALIGN', (2, 0), (2, 0), 'RIGHT'),
+                    ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
                     ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
                     ('TOPPADDING', (0, 0), (-1, -1), 4),
                 ]))
