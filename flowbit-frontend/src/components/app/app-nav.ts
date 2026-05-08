@@ -20,7 +20,6 @@ export const primaryNavItems = [
   { label: "Tickets", href: "/tickets", icon: faFileInvoice },
   { label: "Profile", href: "/profile", icon: faIdBadge },
   { label: "Export", href: "/export-ledger", icon: faFolderOpen },
-  { label: "Export Spill over", href: "/export-spill-over", icon: faFolderOpen },
   { label: "Archive", href: "/archive", icon: faBoxArchive },
   { label: "Contact Support", href: "/contact-support", icon: faHeadset },
 ] as const;
