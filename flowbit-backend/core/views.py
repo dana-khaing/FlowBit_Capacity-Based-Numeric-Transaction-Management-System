@@ -2491,8 +2491,8 @@ class CollaboratorViewSet(viewsets.ModelViewSet):
 
         elements = [
             Paragraph("Spill-over export", title_style),
-            Paragraph(payload['collaborator_label'], body_style),
-            Paragraph(payload['period_label'], body_style),
+            Paragraph(f"Collaborator name: {payload['collaborator_label']}", body_style),
+            Paragraph(f"Period: {payload['period_label']}", body_style),
             Spacer(1, 0.1 * inch),
             Paragraph(f"Identifiers: {payload['summary']['identifier_count']}", body_style),
             Paragraph(f"Total amount: {payload['summary']['total_amount']:.2f}", body_style),
