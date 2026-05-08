@@ -112,5 +112,42 @@ button {
     border: 0 !important;
     background: #fff !important;
     box-shadow: none !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  body.spillover-export-printing .spillover-export-page {
+    display: none !important;
+  }
+
+  body.spillover-export-printing .spillover-export-print-shell {
+    position: static !important;
+    inset: auto !important;
+    display: block !important;
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  body.spillover-export-printing .spillover-export-print-panel {
+    width: auto !important;
+    max-width: none !important;
+    max-height: none !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  body.ticket-receipt-printing .ticket-history-browser {
+    display: none !important;
+  }
+
+  body.ticket-receipt-printing .ticket-history-print-shell {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
   }
 }

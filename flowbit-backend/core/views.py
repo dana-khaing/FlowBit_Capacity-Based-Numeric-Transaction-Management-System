@@ -28,7 +28,7 @@ from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-from reportlab.lib.enums import TA_CENTER, TA_LEFT
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from .models import (
     DEFAULT_HELPER_NAME,
     Period,
@@ -371,6 +371,7 @@ class PeriodViewSet(viewsets.ModelViewSet):
                 period.close(
                     closed_at=now,
                     helper_name=helper_name_from_request(request),
+                    closing_user=request.user if getattr(request, 'user', None) and request.user.is_authenticated else None,
                 )
                 closed_periods.append({
                     'id': period.id,
@@ -474,6 +475,7 @@ class PeriodViewSet(viewsets.ModelViewSet):
         period.close(
             closed_at=closed_at,
             helper_name=helper_name_from_request(request),
+            closing_user=request.user if request.user.is_authenticated else None,
         )
         record_audit_log(
             request,
@@ -900,6 +902,13 @@ class LedgerViewSet(viewsets.ModelViewSet):
     def view_ledger(self, request, pk=None):
         ledger = self.get_object()
         identifiers = list(Identifier.objects.all().order_by('number'))
+        period_standard_ledgers = Ledger.objects.filter(
+            period=ledger.period,
+            owner=ledger.owner,
+            is_capacity_reserve=False,
+        )
+        if ledger.is_active:
+            period_standard_ledgers = period_standard_ledgers.filter(is_active=True)
         freeze_rows = list(
             IdentifierLedgerFreeze.objects.filter(
                 period=ledger.period,
@@ -907,28 +916,19 @@ class LedgerViewSet(viewsets.ModelViewSet):
             ).values('identifier_id', 'ledger_id', 'applies_to_all')
         )
         active_ledger_ids = list(
-            Ledger.objects.filter(
-                period=ledger.period,
-                owner=ledger.owner,
-                is_active=True,
-                is_capacity_reserve=False,
-            ).values_list('id', flat=True)
+            period_standard_ledgers.values_list('id', flat=True)
         )
         active_ledger_capacities = {
             item['id']: item['limit_per_identifier']
-            for item in Ledger.objects.filter(
-                period=ledger.period,
-                owner=ledger.owner,
-                is_active=True,
-                is_capacity_reserve=False,
-            ).values('id', 'limit_per_identifier')
+            for item in period_standard_ledgers.values('id', 'limit_per_identifier')
         }
         allocation_queryset = LedgerAllocation.objects.filter(
             ledger__period=ledger.period,
             ledger__owner=ledger.owner,
-            ledger__is_active=True,
             ledger__is_capacity_reserve=ledger.is_capacity_reserve,
         )
+        if ledger.is_active:
+            allocation_queryset = allocation_queryset.filter(ledger__is_active=True)
         allocations = list(
             allocation_queryset
             .select_related('transaction__identifier', 'transaction__ticket')
@@ -1176,7 +1176,6 @@ class LedgerViewSet(viewsets.ModelViewSet):
         info_data = [
             ['Ledger Information', ''],
             ['Name:', ledger.name],
-            ['Priority:', str(ledger.priority)],
             ['Limit Per Identifier:', f"{ledger.limit_per_identifier:,.2f}"],
             ['End Date:', ledger.end_date.strftime('%Y-%m-%d %H:%M:%S')],
             ['Status:', 'Active' if ledger.is_active else 'Closed'],
@@ -1734,11 +1733,108 @@ class OverflowViewSet(viewsets.ModelViewSet):
         except (TypeError, ValueError):
             return 20
 
+    def _overflow_page(self):
+        raw_page = self.request.query_params.get('page')
+        if raw_page in {None, ''}:
+            return None
+        try:
+            return max(1, int(raw_page))
+        except (TypeError, ValueError):
+            return 1
+
+    def _overflow_page_size(self):
+        raw_page_size = self.request.query_params.get('page_size')
+        if raw_page_size in {None, ''}:
+            return 20
+        try:
+            return max(1, min(int(raw_page_size), 20))
+        except (TypeError, ValueError):
+            return 20
+
     def _apply_overflow_limit(self, queryset):
         limit = self._overflow_limit()
         if limit is None:
             return queryset
         return queryset[:limit]
+
+    def _overflow_page_response(self, queryset):
+        page = self._overflow_page()
+        if page is None:
+            serializer = self.get_serializer(self._apply_overflow_limit(queryset), many=True)
+            return Response(serializer.data)
+
+        page_size = self._overflow_page_size()
+        total_count = queryset.count()
+        total_amount = queryset.aggregate(
+            total=Coalesce(
+                Sum(Coalesce('amount_to_approve', 'excess_amount')),
+                Value(Decimal('0.00')),
+                output_field=DecimalField(max_digits=14, decimal_places=2),
+            )
+        )['total']
+        total_pages = max(1, (total_count + page_size - 1) // page_size)
+        safe_page = min(page, total_pages)
+        start = (safe_page - 1) * page_size
+        end = start + page_size
+        serializer = self.get_serializer(queryset[start:end], many=True)
+        return Response(
+            {
+                'results': serializer.data,
+                'count': total_count,
+                'page': safe_page,
+                'page_size': page_size,
+                'total_pages': total_pages,
+                'summary': {
+                    'count': total_count,
+                    'total_amount': total_amount,
+                },
+            }
+        )
+
+    def _selected_period(self, request):
+        period_id = request.query_params.get('period_id')
+        if not period_id:
+            return None
+        try:
+            return Period.objects.get(id=period_id)
+        except (Period.DoesNotExist, ValueError):
+            return None
+
+    def _filter_overflow_period(self, queryset, request):
+        selected_period = self._selected_period(request)
+        if selected_period is not None:
+            return queryset.filter(period=selected_period)
+        return queryset
+
+    def _filter_overflow_search(self, queryset, request):
+        search = (request.query_params.get('search') or '').strip()
+        ticket_number = (request.query_params.get('ticket_number') or '').strip()
+        customer_name = (request.query_params.get('customer_name') or '').strip()
+        identifier_number = (request.query_params.get('identifier_number') or '').strip()
+        collaborator_name = (request.query_params.get('collaborator_name') or '').strip()
+
+        if search:
+            queryset = queryset.filter(
+                Q(identifier__number__icontains=search)
+                | Q(transaction__ticket__ticket_number__icontains=search)
+                | Q(transaction__ticket__customer_name__icontains=search)
+                | Q(transaction__order_number__icontains=search)
+                | Q(collaborators__full_name__icontains=search)
+                | Q(collaborators__username__icontains=search)
+            ).distinct()
+        if ticket_number:
+            queryset = queryset.filter(transaction__ticket__ticket_number__icontains=ticket_number)
+        if customer_name:
+            queryset = queryset.filter(transaction__ticket__customer_name__icontains=customer_name)
+        if identifier_number:
+            queryset = queryset.filter(identifier__number__icontains=identifier_number)
+        if collaborator_name:
+            queryset = queryset.filter(
+                Q(collaborators__full_name__icontains=collaborator_name)
+                | Q(collaborators__username__icontains=collaborator_name)
+            ).distinct()
+
+        return queryset
 
     @action(detail=False, methods=['get'], url_path='pending')
     def pending_overflows(self, request):
@@ -1749,8 +1845,9 @@ class OverflowViewSet(viewsets.ModelViewSet):
         ).filter(
             owner=request.user
         ).order_by('-transaction__timestamp')
-        serializer = self.get_serializer(self._apply_overflow_limit(pending), many=True)
-        return Response(serializer.data)
+        pending = self._filter_overflow_period(pending, request)
+        pending = self._filter_overflow_search(pending, request)
+        return self._overflow_page_response(pending)
 
     @action(detail=False, methods=['get'], url_path='approved')
     def approved_overflows(self, request):
@@ -1764,8 +1861,9 @@ class OverflowViewSet(viewsets.ModelViewSet):
         ).filter(
             owner=request.user
         ).order_by('-approved_at')
-        serializer = self.get_serializer(self._apply_overflow_limit(approved), many=True)
-        return Response(serializer.data)
+        approved = self._filter_overflow_period(approved, request)
+        approved = self._filter_overflow_search(approved, request)
+        return self._overflow_page_response(approved)
 
     @action(detail=False, methods=['get', 'post'], url_path='overkill')
     def overkill_overflows(self, request):
@@ -1779,8 +1877,9 @@ class OverflowViewSet(viewsets.ModelViewSet):
             ).filter(
                 owner=request.user
             ).order_by('-approved_at')
-            serializer = self.get_serializer(self._apply_overflow_limit(overkill), many=True)
-            return Response(serializer.data)
+            overkill = self._filter_overflow_period(overkill, request)
+            overkill = self._filter_overflow_search(overkill, request)
+            return self._overflow_page_response(overkill)
 
         period = Period.get_open_period()
         if not period:
@@ -2236,6 +2335,179 @@ class CollaboratorViewSet(viewsets.ModelViewSet):
             overflows = overflows.order_by(order_field, 'identifier__number', 'id')
 
         return overflows, period_label
+
+    def _get_spillover_export_payload(self, request, collaborator=None):
+        period_id = request.query_params.get('period_id')
+        if period_id:
+            try:
+                selected_period = Period.objects.get(id=period_id)
+            except Period.DoesNotExist as exc:
+                raise Period.DoesNotExist("Period not found.") from exc
+        else:
+            selected_period = Period.get_open_period()
+
+        overflows = Overflow.objects.filter(
+            owner=request.user,
+            status__in=[Overflow.STATUS_CSO, Overflow.STATUS_OVERKILL],
+        ).select_related('identifier')
+
+        if collaborator is not None:
+            overflows = overflows.filter(collaborators=collaborator)
+            collaborator_label = collaborator.full_name.strip() or collaborator.username
+        else:
+            collaborator_label = 'All collaborators'
+
+        if selected_period:
+            overflows = overflows.filter(period=selected_period)
+            period_label = selected_period.name
+        else:
+            period_label = 'All Periods'
+
+        identifier_rows = [
+            {
+                'identifier_number': overflow.identifier.number,
+                'amount': overflow.amount_to_approve or overflow.excess_amount or Decimal('0.00'),
+            }
+            for overflow in overflows.select_related('identifier').order_by('approved_at', 'id')
+        ]
+
+        approved_total = overflows.filter(status=Overflow.STATUS_CSO).aggregate(
+            total=Coalesce(
+                Sum(Coalesce('amount_to_approve', 'excess_amount')),
+                Value(Decimal('0.00')),
+                output_field=DecimalField(max_digits=14, decimal_places=2),
+            )
+        )['total']
+        overkill_total = overflows.filter(status=Overflow.STATUS_OVERKILL).aggregate(
+            total=Coalesce(
+                Sum(Coalesce('amount_to_approve', 'excess_amount')),
+                Value(Decimal('0.00')),
+                output_field=DecimalField(max_digits=14, decimal_places=2),
+            )
+        )['total']
+        total_amount = approved_total + overkill_total
+
+        return {
+            'collaborator_label': collaborator_label,
+            'period_label': period_label,
+            'summary': {
+                'identifier_count': len(identifier_rows),
+                'approved_total': approved_total,
+                'overkill_total': overkill_total,
+                'total_amount': total_amount,
+            },
+            'rows': identifier_rows,
+        }
+
+    @action(detail=False, methods=['get'], url_path='spill-over-export')
+    def spill_over_export(self, request):
+        collaborator_id = request.query_params.get('collaborator_id')
+        collaborator = None
+        if collaborator_id and collaborator_id != 'all':
+            collaborator = self.get_queryset().filter(id=collaborator_id).first()
+            if collaborator is None:
+                return Response({"detail": "Collaborator not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            payload = self._get_spillover_export_payload(request, collaborator=collaborator)
+        except Period.DoesNotExist as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response(
+            {
+                'collaborator_label': payload['collaborator_label'],
+                'period_label': payload['period_label'],
+                'summary': {
+                    'identifier_count': payload['summary']['identifier_count'],
+                    'approved_total': str(payload['summary']['approved_total']),
+                    'overkill_total': str(payload['summary']['overkill_total']),
+                    'total_amount': str(payload['summary']['total_amount']),
+                },
+                'rows': [
+                    {
+                        'identifier_number': row['identifier_number'],
+                        'amount': str(row['amount']),
+                    }
+                    for row in payload['rows']
+                ],
+            }
+        )
+
+    @action(detail=False, methods=['get'], url_path='spill-over-export-pdf')
+    def spill_over_export_pdf(self, request):
+        collaborator_id = request.query_params.get('collaborator_id')
+        collaborator = None
+        if collaborator_id and collaborator_id != 'all':
+            collaborator = self.get_queryset().filter(id=collaborator_id).first()
+            if collaborator is None:
+                return Response({"detail": "Collaborator not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            payload = self._get_spillover_export_payload(request, collaborator=collaborator)
+        except Period.DoesNotExist as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_404_NOT_FOUND)
+
+        receipt_width = 3.15 * inch
+        receipt_height = max(5.0 * inch, (2.6 + len(payload['rows']) * 0.24) * inch)
+        response = HttpResponse(content_type='application/pdf')
+        response['Content-Disposition'] = 'attachment; filename="spill_over_export.pdf"'
+
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(
+            buffer,
+            pagesize=(receipt_width, receipt_height),
+            topMargin=0.2 * inch,
+            bottomMargin=0.2 * inch,
+            leftMargin=0.22 * inch,
+            rightMargin=0.22 * inch,
+        )
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle(
+            'SpillOverExportTitle',
+            parent=styles['Heading2'],
+            fontSize=11,
+            alignment=TA_CENTER,
+            spaceAfter=8,
+        )
+        body_style = ParagraphStyle(
+            'SpillOverExportBody',
+            parent=styles['BodyText'],
+            fontSize=8,
+            leading=10,
+            alignment=TA_LEFT,
+        )
+
+        elements = [
+            Paragraph("Spill-over export", title_style),
+            Paragraph(f"Collaborator name: {payload['collaborator_label']}", body_style),
+            Paragraph(f"Period: {payload['period_label']}", body_style),
+            Spacer(1, 0.1 * inch),
+            Paragraph(f"Number of spill over: {payload['summary']['identifier_count']}", body_style),
+            Paragraph(f"Total amount: {payload['summary']['total_amount']:.0f}", body_style),
+            Spacer(1, 0.12 * inch),
+        ]
+
+        table_rows = [['Identifier', 'Amount']]
+        table_rows.extend(
+            [[row['identifier_number'], f"{row['amount']:.0f}"] for row in payload['rows']]
+        )
+        table = Table(table_rows, colWidths=[1.0 * inch, 1.45 * inch])
+        table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ('LINEBELOW', (0, 0), (-1, 0), 0.75, colors.black),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+            ('TOPPADDING', (0, 0), (-1, -1), 2),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+        ]))
+        elements.append(table)
+
+        doc.build(elements)
+        pdf = buffer.getvalue()
+        buffer.close()
+        response.write(pdf)
+        return response
 
     @action(detail=True, methods=['get'], url_path='export-transactions')
     def export_transactions(self, request, pk=None):
@@ -3079,6 +3351,9 @@ class TicketListView(generics.ListAPIView):
         period_end = parse_period_value(self.request.query_params.get('period_end'))
         period_id = self.request.query_params.get('period_id')
         search = (self.request.query_params.get('search') or '').strip()
+        ticket_number = (self.request.query_params.get('ticket_number') or '').strip()
+        customer_name = (self.request.query_params.get('customer_name') or '').strip()
+        identifier_number = (self.request.query_params.get('identifier_number') or '').strip()
         refund_filter = (self.request.query_params.get('refund_filter') or '').strip().lower()
         date_from = parse_date((self.request.query_params.get('date_from') or '').strip())
         date_to = parse_date((self.request.query_params.get('date_to') or '').strip())
@@ -3115,6 +3390,12 @@ class TicketListView(generics.ListAPIView):
                 | Q(customer_name__icontains=search)
                 | Q(transactions__identifier__number__icontains=search)
             )
+        if ticket_number:
+            queryset = queryset.filter(ticket_number__icontains=ticket_number)
+        if customer_name:
+            queryset = queryset.filter(customer_name__icontains=customer_name)
+        if identifier_number:
+            queryset = queryset.filter(transactions__identifier__number__icontains=identifier_number)
 
         if date_from:
             queryset = queryset.filter(created_at__date__gte=date_from)
@@ -3506,7 +3787,7 @@ class TicketReceiptPdfExportView(APIView):
 
             info_table = Table([
                 ['Ticket No', ticket.ticket_number, 'Entries', str(len(visible_transactions))],
-                ['Customer', customer_name, 'Total amount', f"{total_amount:,.2f}"],
+                ['Customer', customer_name, 'Total amount', f"{total_amount:,.0f}"],
             ], colWidths=[1.15 * inch, 2.0 * inch, 1.25 * inch, 1.6 * inch])
             info_table.setStyle(TableStyle([
                 ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
@@ -3522,13 +3803,7 @@ class TicketReceiptPdfExportView(APIView):
             elements.append(info_table)
             elements.append(Spacer(1, 0.18 * inch))
 
-            for entry_index, transaction_obj in enumerate(visible_transactions, start=1):
-                elements.append(
-                    Paragraph(
-                        f"ENTRY {entry_index}",
-                        small_section_label_style,
-                    )
-                )
+            for transaction_obj in visible_transactions:
                 row_table = Table([
                     [
                         Paragraph(
@@ -3541,24 +3816,23 @@ class TicketReceiptPdfExportView(APIView):
                                 leading=16,
                             ),
                         ),
-                        '',
                         Paragraph(
-                            f"<b>{_ticket_visible_line_amount(transaction_obj):,.2f}</b>",
+                            f"<b>{_ticket_visible_line_amount(transaction_obj):.0f}</b>",
                             ParagraphStyle(
                                 'TicketReceiptRowAmount',
                                 parent=styles['BodyText'],
                                 fontSize=13,
                                 textColor=colors.HexColor('#1c1814'),
-                                alignment=TA_LEFT,
+                                alignment=TA_RIGHT,
                                 leading=16,
                             ),
                         ),
                     ]
-                ], colWidths=[1.0 * inch, 3.5 * inch, 1.1 * inch])
+                ], colWidths=[1.0 * inch, 5.0 * inch])
                 row_table.setStyle(TableStyle([
                     ('LINEBELOW', (0, 0), (-1, 0), 0.7, colors.HexColor('#d7d0c7')),
                     ('VALIGN', (0, 0), (-1, -1), 'BOTTOM'),
-                    ('ALIGN', (2, 0), (2, 0), 'RIGHT'),
+                    ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
                     ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
                     ('TOPPADDING', (0, 0), (-1, -1), 4),
                 ]))

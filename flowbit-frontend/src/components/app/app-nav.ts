@@ -19,7 +19,7 @@ export const primaryNavItems = [
   { label: "Spill over", href: "/spill-over", icon: faTriangleExclamation },
   { label: "Tickets", href: "/tickets", icon: faFileInvoice },
   { label: "Profile", href: "/profile", icon: faIdBadge },
-  { label: "Export Ledger", href: "/export-ledger", icon: faFolderOpen },
+  { label: "Export", href: "/export-ledger", icon: faFolderOpen },
   { label: "Archive", href: "/archive", icon: faBoxArchive },
   { label: "Contact Support", href: "/contact-support", icon: faHeadset },
 ] as const;

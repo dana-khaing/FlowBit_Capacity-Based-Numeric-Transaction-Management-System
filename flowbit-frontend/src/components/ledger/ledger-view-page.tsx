@@ -89,6 +89,7 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
   const isReserveLedgerView = Boolean(
     selectedView !== "all" && ledgerView?.ledger?.is_capacity_reserve,
   );
+  const isArchiveReadOnly = Boolean(ledgerView && !ledgerView.ledger.is_active);
 
   useEffect(() => {
     let isActive = true;
@@ -105,7 +106,7 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
         if (!isActive) {
           return;
         }
-        setLedgerOptions(availableLedgers.filter((ledger) => ledger.is_active));
+        setLedgerOptions(detail.ledger.is_active ? availableLedgers.filter((ledger) => ledger.is_active) : []);
         setLedgerView(detail);
       } catch (loadError) {
         if (!isActive) {
@@ -459,10 +460,10 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
                   </span>
                 </div>
               </div>
-              <Link href="/ledgers">
+              <Link href={isArchiveReadOnly ? "/archive" : "/ledgers"}>
                 <Button variant="outline" className="h-11 px-4">
                   <FontAwesomeIcon icon={faArrowLeft} className="h-4 w-4" />
-                  Back to ledgers
+                  {isArchiveReadOnly ? "Back to archive" : "Back to ledgers"}
                 </Button>
               </Link>
             </div>
@@ -475,22 +476,28 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
                 className="max-w-xs bg-white"
                 disabled={isLoading}
               />
-              <label className="flex flex-col gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
-                Choose ledger
-                <select
-                  value={selectedView}
-                  onChange={(event) => handleViewChange(event.target.value)}
-                  className="h-11 min-w-[220px] rounded-2xl border border-stone-900/10 bg-white px-4 text-sm font-medium normal-case tracking-normal text-stone-900 shadow-sm outline-none transition focus:border-stone-400"
-                  disabled={isLoading}
-                >
-                  <option value="all">All ledgers</option>
-                  {ledgerOptions.map((ledger) => (
-                    <option key={ledger.id} value={String(ledger.id)}>
-                      {ledger.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              {isArchiveReadOnly ? (
+                <span className="inline-flex items-center gap-2 rounded-full bg-stone-100 px-4 py-3 text-xs font-semibold uppercase tracking-[0.16em] text-stone-600">
+                  Read only archive
+                </span>
+              ) : (
+                <label className="flex flex-col gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+                  Choose ledger
+                  <select
+                    value={selectedView}
+                    onChange={(event) => handleViewChange(event.target.value)}
+                    className="h-11 min-w-[220px] rounded-2xl border border-stone-900/10 bg-white px-4 text-sm font-medium normal-case tracking-normal text-stone-900 shadow-sm outline-none transition focus:border-stone-400"
+                    disabled={isLoading}
+                  >
+                    <option value="all">All ledgers</option>
+                    {ledgerOptions.map((ledger) => (
+                      <option key={ledger.id} value={String(ledger.id)}>
+                        {ledger.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
             </div>
 
             <div className="mt-4 max-h-[820px] overflow-y-auto pr-2">
@@ -613,7 +620,7 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
                             Frozen
                           </span>
                         ) : null}
-                        {!isReserveLedgerView ? (
+                        {!isReserveLedgerView && !isArchiveReadOnly ? (
                           <Button
                             type="button"
                             variant="outline"
@@ -679,7 +686,7 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
                 <div className="mt-3 flex flex-wrap gap-2 text-sm text-stone-500">
                   <span className="inline-flex items-center gap-2 rounded-full bg-stone-50 px-3 py-2">
                     <FontAwesomeIcon icon={faClock} className="h-3.5 w-3.5" />
-                    Live view
+                    {isArchiveReadOnly ? "Read only" : "Live view"}
                   </span>
                   <span className="inline-flex items-center gap-2 rounded-full bg-stone-50 px-3 py-2">
                     <FontAwesomeIcon icon={ledgerView?.ledger.is_capacity_reserve ? faLock : faLayerGroup} className="h-3.5 w-3.5" />
