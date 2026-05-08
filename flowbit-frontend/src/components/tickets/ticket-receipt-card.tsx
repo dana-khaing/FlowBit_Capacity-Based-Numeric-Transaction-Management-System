@@ -190,15 +190,12 @@ export function TicketReceiptCard({
       </div>
 
       <div className="space-y-4 py-4">
-        {visibleTransactions.map((transaction, index) => (
+        {visibleTransactions.map((transaction) => (
           <div
             key={transaction.id}
             className="border-b border-dashed border-stone-300 pb-4 last:border-b-0 last:pb-0"
           >
             <div className="space-y-2">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">
-                Entry {index + 1}
-              </p>
               <div className="flex items-end gap-2">
                 <span className="text-lg font-semibold tracking-[0.18em] text-stone-950">
                   {transaction.identifier_number}
