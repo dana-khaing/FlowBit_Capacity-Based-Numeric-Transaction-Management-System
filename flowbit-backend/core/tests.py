@@ -1982,6 +1982,61 @@ class PrivateWorkflowAPITests(APITestCase):
         self.assertEqual(all_response.status_code, status.HTTP_200_OK)
         self.assertEqual(all_response.data['collaborator_label'], 'All collaborators')
 
+    def test_spill_over_export_all_collaborators_keeps_duplicate_identifiers_separate(self):
+        duplicate_identifier = Identifier.objects.create(number='887')
+        first_tx = Transaction.objects.create(
+            ticket=Ticket.objects.create(customer_name='First Duplicate Export Ticket', created_by=self.approver),
+            identifier=duplicate_identifier,
+            total_amount=Decimal('250.00'),
+            created_by=self.approver,
+        )
+        second_tx = Transaction.objects.create(
+            ticket=Ticket.objects.create(customer_name='Second Duplicate Export Ticket', created_by=self.approver),
+            identifier=duplicate_identifier,
+            total_amount=Decimal('200.00'),
+            created_by=self.approver,
+        )
+        first_overflow = Overflow.objects.get(transaction=first_tx)
+        second_overflow = Overflow.objects.get(transaction=second_tx)
+
+        first_approval_response = self.client.post(
+            f'/api/overflows/{first_overflow.id}/approve/',
+            {
+                'amount_to_approve': str(first_overflow.excess_amount),
+                'collaborator_ids': [self.collaborator.id],
+            },
+            format='json'
+        )
+        second_approval_response = self.client.post(
+            f'/api/overflows/{second_overflow.id}/approve/',
+            {
+                'amount_to_approve': str(second_overflow.excess_amount),
+                'collaborator_ids': [self.collaborator.id],
+            },
+            format='json'
+        )
+        self.assertEqual(first_approval_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(second_approval_response.status_code, status.HTTP_200_OK)
+
+        all_response = self.client.get(
+            '/api/collaborators/spill-over-export/',
+            {
+                'period_id': self.active_period.id,
+                'collaborator_id': 'all',
+            }
+        )
+
+        self.assertEqual(all_response.status_code, status.HTTP_200_OK)
+        matching_rows = [
+            row for row in all_response.data['rows']
+            if row['identifier_number'] == duplicate_identifier.number
+        ]
+        self.assertEqual(len(matching_rows), 2)
+        self.assertEqual(sorted(Decimal(row['amount']) for row in matching_rows), sorted([
+            first_overflow.excess_amount,
+            second_overflow.excess_amount,
+        ]))
+
     def test_approved_overflows_can_be_searched_for_closed_period(self):
         searchable_identifier = Identifier.objects.create(number='889')
         searchable_ticket = Ticket.objects.create(
