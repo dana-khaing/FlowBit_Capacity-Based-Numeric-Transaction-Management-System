@@ -106,7 +106,6 @@ export default function ExportLedgerPage() {
   const [spillOverModal, setSpillOverModal] = useState<SpillOverModalState>(null);
   const [spillOverPreview, setSpillOverPreview] = useState<FlowBitSpillOverExportPreview | null>(null);
   const [isSpillOverPdfDownloading, setIsSpillOverPdfDownloading] = useState(false);
-  const [isSpillOverPrintPreparing, setIsSpillOverPrintPreparing] = useState(false);
 
   const { activePeriod, hasActivePeriod, isLoading: isPeriodLoading, error: periodError } = usePeriodState();
 
@@ -259,11 +258,7 @@ export default function ExportLedgerPage() {
   }
 
   function handleSpillOverPrint() {
-    setIsSpillOverPrintPreparing(true);
-    window.setTimeout(() => {
-      window.print();
-      setIsSpillOverPrintPreparing(false);
-    }, 50);
+    window.print();
   }
 
   return (
@@ -493,11 +488,6 @@ export default function ExportLedgerPage() {
         open={isSpillOverPdfDownloading}
         title="Preparing spill-over PDF"
         description="Your collaborator spill-over export is being prepared for download."
-      />
-      <ActionLoadingModal
-        open={isSpillOverPrintPreparing}
-        title="Preparing receipt print"
-        description="Your spill-over export is being prepared for receipt printing."
       />
       {spillOverModal ? (
         <div
