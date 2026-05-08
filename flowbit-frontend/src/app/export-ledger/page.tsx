@@ -584,9 +584,9 @@ export default function ExportLedgerPage() {
                     </div>
                     <div className="mt-3 space-y-2">
                       {spillOverPreview.rows.length ? (
-                        spillOverPreview.rows.map((row) => (
+                        spillOverPreview.rows.map((row, index) => (
                           <div
-                            key={row.identifier_number}
+                            key={`${row.identifier_number}-${row.amount}-${index}`}
                             className="grid grid-cols-[1fr_auto] items-center gap-4 text-sm"
                           >
                             <span className="font-semibold text-stone-900">{row.identifier_number}</span>
