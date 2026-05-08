@@ -3804,13 +3804,7 @@ class TicketReceiptPdfExportView(APIView):
             elements.append(info_table)
             elements.append(Spacer(1, 0.18 * inch))
 
-            for entry_index, transaction_obj in enumerate(visible_transactions, start=1):
-                elements.append(
-                    Paragraph(
-                        f"ENTRY {entry_index}",
-                        small_section_label_style,
-                    )
-                )
+            for transaction_obj in visible_transactions:
                 row_table = Table([
                     [
                         Paragraph(
