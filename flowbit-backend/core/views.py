@@ -3830,7 +3830,7 @@ class TicketReceiptPdfExportView(APIView):
                             ),
                         ),
                     ]
-                ], colWidths=[1.0 * inch, 3.5 * inch, 1.1 * inch])
+                ], colWidths=[1.0 * inch, 4.0 * inch, 1.0 * inch])
                 row_table.setStyle(TableStyle([
                     ('LINEBELOW', (0, 0), (-1, 0), 0.7, colors.HexColor('#d7d0c7')),
                     ('VALIGN', (0, 0), (-1, -1), 'BOTTOM'),
