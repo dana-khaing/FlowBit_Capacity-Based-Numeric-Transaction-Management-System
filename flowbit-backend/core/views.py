@@ -2495,9 +2495,7 @@ class CollaboratorViewSet(viewsets.ModelViewSet):
             Paragraph(payload['period_label'], body_style),
             Spacer(1, 0.1 * inch),
             Paragraph(f"Identifiers: {payload['summary']['identifier_count']}", body_style),
-            Paragraph(f"Approved: {payload['summary']['approved_total']:.2f}", body_style),
-            Paragraph(f"Overkill: {payload['summary']['overkill_total']:.2f}", body_style),
-            Paragraph(f"Total: {payload['summary']['total_amount']:.2f}", body_style),
+            Paragraph(f"Total amount: {payload['summary']['total_amount']:.2f}", body_style),
             Spacer(1, 0.12 * inch),
         ]
 
