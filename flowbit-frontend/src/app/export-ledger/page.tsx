@@ -445,30 +445,21 @@ export default function ExportLedgerPage() {
                               </div>
                             </div>
 
-                            <div className="flex flex-wrap items-center gap-2">
-                              <Button
-                                variant="outline"
-                                className="rounded-[18px]"
-                                onClick={(event) => handleDownload(event, ledger, "csv")}
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Button
+                            variant="outline"
+                            className="rounded-[18px]"
+                            onClick={(event) => handleDownload(event, ledger, "csv")}
                                 disabled={isCsvLoading || isPdfLoading}
                               >
-                                <FontAwesomeIcon icon={faFileCsv} className="h-3.5 w-3.5" />
-                                {isCsvLoading ? "Downloading" : "CSV"}
-                              </Button>
-                              <Button
-                                variant="outline"
-                                className="rounded-[18px]"
-                                onClick={(event) => handleDownload(event, ledger, "pdf")}
-                                disabled={isCsvLoading || isPdfLoading}
-                              >
-                                <FontAwesomeIcon icon={faFilePdf} className="h-3.5 w-3.5" />
-                                {isPdfLoading ? "Downloading" : "PDF"}
-                              </Button>
-                              <Button
-                                className="rounded-[18px]"
-                                onClick={(event) => handleDownload(event, ledger, "pdf")}
-                                disabled={isCsvLoading || isPdfLoading}
-                              >
+                              <FontAwesomeIcon icon={faFileCsv} className="h-3.5 w-3.5" />
+                              {isCsvLoading ? "Downloading" : "CSV"}
+                            </Button>
+                          <Button
+                            className="rounded-[18px]"
+                            onClick={(event) => handleDownload(event, ledger, "pdf")}
+                            disabled={isCsvLoading || isPdfLoading}
+                          >
                                 <FontAwesomeIcon icon={faDownload} className="h-3.5 w-3.5" />
                                 Export
                               </Button>
