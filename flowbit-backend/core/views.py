@@ -1176,7 +1176,6 @@ class LedgerViewSet(viewsets.ModelViewSet):
         info_data = [
             ['Ledger Information', ''],
             ['Name:', ledger.name],
-            ['Priority:', str(ledger.priority)],
             ['Limit Per Identifier:', f"{ledger.limit_per_identifier:,.2f}"],
             ['End Date:', ledger.end_date.strftime('%Y-%m-%d %H:%M:%S')],
             ['Status:', 'Active' if ledger.is_active else 'Closed'],
