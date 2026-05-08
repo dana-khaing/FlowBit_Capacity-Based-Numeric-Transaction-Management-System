@@ -273,6 +273,9 @@ export default function ExportLedgerPage() {
         title="Export"
         description=""
         workspaceLabel="Export"
+        layoutClassName="print:block"
+        workspaceClassName="print:hidden"
+        asideClassName="print:hidden"
         aside={
           <aside className="rounded-[28px] border border-stone-900/8 bg-[#f3f0ea] p-5 shadow-[0_8px_24px_rgba(28,24,20,0.03)] sm:p-6">
             <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Current period</p>
@@ -498,11 +501,11 @@ export default function ExportLedgerPage() {
       />
       {spillOverModal ? (
         <div
-          className="fixed inset-0 z-[70] flex items-center justify-center bg-stone-950/50 px-4 py-6 print:bg-transparent"
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-stone-950/50 px-4 py-6 print:static print:block print:bg-transparent print:px-0 print:py-0"
           onClick={() => setSpillOverModal(null)}
         >
           <div
-            className="max-h-[90vh] w-full max-w-[520px] overflow-y-auto rounded-[28px] bg-white p-5 shadow-[0_24px_60px_rgba(15,23,42,0.28)] print:max-h-none print:max-w-none print:overflow-visible print:rounded-none print:bg-transparent print:p-0 print:shadow-none"
+            className="max-h-[90vh] w-full max-w-[520px] overflow-y-auto rounded-[28px] bg-white p-5 shadow-[0_24px_60px_rgba(15,23,42,0.28)] print:max-h-none print:max-w-none print:overflow-visible print:rounded-none print:border-0 print:bg-transparent print:p-0 print:shadow-none"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="mb-4 flex items-start justify-between gap-3 print:hidden">
