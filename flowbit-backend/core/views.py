@@ -2484,13 +2484,13 @@ class CollaboratorViewSet(viewsets.ModelViewSet):
             Paragraph(f"Period: {payload['period_label']}", body_style),
             Spacer(1, 0.1 * inch),
             Paragraph(f"Number of spill over: {payload['summary']['identifier_count']}", body_style),
-            Paragraph(f"Total amount: {payload['summary']['total_amount']:.2f}", body_style),
+            Paragraph(f"Total amount: {payload['summary']['total_amount']:.0f}", body_style),
             Spacer(1, 0.12 * inch),
         ]
 
         table_rows = [['Identifier', 'Amount']]
         table_rows.extend(
-            [[row['identifier_number'], f"{row['amount']:.2f}"] for row in payload['rows']]
+            [[row['identifier_number'], f"{row['amount']:.0f}"] for row in payload['rows']]
         )
         table = Table(table_rows, colWidths=[1.0 * inch, 1.45 * inch])
         table.setStyle(TableStyle([
