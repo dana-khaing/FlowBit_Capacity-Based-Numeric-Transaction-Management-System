@@ -1874,6 +1874,73 @@ class PrivateWorkflowAPITests(APITestCase):
         self.assertEqual(overkill_response.data['total_pages'], 2)
         self.assertEqual({item['id'] for item in overkill_response.data['results']}, {first_overkill.id})
 
+    def test_overflow_page_filters_and_summary_use_full_dataset(self):
+        collaborator = Collaborator.objects.create(
+            owner=self.approver,
+            username='summary_collab',
+            full_name='Summary Collaborator',
+            email='summary@example.com',
+            phone_number='0123456789',
+        )
+        first_identifier = Identifier.objects.create(number='791')
+        second_identifier = Identifier.objects.create(number='792')
+
+        first_ticket = Ticket.objects.create(
+            customer_name='Summary Customer One',
+            created_by=self.approver,
+        )
+        second_ticket = Ticket.objects.create(
+            customer_name='Summary Customer Two',
+            created_by=self.approver,
+        )
+        first_transaction = Transaction.objects.create(
+            ticket=first_ticket,
+            identifier=first_identifier,
+            total_amount=Decimal('200.00'),
+            created_by=self.approver,
+        )
+        second_transaction = Transaction.objects.create(
+            ticket=second_ticket,
+            identifier=second_identifier,
+            total_amount=Decimal('200.00'),
+            created_by=self.approver,
+        )
+
+        first_overflow = Overflow.objects.create(
+            transaction=first_transaction,
+            identifier=first_identifier,
+            period=self.active_period,
+            owner=self.approver,
+            excess_amount=Decimal('25.00'),
+            amount_to_approve=Decimal('25.00'),
+            status=Overflow.STATUS_CSO,
+            approved_at=timezone.now() - timedelta(minutes=2),
+        )
+        second_overflow = Overflow.objects.create(
+            transaction=second_transaction,
+            identifier=second_identifier,
+            period=self.active_period,
+            owner=self.approver,
+            excess_amount=Decimal('30.00'),
+            amount_to_approve=Decimal('30.00'),
+            status=Overflow.STATUS_CSO,
+            approved_at=timezone.now() - timedelta(minutes=1),
+        )
+        first_overflow.collaborators.add(collaborator)
+        second_overflow.collaborators.add(collaborator)
+
+        response = self.client.get('/api/overflows/approved/', {
+            'page': 1,
+            'page_size': 1,
+            'identifier_number': '79',
+            'collaborator_name': collaborator.full_name,
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['count'], 2)
+        self.assertEqual(response.data['total_pages'], 2)
+        self.assertEqual(Decimal(response.data['summary']['total_amount']), Decimal('55.00'))
+
     def test_approved_overflows_can_be_searched_for_closed_period(self):
         searchable_identifier = Identifier.objects.create(number='889')
         searchable_ticket = Ticket.objects.create(
