@@ -84,6 +84,18 @@ export function TicketHistoryPage() {
   } = usePeriodState();
 
   useEffect(() => {
+    const handleAfterPrint = () => {
+      document.body.classList.remove("ticket-receipt-printing");
+    };
+
+    window.addEventListener("afterprint", handleAfterPrint);
+    return () => {
+      window.removeEventListener("afterprint", handleAfterPrint);
+      document.body.classList.remove("ticket-receipt-printing");
+    };
+  }, []);
+
+  useEffect(() => {
     if (!hasActivePeriod || !activePeriod) {
       return;
     }
@@ -193,6 +205,11 @@ export function TicketHistoryPage() {
       setSelectedTicketNumber(tickets[0].ticket_number);
     }
   }, [tickets, selectedTicketNumber]);
+
+  function handlePrintReceipt() {
+    document.body.classList.add("ticket-receipt-printing");
+    window.print();
+  }
 
   async function downloadSelectedTicket() {
     if (!selectedTicket) {
@@ -434,7 +451,7 @@ export function TicketHistoryPage() {
       workspaceClassName="print:hidden"
       asideClassName="print:block"
       aside={
-        <section className="h-[calc(100vh-8.5rem)] overflow-y-auto rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] print:h-auto print:max-h-none print:overflow-visible print:rounded-none print:border-0 print:p-0 print:shadow-none sm:p-6">
+        <section className="ticket-history-print-shell h-[calc(100vh-8.5rem)] overflow-y-auto rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] print:h-auto print:max-h-none print:overflow-visible print:rounded-none print:border-0 print:p-0 print:shadow-none sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">
@@ -475,7 +492,7 @@ export function TicketHistoryPage() {
                 type="button"
                 variant="outline"
                 className={actionButtonClassName}
-                onClick={() => window.print()}
+                onClick={handlePrintReceipt}
                 disabled={!selectedTicket}
                 aria-label="Print receipt"
                 title="Print"
@@ -552,7 +569,7 @@ export function TicketHistoryPage() {
         }
       />
 
-      <div className="flex h-[calc(100vh-8.5rem)] flex-col gap-5">
+      <div className="ticket-history-browser flex h-[calc(100vh-8.5rem)] flex-col gap-5">
         <div className="grid gap-3 sm:grid-cols-3">
           <div className="rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">
