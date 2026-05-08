@@ -1,6 +1,6 @@
 from io import StringIO
 from decimal import Decimal
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import patch
 
 from django.core.management import call_command
@@ -1616,6 +1616,17 @@ class PrivateWorkflowAPITests(APITestCase):
         self.assertEqual(len(transaction_response.data), 1)
         self.assertEqual(transaction_response.data[0]['id'], self.archived_transaction.id)
 
+    def test_archived_ledger_view_keeps_closed_allocations(self):
+        response = self.client.get(f'/api/ledgers/{self.archived_ledger.id}/view/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(Decimal(response.data['summary']['allocated_total']), Decimal('100.00'))
+        identifier_row = next(
+            row for row in response.data['identifiers']
+            if row['number'] == self.identifier.number
+        )
+        self.assertEqual(Decimal(identifier_row['allocated_amount']), Decimal('100.00'))
+
     def test_ticket_list_can_fetch_second_page(self):
         for index in range(24):
             ticket = Ticket.objects.create(
@@ -1717,6 +1728,540 @@ class PrivateWorkflowAPITests(APITestCase):
         self.assertEqual(response.data['summary']['ticket_count'], 2)
         self.assertEqual(response.data['summary']['total_entries'], 2)
         self.assertEqual(Decimal(response.data['summary']['total_amount']), Decimal('100.00'))
+
+    def test_approved_overflows_can_be_filtered_by_closed_period(self):
+        response = self.client.get('/api/overflows/approved/', {
+            'period_id': self.archived_period.id,
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        overflow_ids = {item['id'] for item in response.data}
+        self.assertIn(self.archived_overflow.id, overflow_ids)
+
+    def test_approved_overflows_can_be_paged_for_closed_period(self):
+        first_identifier = Identifier.objects.create(number='771')
+        second_identifier = Identifier.objects.create(number='772')
+
+        first_ticket = Ticket.objects.create(
+            customer_name='Archive Overflow One',
+            created_by=self.approver,
+        )
+        second_ticket = Ticket.objects.create(
+            customer_name='Archive Overflow Two',
+            created_by=self.approver,
+        )
+        first_transaction = Transaction.objects.create(
+            ticket=first_ticket,
+            identifier=first_identifier,
+            total_amount=Decimal('200.00'),
+            created_by=self.approver,
+        )
+        second_transaction = Transaction.objects.create(
+            ticket=second_ticket,
+            identifier=second_identifier,
+            total_amount=Decimal('200.00'),
+            created_by=self.approver,
+        )
+        first_overflow = Overflow.objects.create(
+            transaction=first_transaction,
+            identifier=first_identifier,
+            period=self.archived_period,
+            owner=self.approver,
+            excess_amount=Decimal('25.00'),
+            amount_to_approve=Decimal('25.00'),
+            status=Overflow.STATUS_CSO,
+            approved_at=timezone.now() - timedelta(minutes=2),
+        )
+        second_overflow = Overflow.objects.create(
+            transaction=second_transaction,
+            identifier=second_identifier,
+            period=self.archived_period,
+            owner=self.approver,
+            excess_amount=Decimal('30.00'),
+            amount_to_approve=Decimal('30.00'),
+            status=Overflow.STATUS_CSO,
+            approved_at=timezone.now() - timedelta(minutes=1),
+        )
+
+        response = self.client.get('/api/overflows/approved/', {
+            'period_id': self.archived_period.id,
+            'page': 2,
+            'page_size': 1,
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['count'], 3)
+        self.assertEqual(response.data['page'], 2)
+        self.assertEqual(response.data['page_size'], 1)
+        self.assertEqual(response.data['total_pages'], 3)
+        self.assertEqual(len(response.data['results']), 1)
+        returned_ids = {item['id'] for item in response.data['results']}
+        self.assertEqual(returned_ids, {first_overflow.id})
+
+    def test_pending_and_overkill_overflows_can_be_paged(self):
+        first_pending_identifier = Identifier.objects.create(number='781')
+        second_pending_identifier = Identifier.objects.create(number='782')
+        first_pending_ticket = Ticket.objects.create(
+            customer_name='Pending One',
+            created_by=self.approver,
+        )
+        second_pending_ticket = Ticket.objects.create(
+            customer_name='Pending Two',
+            created_by=self.approver,
+        )
+        first_pending_transaction = Transaction.objects.create(
+            ticket=first_pending_ticket,
+            identifier=first_pending_identifier,
+            total_amount=Decimal('200.00'),
+            created_by=self.approver,
+        )
+        second_pending_transaction = Transaction.objects.create(
+            ticket=second_pending_ticket,
+            identifier=second_pending_identifier,
+            total_amount=Decimal('200.00'),
+            created_by=self.approver,
+        )
+        first_pending = Overflow.objects.get(
+            transaction=first_pending_transaction,
+            status=Overflow.STATUS_TCSO,
+        )
+        second_pending = Overflow.objects.get(
+            transaction=second_pending_transaction,
+            status=Overflow.STATUS_TCSO,
+        )
+
+        overkill_identifier_one = Identifier.objects.create(number='783')
+        overkill_identifier_two = Identifier.objects.create(number='784')
+        first_overkill = Overflow.objects.create(
+            identifier=overkill_identifier_one,
+            period=self.active_period,
+            owner=self.approver,
+            excess_amount=Decimal('25.00'),
+            amount_to_approve=Decimal('25.00'),
+            status=Overflow.STATUS_OVERKILL,
+            approved_at=timezone.now() - timedelta(minutes=2),
+        )
+        second_overkill = Overflow.objects.create(
+            identifier=overkill_identifier_two,
+            period=self.active_period,
+            owner=self.approver,
+            excess_amount=Decimal('30.00'),
+            amount_to_approve=Decimal('30.00'),
+            status=Overflow.STATUS_OVERKILL,
+            approved_at=timezone.now() - timedelta(minutes=1),
+        )
+
+        pending_response = self.client.get('/api/overflows/pending/', {
+            'page': 2,
+            'page_size': 1,
+        })
+        overkill_response = self.client.get('/api/overflows/overkill/', {
+            'page': 2,
+            'page_size': 1,
+        })
+
+        self.assertEqual(pending_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(pending_response.data['count'], 2)
+        self.assertEqual(pending_response.data['page'], 2)
+        self.assertEqual(pending_response.data['page_size'], 1)
+        self.assertEqual(pending_response.data['total_pages'], 2)
+        self.assertEqual({item['id'] for item in pending_response.data['results']}, {first_pending.id})
+
+        self.assertEqual(overkill_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(overkill_response.data['count'], 2)
+        self.assertEqual(overkill_response.data['page'], 2)
+        self.assertEqual(overkill_response.data['page_size'], 1)
+        self.assertEqual(overkill_response.data['total_pages'], 2)
+        self.assertEqual({item['id'] for item in overkill_response.data['results']}, {first_overkill.id})
+
+    def test_overflow_page_filters_and_summary_use_full_dataset(self):
+        collaborator = Collaborator.objects.create(
+            owner=self.approver,
+            username='summary_collab',
+            full_name='Summary Collaborator',
+            email='summary@example.com',
+            phone_number='0123456789',
+        )
+        first_identifier = Identifier.objects.create(number='791')
+        second_identifier = Identifier.objects.create(number='792')
+
+        first_ticket = Ticket.objects.create(
+            customer_name='Summary Customer One',
+            created_by=self.approver,
+        )
+        second_ticket = Ticket.objects.create(
+            customer_name='Summary Customer Two',
+            created_by=self.approver,
+        )
+        first_transaction = Transaction.objects.create(
+            ticket=first_ticket,
+            identifier=first_identifier,
+            total_amount=Decimal('200.00'),
+            created_by=self.approver,
+        )
+        second_transaction = Transaction.objects.create(
+            ticket=second_ticket,
+            identifier=second_identifier,
+            total_amount=Decimal('200.00'),
+            created_by=self.approver,
+        )
+
+        first_overflow = Overflow.objects.create(
+            transaction=first_transaction,
+            identifier=first_identifier,
+            period=self.active_period,
+            owner=self.approver,
+            excess_amount=Decimal('25.00'),
+            amount_to_approve=Decimal('25.00'),
+            status=Overflow.STATUS_CSO,
+            approved_at=timezone.now() - timedelta(minutes=2),
+        )
+        second_overflow = Overflow.objects.create(
+            transaction=second_transaction,
+            identifier=second_identifier,
+            period=self.active_period,
+            owner=self.approver,
+            excess_amount=Decimal('30.00'),
+            amount_to_approve=Decimal('30.00'),
+            status=Overflow.STATUS_CSO,
+            approved_at=timezone.now() - timedelta(minutes=1),
+        )
+        first_overflow.collaborators.add(collaborator)
+        second_overflow.collaborators.add(collaborator)
+
+        response = self.client.get('/api/overflows/approved/', {
+            'page': 1,
+            'page_size': 1,
+            'identifier_number': '79',
+            'collaborator_name': collaborator.full_name,
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['count'], 2)
+        self.assertEqual(response.data['total_pages'], 2)
+        self.assertEqual(Decimal(response.data['summary']['total_amount']), Decimal('55.00'))
+
+    def test_spill_over_export_summary_can_scope_to_collaborator_and_all(self):
+        tx = Transaction.objects.create(
+            ticket=Ticket.objects.create(customer_name='Spill Export Ticket', created_by=self.approver),
+            identifier=self.second_identifier,
+            total_amount=Decimal('250.00'),
+            created_by=self.approver,
+        )
+        overflow = Overflow.objects.get(transaction=tx)
+        approval_response = self.client.post(
+            f'/api/overflows/{overflow.id}/approve/',
+            {
+                'amount_to_approve': '180.00',
+                'collaborator_ids': [self.collaborator.id],
+            },
+            format='json'
+        )
+        self.assertEqual(approval_response.status_code, status.HTTP_200_OK)
+
+        collaborator_response = self.client.get(
+            '/api/collaborators/spill-over-export/',
+            {
+                'period_id': self.active_period.id,
+                'collaborator_id': self.collaborator.id,
+            }
+        )
+        all_response = self.client.get(
+            '/api/collaborators/spill-over-export/',
+            {
+                'period_id': self.active_period.id,
+                'collaborator_id': 'all',
+            }
+        )
+
+        self.assertEqual(collaborator_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(collaborator_response.data['collaborator_label'], self.collaborator.full_name)
+        self.assertGreaterEqual(Decimal(collaborator_response.data['summary']['total_amount']), Decimal('180.00'))
+        self.assertTrue(any(row['identifier_number'] == self.second_identifier.number for row in collaborator_response.data['rows']))
+
+        self.assertEqual(all_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(all_response.data['collaborator_label'], 'All collaborators')
+
+    def test_spill_over_export_all_collaborators_keeps_duplicate_identifiers_separate(self):
+        duplicate_identifier = Identifier.objects.create(number='887')
+        first_tx = Transaction.objects.create(
+            ticket=Ticket.objects.create(customer_name='First Duplicate Export Ticket', created_by=self.approver),
+            identifier=duplicate_identifier,
+            total_amount=Decimal('250.00'),
+            created_by=self.approver,
+        )
+        second_tx = Transaction.objects.create(
+            ticket=Ticket.objects.create(customer_name='Second Duplicate Export Ticket', created_by=self.approver),
+            identifier=duplicate_identifier,
+            total_amount=Decimal('200.00'),
+            created_by=self.approver,
+        )
+        first_overflow = Overflow.objects.get(transaction=first_tx)
+        second_overflow = Overflow.objects.get(transaction=second_tx)
+
+        first_approval_response = self.client.post(
+            f'/api/overflows/{first_overflow.id}/approve/',
+            {
+                'amount_to_approve': str(first_overflow.excess_amount),
+                'collaborator_ids': [self.collaborator.id],
+            },
+            format='json'
+        )
+        second_approval_response = self.client.post(
+            f'/api/overflows/{second_overflow.id}/approve/',
+            {
+                'amount_to_approve': str(second_overflow.excess_amount),
+                'collaborator_ids': [self.collaborator.id],
+            },
+            format='json'
+        )
+        self.assertEqual(first_approval_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(second_approval_response.status_code, status.HTTP_200_OK)
+
+        all_response = self.client.get(
+            '/api/collaborators/spill-over-export/',
+            {
+                'period_id': self.active_period.id,
+                'collaborator_id': 'all',
+            }
+        )
+
+        self.assertEqual(all_response.status_code, status.HTTP_200_OK)
+        matching_rows = [
+            row for row in all_response.data['rows']
+            if row['identifier_number'] == duplicate_identifier.number
+        ]
+        self.assertEqual(len(matching_rows), 2)
+        self.assertEqual(sorted(Decimal(row['amount']) for row in matching_rows), sorted([
+            first_overflow.excess_amount,
+            second_overflow.excess_amount,
+        ]))
+
+    def test_spill_over_export_collaborator_keeps_duplicate_identifiers_separate_and_time_ordered(self):
+        duplicate_identifier = Identifier.objects.create(number='886')
+        first_tx = Transaction.objects.create(
+            ticket=Ticket.objects.create(customer_name='First Collaborator Duplicate Export Ticket', created_by=self.approver),
+            identifier=duplicate_identifier,
+            total_amount=Decimal('220.00'),
+            created_by=self.approver,
+        )
+        second_tx = Transaction.objects.create(
+            ticket=Ticket.objects.create(customer_name='Second Collaborator Duplicate Export Ticket', created_by=self.approver),
+            identifier=duplicate_identifier,
+            total_amount=Decimal('180.00'),
+            created_by=self.approver,
+        )
+        first_overflow = Overflow.objects.get(transaction=first_tx)
+        second_overflow = Overflow.objects.get(transaction=second_tx)
+
+        first_approval_response = self.client.post(
+            f'/api/overflows/{first_overflow.id}/approve/',
+            {
+                'amount_to_approve': str(first_overflow.excess_amount),
+                'collaborator_ids': [self.collaborator.id],
+            },
+            format='json'
+        )
+        second_approval_response = self.client.post(
+            f'/api/overflows/{second_overflow.id}/approve/',
+            {
+                'amount_to_approve': str(second_overflow.excess_amount),
+                'collaborator_ids': [self.collaborator.id],
+            },
+            format='json'
+        )
+        self.assertEqual(first_approval_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(second_approval_response.status_code, status.HTTP_200_OK)
+
+        collaborator_response = self.client.get(
+            '/api/collaborators/spill-over-export/',
+            {
+                'period_id': self.active_period.id,
+                'collaborator_id': self.collaborator.id,
+            }
+        )
+
+        self.assertEqual(collaborator_response.status_code, status.HTTP_200_OK)
+        matching_rows = [
+            row for row in collaborator_response.data['rows']
+            if row['identifier_number'] == duplicate_identifier.number
+        ]
+        self.assertEqual(len(matching_rows), 2)
+        self.assertEqual(
+            [Decimal(row['amount']) for row in matching_rows],
+            [first_overflow.excess_amount, second_overflow.excess_amount],
+        )
+
+    def test_approved_overflows_can_be_searched_for_closed_period(self):
+        searchable_identifier = Identifier.objects.create(number='889')
+        searchable_ticket = Ticket.objects.create(
+            customer_name='Searchable Archive Customer',
+            created_by=self.approver,
+        )
+        searchable_transaction = Transaction.objects.create(
+            ticket=searchable_ticket,
+            identifier=searchable_identifier,
+            total_amount=Decimal('200.00'),
+            created_by=self.approver,
+        )
+        searchable_overflow = Overflow.objects.create(
+            transaction=searchable_transaction,
+            identifier=searchable_identifier,
+            period=self.archived_period,
+            owner=self.approver,
+            excess_amount=Decimal('25.00'),
+            amount_to_approve=Decimal('25.00'),
+            status=Overflow.STATUS_CSO,
+            approved_at=timezone.now(),
+        )
+        searchable_overflow.collaborators.add(self.collaborator)
+
+        response = self.client.get('/api/overflows/approved/', {
+            'period_id': self.archived_period.id,
+            'search': '889',
+            'page': 1,
+            'page_size': 20,
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        returned_ids = {item['id'] for item in response.data['results']}
+        self.assertIn(searchable_overflow.id, returned_ids)
+
+    def test_approved_overflows_can_be_filtered_by_identifier_field_for_closed_period(self):
+        searchable_identifier = Identifier.objects.create(number='991')
+        searchable_ticket = Ticket.objects.create(
+            customer_name='Archive Filtered Overflow',
+            created_by=self.approver,
+        )
+        searchable_transaction = Transaction.objects.create(
+            ticket=searchable_ticket,
+            identifier=searchable_identifier,
+            total_amount=Decimal('200.00'),
+            created_by=self.approver,
+        )
+        searchable_overflow = Overflow.objects.create(
+            transaction=searchable_transaction,
+            identifier=searchable_identifier,
+            period=self.archived_period,
+            owner=self.approver,
+            excess_amount=Decimal('25.00'),
+            amount_to_approve=Decimal('25.00'),
+            status=Overflow.STATUS_CSO,
+            approved_at=timezone.now(),
+        )
+
+        response = self.client.get('/api/overflows/approved/', {
+            'period_id': self.archived_period.id,
+            'identifier_number': '991',
+            'page': 1,
+            'page_size': 20,
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        returned_ids = {item['id'] for item in response.data['results']}
+        self.assertIn(searchable_overflow.id, returned_ids)
+        self.assertNotIn(self.archived_overflow.id, returned_ids)
+
+    def test_approved_overflows_can_be_filtered_by_collaborator_field_for_closed_period(self):
+        searchable_identifier = Identifier.objects.create(number='993')
+        searchable_ticket = Ticket.objects.create(
+            customer_name='Archive Collaborator Filter',
+            created_by=self.approver,
+        )
+        searchable_transaction = Transaction.objects.create(
+            ticket=searchable_ticket,
+            identifier=searchable_identifier,
+            total_amount=Decimal('200.00'),
+            created_by=self.approver,
+        )
+        searchable_overflow = Overflow.objects.create(
+            transaction=searchable_transaction,
+            identifier=searchable_identifier,
+            period=self.archived_period,
+            owner=self.approver,
+            excess_amount=Decimal('25.00'),
+            amount_to_approve=Decimal('25.00'),
+            status=Overflow.STATUS_CSO,
+            approved_at=timezone.now(),
+        )
+        searchable_overflow.collaborators.add(self.collaborator)
+
+        response = self.client.get('/api/overflows/approved/', {
+            'period_id': self.archived_period.id,
+            'collaborator_name': self.collaborator.full_name,
+            'page': 1,
+            'page_size': 20,
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        returned_ids = {item['id'] for item in response.data['results']}
+        self.assertIn(searchable_overflow.id, returned_ids)
+
+    def test_ticket_list_can_filter_by_ticket_customer_and_identifier_fields(self):
+        ticket = Ticket.objects.create(
+            customer_name='Archive Search Customer',
+            created_by=self.approver,
+        )
+        transaction = Transaction.objects.create(
+            ticket=ticket,
+            identifier=Identifier.objects.create(number='992'),
+            total_amount=Decimal('120.00'),
+            created_by=self.approver,
+        )
+        LedgerAllocation.objects.create(
+            ledger=self.archived_ledger,
+            transaction=transaction,
+            amount=Decimal('100.00'),
+        )
+
+        response = self.client.get('/api/tickets/', {
+            'period_id': self.archived_period.id,
+            'page': 1,
+            'page_size': 20,
+            'ticket_number': ticket.ticket_number,
+            'customer_name': 'Archive Search Customer',
+            'identifier_number': '992',
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        returned_ticket_numbers = {item['ticket_number'] for item in response.data['results']}
+        self.assertEqual(returned_ticket_numbers, {ticket.ticket_number})
+
+    def test_period_close_auto_approves_pending_overflows_with_current_user_collaborator(self):
+        closing_identifier = Identifier.objects.create(number='228')
+        closing_ticket = Ticket.objects.create(
+            customer_name='Pending Close Customer',
+            created_by=self.approver,
+        )
+        closing_transaction = Transaction.objects.create(
+            ticket=closing_ticket,
+            identifier=closing_identifier,
+            total_amount=Decimal('240.00'),
+            created_by=self.approver,
+        )
+        pending_overflow = Overflow.objects.get(
+            transaction=closing_transaction,
+            status=Overflow.STATUS_TCSO,
+        )
+
+        response = self.client.post(
+            f'/api/periods/{self.active_period.id}/close/',
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        pending_overflow.refresh_from_db()
+        self.assertEqual(pending_overflow.status, Overflow.STATUS_CSO)
+        self.assertEqual(pending_overflow.amount_to_approve, Decimal('100.00'))
+        auto_collaborator = Collaborator.objects.get(
+            owner=self.approver,
+            username=self.approver.username,
+        )
+        self.assertEqual(auto_collaborator.full_name, 'Approver User')
+        self.assertEqual(
+            list(pending_overflow.collaborators.values_list('id', flat=True)),
+            [auto_collaborator.id],
+        )
 
     def test_ticket_detail_returns_receipt_transactions_for_current_user(self):
         response = self.client.get(f'/api/tickets/{self.active_ticket.ticket_number}/')
