@@ -3788,7 +3788,7 @@ class TicketReceiptPdfExportView(APIView):
 
             info_table = Table([
                 ['Ticket No', ticket.ticket_number, 'Entries', str(len(visible_transactions))],
-                ['Customer', customer_name, 'Total amount', f"{total_amount:,.2f}"],
+                ['Customer', customer_name, 'Total amount', f"{total_amount:,.0f}"],
             ], colWidths=[1.15 * inch, 2.0 * inch, 1.25 * inch, 1.6 * inch])
             info_table.setStyle(TableStyle([
                 ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
@@ -3819,7 +3819,7 @@ class TicketReceiptPdfExportView(APIView):
                         ),
                         '',
                         Paragraph(
-                            f"<b>{_ticket_visible_line_amount(transaction_obj):,.2f}</b>",
+                            f"<b>{_ticket_visible_line_amount(transaction_obj):,.0f}</b>",
                             ParagraphStyle(
                                 'TicketReceiptRowAmount',
                                 parent=styles['BodyText'],
