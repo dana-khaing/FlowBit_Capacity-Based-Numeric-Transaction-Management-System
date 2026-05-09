@@ -1,218 +1,271 @@
-import { WorkspaceShell } from "@/components/app/workspace-shell";
+"use client";
 
-const summaryCards = [
-  {
-    label: "Total entries today",
-    value: "48",
-    meta: "+12 since yesterday",
-    tone: "default",
-  },
-  {
-    label: "Capacity used",
-    value: "62%",
-    meta: "620k / 1.0m",
-    tone: "default",
-  },
-  {
-    label: "Overflow pending",
-    value: "3",
-    meta: "Needs approval",
-    tone: "critical",
-  },
-  {
-    label: "Active ledgers",
-    value: "2",
-    meta: "Ledger A · Ledger B",
-    tone: "default",
-  },
-];
+import Link from "next/link";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import {
+  faArrowRight,
+  faBoxArchive,
+  faCalendarDays,
+  faCircleCheck,
+  faFileInvoice,
+  faFolderOpen,
+  faLayerGroup,
+  faPlus,
+  faShieldHalved,
+  faTicket,
+  faTriangleExclamation,
+} from "@fortawesome/free-solid-svg-icons";
+import { AppSectionPage } from "@/components/app/app-section-page";
 
-const hotNumbers = [
-  { identifier: "234", amount: "88k units", progress: "88%" },
-  { identifier: "678", amount: "74k units", progress: "74%" },
-  { identifier: "456", amount: "69k units", progress: "69%" },
-  { identifier: "901", amount: "61k units", progress: "61%" },
-  { identifier: "789", amount: "55k units", progress: "55%" },
-  { identifier: "124", amount: "50k units", progress: "50%" },
-  { identifier: "012", amount: "43k units", progress: "43%" },
-  { identifier: "345", amount: "39k units", progress: "39%" },
-  { identifier: "567", amount: "31k units", progress: "31%" },
-  { identifier: "892", amount: "22k units", progress: "22%" },
-];
-
-const almostFull = [
-  { identifier: "234", remaining: "2k remaining", progress: "96%", tone: "critical" },
-  { identifier: "789", remaining: "4k remaining", progress: "92%", tone: "critical" },
-  { identifier: "456", remaining: "6k remaining", progress: "88%", tone: "critical" },
-  { identifier: "123", remaining: "8k remaining", progress: "84%", tone: "critical" },
-  { identifier: "567", remaining: "9k remaining", progress: "82%", tone: "warning" },
-  { identifier: "890", remaining: "12k remaining", progress: "76%", tone: "warning" },
-];
-
-const recentEntries = [
-  { identifier: "121", ticket: "FB-000121", amount: "→ 4,300", time: "10:38" },
-  { identifier: "345", ticket: "FB-000120", amount: "→ 1,000", time: "10:35" },
-  { identifier: "678", ticket: "FB-000119", amount: "→ 500", time: "10:30" },
-  { identifier: "234", ticket: "FB-000118", amount: "→ 2,500", time: "10:28" },
-  { identifier: "901", ticket: "FB-000117", amount: "→ 1,800", time: "10:25" },
-  { identifier: "456", ticket: "FB-000116", amount: "→ 3,200", time: "10:22" },
-];
-
-const footerGroups = [
+const primaryActions = [
   {
-    title: "Navigation",
-    items: ["Dashboard", "Entries log", "Entries history", "Draw flow"],
+    label: "Create ticket",
+    href: "/tickets/create",
+    icon: faPlus,
+    tone: "bg-stone-950 text-white",
+    helper: "Open the live ticket workspace",
   },
   {
-    title: "Ledgers",
-    items: ["Create ledger", "Ledger history", "Export PDF", "Period settings"],
+    label: "Spill over",
+    href: "/spill-over",
+    icon: faTriangleExclamation,
+    tone: "bg-amber-50 text-amber-900",
+    helper: "Review pending, approved, and overkill queues",
   },
   {
-    title: "Admin",
-    items: ["User management", "Role permissions", "Audit trail", "Master override"],
+    label: "Tickets",
+    href: "/tickets",
+    icon: faTicket,
+    tone: "bg-sky-50 text-sky-900",
+    helper: "Search and print current-period tickets",
   },
   {
-    title: "Support",
-    items: ["Documentation", "Changelog", "Report issue", "Profile settings"],
+    label: "Ledgers",
+    href: "/ledgers",
+    icon: faLayerGroup,
+    tone: "bg-emerald-50 text-emerald-900",
+    helper: "Check ledger status and capacity view",
   },
 ];
 
-function summaryValueClass(tone: string) {
-  return tone === "critical" ? "text-red-700" : "text-stone-900";
-}
+const workflowCards = [
+  {
+    title: "Ticket flow",
+    body: "Create tickets, preview ledger fills, and confirm spill over before submit.",
+    href: "/tickets/create",
+    icon: faFileInvoice,
+  },
+  {
+    title: "Spill-over control",
+    body: "Approve, return, and export collaborator spill-over activity from one place.",
+    href: "/spill-over",
+    icon: faTriangleExclamation,
+  },
+  {
+    title: "Archive review",
+    body: "Open closed periods and inspect archived ledgers, tickets, and spill over safely.",
+    href: "/archive",
+    icon: faBoxArchive,
+  },
+  {
+    title: "Exports",
+    body: "Download ledger exports and print collaborator spill-over receipts.",
+    href: "/export-ledger",
+    icon: faFolderOpen,
+  },
+];
 
-function panelToneClass(tone: string) {
-  return tone === "critical"
-    ? "border-red-200 bg-red-50"
-    : "border-amber-200 bg-amber-50";
-}
+const operationsChecklist = [
+  "Open an active period before creating operational data.",
+  "Create working ledgers for each user before ticket entry starts.",
+  "Approve pending spill over before end-of-period archive review.",
+  "Use archive for closed-period inspection only; archive data stays read-only.",
+];
 
-function barToneClass(tone: string) {
-  return tone === "critical" ? "bg-red-700" : "bg-amber-700";
-}
+const oversightItems = [
+  { label: "Periods", href: "/periods", icon: faCalendarDays, helper: "Admin-only period controls" },
+  { label: "Override codes", href: "/admin/override-codes", icon: faShieldHalved, helper: "Review or rotate admin override access" },
+  { label: "Audit logs", href: "/admin/audit-logs", icon: faCircleCheck, helper: "Trace approvals, refunds, and archive actions" },
+];
 
 export default function Home() {
   return (
-    <WorkspaceShell>
-      <div className="mx-auto w-full max-w-[1800px] px-4 py-2 sm:px-6 lg:px-8 lg:py-5">
-            <section className="rounded-[28px] border border-stone-900/8 bg-white px-5 py-6 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:px-8 sm:py-8">
-          <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
+    <AppSectionPage
+      eyebrow="Dashboard"
+      title="Dashboard"
+      description=""
+      workspaceLabel="Dashboard"
+      aside={
+        <aside className="space-y-5">
+          <section className="rounded-[28px] border border-stone-900/8 bg-[#f3f0ea] p-5 shadow-[0_8px_24px_rgba(28,24,20,0.03)] sm:p-6">
+            <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">
+              Operations
+            </p>
+            <div className="mt-4 space-y-3">
+              {oversightItems.map((item) => (
+                <Link
+                  key={item.label}
+                  href={item.href}
+                  className="block rounded-[22px] border border-stone-900/8 bg-white px-4 py-4 transition hover:border-stone-900/16 hover:bg-stone-50"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-stone-100 text-stone-700">
+                      <FontAwesomeIcon icon={item.icon} className="h-4 w-4" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-stone-900">{item.label}</p>
+                      <p className="mt-1 text-sm text-stone-500">{item.helper}</p>
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </section>
+
+          <section className="rounded-[28px] border border-stone-900/8 bg-[#f3f0ea] p-5 shadow-[0_8px_24px_rgba(28,24,20,0.03)] sm:p-6">
+            <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">
+              Daily check
+            </p>
+            <div className="mt-4 space-y-3">
+              {operationsChecklist.map((item) => (
+                <div
+                  key={item}
+                  className="flex items-start gap-3 rounded-[20px] bg-white px-4 py-4"
+                >
+                  <span className="mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+                    <FontAwesomeIcon icon={faCircleCheck} className="h-3 w-3" />
+                  </span>
+                  <p className="text-sm leading-6 text-stone-600">{item}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        </aside>
+      }
+    >
+      <div className="space-y-6">
+        <section className="rounded-[24px] border border-stone-900/8 bg-[#f7f4ef] px-5 py-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:px-6">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <p className="text-sm font-medium uppercase tracking-[0.2em] text-stone-400">Next Draw</p>
-              <h1 className="mt-3 font-sans text-6xl font-light tracking-[0.18em] text-stone-950 sm:text-7xl">
-                000 — 000
+              <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">
+                FlowBit workspace
+              </p>
+              <h1 className="mt-3 text-3xl font-semibold text-stone-950 sm:text-4xl">
+                Run ticket entry, spill-over control, exports, and archive review from one dashboard.
               </h1>
-              <p className="mt-4 text-2xl font-light text-stone-500">16 March 2026 · 3:00 AM</p>
+              <p className="mt-3 max-w-3xl text-sm leading-7 text-stone-600 sm:text-base">
+                This dashboard is your jump point for the active period. Use it to move quickly between live
+                ticket work, ledger checks, spill-over approvals, exports, and closed-period archive review.
+              </p>
             </div>
 
-            <div className="text-left xl:text-right">
-              <div className="inline-flex rounded-2xl bg-[#f5e7c8] px-5 py-3 text-xl font-medium text-[#9d5a18]">
-                Draw in 3d 10h
-              </div>
-              <p className="mt-5 text-xl font-light text-stone-400">Previous: 456 · 1 Mar 2026</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {primaryActions.slice(0, 2).map((action) => (
+                <Link
+                  key={action.label}
+                  href={action.href}
+                  className={`rounded-[22px] px-5 py-5 shadow-[0_6px_18px_rgba(28,24,20,0.04)] transition hover:translate-y-[-1px] ${action.tone}`}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/20">
+                      <FontAwesomeIcon icon={action.icon} className="h-4 w-4" />
+                    </span>
+                    <FontAwesomeIcon icon={faArrowRight} className="h-4 w-4" />
+                  </div>
+                  <p className="mt-4 text-lg font-semibold">{action.label}</p>
+                  <p className="mt-1 text-sm opacity-80">{action.helper}</p>
+                </Link>
+              ))}
             </div>
           </div>
-            </section>
+        </section>
 
-            <section className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {summaryCards.map((card) => (
-            <article
-              key={card.label}
-              className="rounded-[24px] border border-stone-900/8 bg-[#f3f0ea] px-5 py-5 shadow-[0_6px_18px_rgba(28,24,20,0.03)]"
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {primaryActions.map((action) => (
+            <Link
+              key={action.label}
+              href={action.href}
+              className="rounded-[24px] border border-stone-900/8 bg-white px-5 py-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] transition hover:border-stone-900/16 hover:bg-stone-50"
             >
-              <p className="text-[15px] text-stone-500">{card.label}</p>
-              <p className={`mt-3 text-5xl font-light ${summaryValueClass(card.tone)}`}>{card.value}</p>
-              <p className="mt-2 text-[15px] text-stone-400">{card.meta}</p>
-            </article>
+              <div className="flex items-center justify-between gap-3">
+                <span className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-stone-100 text-stone-700">
+                  <FontAwesomeIcon icon={action.icon} className="h-4 w-4" />
+                </span>
+                <FontAwesomeIcon icon={faArrowRight} className="h-4 w-4 text-stone-400" />
+              </div>
+              <p className="mt-4 text-lg font-semibold text-stone-950">{action.label}</p>
+              <p className="mt-2 text-sm leading-6 text-stone-500">{action.helper}</p>
+            </Link>
           ))}
-            </section>
+        </section>
 
-            <section className="mt-5 grid gap-5 2xl:grid-cols-3">
+        <section className="grid gap-5 xl:grid-cols-2">
           <article className="rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6">
             <div className="flex items-center gap-3">
-              <span className="h-3 w-3 rounded-full bg-lime-600" />
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-stone-100 text-stone-700">
+                <FontAwesomeIcon icon={faTicket} className="h-4 w-4" />
+              </span>
               <div>
-                <h2 className="text-[17px] font-medium uppercase tracking-[0.08em] text-stone-600">Hot Numbers</h2>
-                <p className="mt-1 text-[15px] text-stone-400">Total units entered · Mar 1–16</p>
+                <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">
+                  Workflows
+                </p>
+                <h2 className="mt-1 text-xl font-semibold text-stone-950">Core sections</h2>
               </div>
             </div>
 
-            <div className="mt-6 space-y-5">
-              {hotNumbers.map((item) => (
-                <div key={item.identifier} className="grid items-center gap-3 sm:grid-cols-[64px_minmax(0,1fr)_120px]">
-                  <div className="text-2xl font-medium text-stone-900">{item.identifier}</div>
-                  <div className="h-3 rounded-full bg-stone-100">
-                    <div className="h-full rounded-full bg-lime-600" style={{ width: item.progress }} />
-                  </div>
-                  <div className="text-right text-[15px] text-stone-400">{item.amount}</div>
-                </div>
+            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+              {workflowCards.map((card) => (
+                <Link
+                  key={card.title}
+                  href={card.href}
+                  className="rounded-[24px] border border-stone-900/8 bg-stone-50 px-5 py-5 transition hover:border-stone-900/16 hover:bg-white"
+                >
+                  <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white text-stone-700 shadow-[0_4px_12px_rgba(28,24,20,0.05)]">
+                    <FontAwesomeIcon icon={card.icon} className="h-4 w-4" />
+                  </span>
+                  <p className="mt-4 text-base font-semibold text-stone-950">{card.title}</p>
+                  <p className="mt-2 text-sm leading-6 text-stone-500">{card.body}</p>
+                </Link>
               ))}
             </div>
           </article>
 
           <article className="rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6">
             <div className="flex items-center gap-3">
-              <span className="h-3 w-3 rounded-full bg-red-700" />
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-stone-100 text-stone-700">
+                <FontAwesomeIcon icon={faCircleCheck} className="h-4 w-4" />
+              </span>
               <div>
-                <h2 className="text-[17px] font-medium uppercase tracking-[0.08em] text-stone-600">Almost Full</h2>
-                <p className="mt-1 text-[15px] text-stone-400">Least remaining capacity · action needed</p>
+                <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">
+                  How to use
+                </p>
+                <h2 className="mt-1 text-xl font-semibold text-stone-950">Suggested daily flow</h2>
               </div>
             </div>
 
-            <div className="mt-6 space-y-4">
-              {almostFull.map((item) => (
-                <div key={item.identifier} className={`rounded-[22px] border px-4 py-4 ${panelToneClass(item.tone)}`}>
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="text-2xl font-medium text-stone-900">{item.identifier}</div>
-                    <div className="text-xl font-medium text-stone-700">{item.remaining}</div>
-                  </div>
-                  <div className="mt-3 h-2.5 rounded-full bg-white/60">
-                    <div className={`h-full rounded-full ${barToneClass(item.tone)}`} style={{ width: item.progress }} />
-                  </div>
+            <div className="mt-5 space-y-4">
+              {[
+                "Start in Create ticket for live entry and preview checks.",
+                "Move to Spill over to approve, return, or review collaborator activity.",
+                "Use Tickets for receipt lookup, print, refund, and audit tracing.",
+                "Open Ledgers to inspect identifier usage and freeze controls.",
+                "Use Export for ledger downloads and spill-over receipt printing.",
+                "Finish in Archive when you need closed-period review only.",
+              ].map((item, index) => (
+                <div
+                  key={item}
+                  className="flex items-start gap-4 rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4"
+                >
+                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-stone-950 text-sm font-semibold text-white">
+                    {index + 1}
+                  </span>
+                  <p className="text-sm leading-6 text-stone-600">{item}</p>
                 </div>
               ))}
             </div>
           </article>
-
-          <article className="rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6">
-            <div className="flex items-center gap-3">
-              <span className="h-3 w-3 rounded-full bg-amber-700" />
-              <div>
-                <h2 className="text-[17px] font-medium uppercase tracking-[0.08em] text-stone-600">My Recent Entries</h2>
-                <p className="mt-1 text-[15px] text-stone-400">Your submissions this session</p>
-              </div>
-            </div>
-
-            <div className="mt-6 divide-y divide-stone-900/8">
-              {recentEntries.map((entry) => (
-                <div key={entry.ticket} className="grid gap-3 py-4 sm:grid-cols-[1fr_auto] sm:items-center">
-                  <div>
-                    <p className="text-2xl font-medium text-stone-900">{entry.identifier}</p>
-                    <p className="mt-1 text-[15px] text-stone-400">{entry.ticket}</p>
-                  </div>
-                  <div className="text-left sm:text-right">
-                    <p className="text-2xl font-light text-stone-700">{entry.amount}</p>
-                    <p className="mt-1 text-[15px] text-stone-400">{entry.time}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </article>
-            </section>
-
-            <section className="mt-8 grid gap-8 border-t border-stone-900/8 pt-8 md:grid-cols-2 xl:grid-cols-4">
-          {footerGroups.map((group) => (
-            <div key={group.title}>
-              <h3 className="text-[17px] font-medium uppercase tracking-[0.08em] text-stone-500">{group.title}</h3>
-              <ul className="mt-4 space-y-3 text-[18px] font-light text-stone-500">
-                {group.items.map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
-            </div>
-          ))}
-            </section>
+        </section>
       </div>
-    </WorkspaceShell>
+    </AppSectionPage>
   );
 }
