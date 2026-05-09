@@ -25,6 +25,28 @@ export type FlowBitDashboardReport = {
   reserve_capacity_granted: string;
 };
 
+export type FlowBitIdentifierCapacityRow = {
+  id: number;
+  number: string;
+  total_capacity: string;
+  normal_usage: string;
+  reserve_granted: string;
+  reserve_used: string;
+  remaining_capacity: string;
+  pending_overflow_amount: string;
+  approved_overflow_amount: string;
+  refunded_overflow_amount: string;
+};
+
+export type FlowBitIdentifierCapacityReport = {
+  period: {
+    id: number;
+    name: string;
+  } | null;
+  count: number;
+  results: FlowBitIdentifierCapacityRow[];
+};
+
 function authHeaders() {
   const token = getStoredToken();
   if (!token) {
@@ -40,6 +62,18 @@ export async function fetchDashboardReport(periodId?: number) {
   }
   const suffix = query.toString() ? `?${query.toString()}` : "";
   return apiRequest<FlowBitDashboardReport>(`/reports/dashboard/${suffix}`, {
+    method: "GET",
+    headers: authHeaders(),
+  });
+}
+
+export async function fetchIdentifierCapacityReport(periodId?: number) {
+  const query = new URLSearchParams();
+  if (periodId) {
+    query.set("period_id", String(periodId));
+  }
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return apiRequest<FlowBitIdentifierCapacityReport>(`/reports/identifiers/capacity/${suffix}`, {
     method: "GET",
     headers: authHeaders(),
   });
