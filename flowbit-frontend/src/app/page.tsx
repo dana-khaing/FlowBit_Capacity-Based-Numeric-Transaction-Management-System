@@ -7,6 +7,7 @@ import {
   faBoxArchive,
   faCalendarDays,
   faCircleCheck,
+  faClockRotateLeft,
   faFileInvoice,
   faFolderOpen,
   faLayerGroup,
@@ -73,6 +74,18 @@ const workflowCards = [
     href: "/export-ledger",
     icon: faFolderOpen,
   },
+  {
+    title: "Periods",
+    body: "Open, reopen, and archive term-based workspace data as an admin.",
+    href: "/periods",
+    icon: faCalendarDays,
+  },
+  {
+    title: "Profile",
+    body: "Check account details and keep your day-to-day workspace access in sync.",
+    href: "/profile",
+    icon: faCircleCheck,
+  },
 ];
 
 const operationsChecklist = [
@@ -86,6 +99,12 @@ const oversightItems = [
   { label: "Periods", href: "/periods", icon: faCalendarDays, helper: "Admin-only period controls" },
   { label: "Override codes", href: "/admin/override-codes", icon: faShieldHalved, helper: "Review or rotate admin override access" },
   { label: "Audit logs", href: "/admin/audit-logs", icon: faCircleCheck, helper: "Trace approvals, refunds, and archive actions" },
+];
+
+const supportLinks = [
+  { label: "Archive", href: "/archive", icon: faClockRotateLeft, helper: "Inspect closed periods safely" },
+  { label: "Export", href: "/export-ledger", icon: faFolderOpen, helper: "Download ledger and spill-over output" },
+  { label: "Contact support", href: "/contact-support", icon: faShieldHalved, helper: "Raise issues or get admin help" },
 ];
 
 export default function Home() {
@@ -199,7 +218,7 @@ export default function Home() {
           ))}
         </section>
 
-        <section className="grid gap-5 xl:grid-cols-2">
+        <section className="grid gap-5 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,0.9fr)]">
           <article className="rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6">
             <div className="flex items-center gap-3">
               <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-stone-100 text-stone-700">
@@ -207,13 +226,13 @@ export default function Home() {
               </span>
               <div>
                 <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">
-                  Workflows
+                  Section map
                 </p>
                 <h2 className="mt-1 text-xl font-semibold text-stone-950">Core sections</h2>
               </div>
             </div>
 
-            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+            <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {workflowCards.map((card) => (
                 <Link
                   key={card.title}
@@ -230,7 +249,8 @@ export default function Home() {
             </div>
           </article>
 
-          <article className="rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6">
+          <div className="space-y-5">
+            <article className="rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6">
             <div className="flex items-center gap-3">
               <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-stone-100 text-stone-700">
                 <FontAwesomeIcon icon={faCircleCheck} className="h-4 w-4" />
@@ -263,7 +283,43 @@ export default function Home() {
                 </div>
               ))}
             </div>
-          </article>
+            </article>
+
+            <article className="rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6">
+              <div className="flex items-center gap-3">
+                <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-stone-100 text-stone-700">
+                  <FontAwesomeIcon icon={faFolderOpen} className="h-4 w-4" />
+                </span>
+                <div>
+                  <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">
+                    Support links
+                  </p>
+                  <h2 className="mt-1 text-xl font-semibold text-stone-950">Follow-up sections</h2>
+                </div>
+              </div>
+
+              <div className="mt-5 space-y-3">
+                {supportLinks.map((item) => (
+                  <Link
+                    key={item.label}
+                    href={item.href}
+                    className="block rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4 transition hover:border-stone-900/16 hover:bg-white"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white text-stone-700 shadow-[0_4px_12px_rgba(28,24,20,0.05)]">
+                        <FontAwesomeIcon icon={item.icon} className="h-4 w-4" />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-stone-900">{item.label}</p>
+                        <p className="mt-1 text-sm text-stone-500">{item.helper}</p>
+                      </div>
+                      <FontAwesomeIcon icon={faArrowRight} className="h-4 w-4 text-stone-400" />
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </article>
+          </div>
         </section>
       </div>
     </AppSectionPage>
