@@ -46,6 +46,7 @@ from .models import (
     IdentifierCapacityAdjustment,
     IdentifierLedgerFreeze,
     _is_returned_pending_overflow,
+    _retry_pending_overflows,
     preview_transaction_allocation,
     refund_overflow,
     refund_transactions,
@@ -2009,6 +2010,7 @@ class OverflowViewSet(viewsets.ModelViewSet):
             overflow.helper_name = helper_name
             overflow.resolution_type = Overflow.RESOLUTION_APPROVE
             overflow.save()
+            overflow.collaborators.set(collaborators)
 
             overkill_overflow = None
             if extra_amount > 0:
@@ -2035,10 +2037,8 @@ class OverflowViewSet(viewsets.ModelViewSet):
                 )
                 if adjustment:
                     Ledger.get_capacity_reserve(target_period, overflow.transaction.created_by, create=True)
-
-        overflow.collaborators.set(collaborators)
-        if overkill_overflow:
-            overkill_overflow.collaborators.set(collaborators)
+                overkill_overflow.collaborators.set(collaborators)
+                _retry_pending_overflows(target_period, overflow.transaction.identifier)
         record_audit_log(
             request,
             'overflow.approved',
