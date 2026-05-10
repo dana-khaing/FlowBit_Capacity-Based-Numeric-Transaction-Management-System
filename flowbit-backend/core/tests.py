@@ -3089,6 +3089,204 @@ class PrivateWorkflowAPITests(APITestCase):
             ],
         )
 
+    def test_extra_approval_immediately_partially_covers_next_pending_overflow(self):
+        identifier = Identifier.objects.create(number='173')
+        IdentifierLedgerFreeze.objects.create(
+            identifier=identifier,
+            period=self.active_period,
+            owner=self.approver,
+            applies_to_all=True,
+        )
+
+        first_ticket = Ticket.objects.create(customer_name='First Pending', created_by=self.approver)
+        first_transaction = Transaction.objects.create(
+            ticket=first_ticket,
+            identifier=identifier,
+            total_amount=Decimal('1.00'),
+            created_by=self.approver,
+        )
+        first_overflow = Overflow.objects.get(transaction=first_transaction, status=Overflow.STATUS_TCSO)
+        first_overflow.excess_amount = Decimal('500.00')
+        first_overflow.save(update_fields=['excess_amount'])
+
+        second_ticket = Ticket.objects.create(customer_name='Second Pending', created_by=self.approver)
+        second_transaction = Transaction.objects.create(
+            ticket=second_ticket,
+            identifier=identifier,
+            total_amount=Decimal('1.00'),
+            created_by=self.approver,
+        )
+        second_overflow = Overflow.objects.get(transaction=second_transaction, status=Overflow.STATUS_TCSO)
+        second_overflow.excess_amount = Decimal('300.00')
+        second_overflow.save(update_fields=['excess_amount'])
+
+        response = self.client.post(
+            f'/api/overflows/{first_overflow.id}/approve/',
+            {
+                'amount_to_approve': '700.00',
+                'collaborator_ids': [self.collaborator.id],
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        first_overflow.refresh_from_db()
+        self.assertEqual(first_overflow.status, Overflow.STATUS_CSO)
+        self.assertEqual(first_overflow.amount_to_approve, Decimal('500.00'))
+
+        second_overflow.refresh_from_db()
+        self.assertEqual(second_overflow.status, Overflow.STATUS_TCSO)
+        self.assertEqual(second_overflow.excess_amount, Decimal('100.00'))
+
+        self.assertFalse(
+            Overflow.objects.filter(
+                identifier=identifier,
+                owner=self.approver,
+                period=self.active_period,
+                status=Overflow.STATUS_OVERKILL,
+            ).exists()
+        )
+
+        reserve_consumed = Overflow.objects.get(
+            transaction=second_transaction,
+            identifier=identifier,
+            status=Overflow.STATUS_CSO,
+            resolution_type=Overflow.RESOLUTION_RESERVE_CONSUMED,
+        )
+        self.assertEqual(reserve_consumed.amount_to_approve, Decimal('200.00'))
+        self.assertEqual(list(reserve_consumed.collaborators.values_list('id', flat=True)), [self.collaborator.id])
+
+    def test_extra_approval_can_fully_cover_next_pending_overflow(self):
+        identifier = Identifier.objects.create(number='174')
+        IdentifierLedgerFreeze.objects.create(
+            identifier=identifier,
+            period=self.active_period,
+            owner=self.approver,
+            applies_to_all=True,
+        )
+
+        first_ticket = Ticket.objects.create(customer_name='First Pending Full', created_by=self.approver)
+        first_transaction = Transaction.objects.create(
+            ticket=first_ticket,
+            identifier=identifier,
+            total_amount=Decimal('1.00'),
+            created_by=self.approver,
+        )
+        first_overflow = Overflow.objects.get(transaction=first_transaction, status=Overflow.STATUS_TCSO)
+        first_overflow.excess_amount = Decimal('500.00')
+        first_overflow.save(update_fields=['excess_amount'])
+
+        second_ticket = Ticket.objects.create(customer_name='Second Pending Full', created_by=self.approver)
+        second_transaction = Transaction.objects.create(
+            ticket=second_ticket,
+            identifier=identifier,
+            total_amount=Decimal('1.00'),
+            created_by=self.approver,
+        )
+        second_overflow = Overflow.objects.get(transaction=second_transaction, status=Overflow.STATUS_TCSO)
+        second_overflow.excess_amount = Decimal('300.00')
+        second_overflow.save(update_fields=['excess_amount'])
+
+        response = self.client.post(
+            f'/api/overflows/{first_overflow.id}/approve/',
+            {
+                'amount_to_approve': '800.00',
+                'collaborator_ids': [self.collaborator.id],
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        first_overflow.refresh_from_db()
+        self.assertEqual(first_overflow.status, Overflow.STATUS_CSO)
+        self.assertEqual(first_overflow.amount_to_approve, Decimal('500.00'))
+
+        self.assertFalse(Overflow.objects.filter(id=second_overflow.id).exists())
+        self.assertFalse(
+            Overflow.objects.filter(
+                identifier=identifier,
+                owner=self.approver,
+                period=self.active_period,
+                status=Overflow.STATUS_OVERKILL,
+            ).exists()
+        )
+
+        reserve_consumed = Overflow.objects.get(
+            transaction=second_transaction,
+            identifier=identifier,
+            status=Overflow.STATUS_CSO,
+            resolution_type=Overflow.RESOLUTION_RESERVE_CONSUMED,
+        )
+        self.assertEqual(reserve_consumed.amount_to_approve, Decimal('300.00'))
+        self.assertEqual(list(reserve_consumed.collaborators.values_list('id', flat=True)), [self.collaborator.id])
+
+    def test_extra_approval_can_cover_next_pending_and_leave_remaining_overkill(self):
+        identifier = Identifier.objects.create(number='175')
+        IdentifierLedgerFreeze.objects.create(
+            identifier=identifier,
+            period=self.active_period,
+            owner=self.approver,
+            applies_to_all=True,
+        )
+
+        first_ticket = Ticket.objects.create(customer_name='First Pending Remaining', created_by=self.approver)
+        first_transaction = Transaction.objects.create(
+            ticket=first_ticket,
+            identifier=identifier,
+            total_amount=Decimal('1.00'),
+            created_by=self.approver,
+        )
+        first_overflow = Overflow.objects.get(transaction=first_transaction, status=Overflow.STATUS_TCSO)
+        first_overflow.excess_amount = Decimal('500.00')
+        first_overflow.save(update_fields=['excess_amount'])
+
+        second_ticket = Ticket.objects.create(customer_name='Second Pending Remaining', created_by=self.approver)
+        second_transaction = Transaction.objects.create(
+            ticket=second_ticket,
+            identifier=identifier,
+            total_amount=Decimal('1.00'),
+            created_by=self.approver,
+        )
+        second_overflow = Overflow.objects.get(transaction=second_transaction, status=Overflow.STATUS_TCSO)
+        second_overflow.excess_amount = Decimal('300.00')
+        second_overflow.save(update_fields=['excess_amount'])
+
+        response = self.client.post(
+            f'/api/overflows/{first_overflow.id}/approve/',
+            {
+                'amount_to_approve': '900.00',
+                'collaborator_ids': [self.collaborator.id],
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        first_overflow.refresh_from_db()
+        self.assertEqual(first_overflow.status, Overflow.STATUS_CSO)
+        self.assertEqual(first_overflow.amount_to_approve, Decimal('500.00'))
+
+        self.assertFalse(Overflow.objects.filter(id=second_overflow.id).exists())
+
+        reserve_consumed = Overflow.objects.get(
+            transaction=second_transaction,
+            identifier=identifier,
+            status=Overflow.STATUS_CSO,
+            resolution_type=Overflow.RESOLUTION_RESERVE_CONSUMED,
+        )
+        self.assertEqual(reserve_consumed.amount_to_approve, Decimal('300.00'))
+        self.assertEqual(list(reserve_consumed.collaborators.values_list('id', flat=True)), [self.collaborator.id])
+
+        overkill = Overflow.objects.get(
+            identifier=identifier,
+            owner=self.approver,
+            period=self.active_period,
+            status=Overflow.STATUS_OVERKILL,
+        )
+        self.assertIsNone(overkill.transaction)
+        self.assertEqual(overkill.amount_to_approve, Decimal('100.00'))
+        self.assertEqual(overkill.excess_amount, Decimal('100.00'))
+        self.assertEqual(list(overkill.collaborators.values_list('id', flat=True)), [self.collaborator.id])
+
     def test_allocation_preview_and_manual_create_use_current_users_ledgers(self):
         backup_ledger = Ledger.objects.create(
             owner=self.approver,
