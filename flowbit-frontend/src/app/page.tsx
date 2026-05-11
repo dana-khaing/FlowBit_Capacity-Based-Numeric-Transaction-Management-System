@@ -362,18 +362,18 @@ export default function Home() {
                 <span className="h-3 w-3 rounded-full bg-lime-600" />
                 <div>
                   <h2 className="text-[17px] font-medium uppercase tracking-[0.08em] text-stone-600">Hot numbers</h2>
-                  <p className="mt-1 text-[15px] text-stone-400">Total units entered · {activePeriod?.name ?? "Current period"}</p>
+                  <p className="mt-1 text-[15px] text-stone-400">Total entered · {activePeriod?.name ?? "Current period"}</p>
                 </div>
               </div>
 
               <div className="mt-6 space-y-5">
                 {hotNumbers.length ? hotNumbers.map((item) => (
-                  <div key={item.identifier} className="grid items-center gap-3 sm:grid-cols-[64px_minmax(0,1fr)_120px]">
+                  <div key={item.identifier} className="grid items-center gap-3 sm:grid-cols-[64px_minmax(0,1.2fr)_88px]">
                     <div className="text-[24px] font-medium text-stone-950">{item.identifier}</div>
                     <div className="h-3 rounded-full bg-stone-100">
                       <div className="h-full rounded-full bg-lime-600" style={{ width: barWidth(item.progress) }} />
                     </div>
-                    <div className="text-right text-[15px] text-stone-400">{formatAmount(item.amount)} units</div>
+                    <div className="text-right text-[15px] text-stone-400">{formatAmount(item.amount)}</div>
                   </div>
                 )) : (
                   <p className="text-sm text-stone-500">No identifier usage yet.</p>
