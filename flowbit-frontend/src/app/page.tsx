@@ -357,7 +357,7 @@ export default function Home() {
           </section>
 
           <section className="grid gap-5 xl:grid-cols-3">
-            <article className="rounded-[28px] border border-stone-900/8 bg-white p-6 shadow-[0_8px_24px_rgba(28,24,20,0.04)]">
+            <article className="rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6">
               <div className="flex items-center gap-3">
                 <span className="h-3 w-3 rounded-full bg-lime-600" />
                 <div>
@@ -381,7 +381,7 @@ export default function Home() {
               </div>
             </article>
 
-            <article className="rounded-[28px] border border-stone-900/8 bg-white p-6 shadow-[0_8px_24px_rgba(28,24,20,0.04)]">
+            <article className="rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6">
               <div className="flex items-center gap-3">
                 <span className="h-3 w-3 rounded-full bg-red-700" />
                 <div>
@@ -390,7 +390,7 @@ export default function Home() {
                 </div>
               </div>
 
-              <div className="mt-6 max-h-[620px] space-y-4 overflow-y-auto pr-1">
+              <div className="thin-scrollbar mt-6 max-h-[440px] space-y-4 overflow-y-auto pr-1 sm:max-h-[540px] xl:max-h-[620px]">
                 {almostFull.length ? almostFull.map((item) => (
                   <div
                     key={item.identifier}
@@ -413,7 +413,7 @@ export default function Home() {
               </div>
             </article>
 
-            <article className="rounded-[28px] border border-stone-900/8 bg-white p-6 shadow-[0_8px_24px_rgba(28,24,20,0.04)]">
+            <article className="rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6">
               <div className="flex items-center gap-3">
                 <span className="h-3 w-3 rounded-full bg-amber-700" />
                 <div>
@@ -422,7 +422,7 @@ export default function Home() {
                 </div>
               </div>
 
-              <div className="mt-6 max-h-[620px] divide-y divide-stone-900/8 overflow-y-auto">
+              <div className="thin-scrollbar mt-6 max-h-[440px] divide-y divide-stone-900/8 overflow-y-auto pr-1 sm:max-h-[540px] xl:max-h-[620px]">
                 {recentTickets.length ? recentTickets.map((ticket) => (
                   <Link key={ticket.id} href="/tickets" className="grid gap-2 py-4 sm:grid-cols-[1fr_auto] sm:items-center">
                     <div>
@@ -442,7 +442,7 @@ export default function Home() {
           </section>
 
           <section className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
-            <article className="rounded-[28px] border border-stone-900/8 bg-white p-6 shadow-[0_8px_24px_rgba(28,24,20,0.04)]">
+            <article className="rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6">
               <div className="flex items-center gap-3">
                 <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-stone-100 text-stone-700">
                   <FontAwesomeIcon icon={faFileInvoice} className="h-4 w-4" />
@@ -475,7 +475,7 @@ export default function Home() {
               </div>
             </article>
 
-            <article className="rounded-[28px] border border-stone-900/8 bg-white p-6 shadow-[0_8px_24px_rgba(28,24,20,0.04)]">
+            <article className="rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6">
               <div className="flex items-center gap-3">
                 <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-stone-100 text-stone-700">
                   <FontAwesomeIcon icon={faClockRotateLeft} className="h-4 w-4" />
@@ -523,7 +523,7 @@ export default function Home() {
             </article>
           </section>
 
-          <section className="rounded-[28px] border border-stone-900/8 bg-white p-6 shadow-[0_8px_24px_rgba(28,24,20,0.04)]">
+          <section className="rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6">
             <div className="grid gap-8 md:grid-cols-2 xl:grid-cols-4">
               {footerGroups.map((group) => (
                 <div key={group.title}>
