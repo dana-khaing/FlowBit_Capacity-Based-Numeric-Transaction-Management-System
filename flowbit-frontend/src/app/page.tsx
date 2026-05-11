@@ -397,19 +397,16 @@ export default function Home() {
 
               <div className="thin-scrollbar mt-6 max-h-[440px] space-y-4 overflow-y-auto pr-1 sm:max-h-[540px] xl:max-h-[620px]">
                 {almostFull.length ? almostFull.map((item) => (
-                  <div
-                    key={item.identifier}
-                    className={`rounded-[22px] border px-5 py-4 ${item.tone === "critical" ? "border-red-200 bg-red-50" : "border-amber-200 bg-amber-50"}`}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="text-[22px] font-medium text-stone-950">{item.identifier}</div>
-                      <div className={`text-[18px] font-medium ${item.tone === "critical" ? "text-red-700" : "text-amber-700"}`}>{formatAmount(item.remaining)} remaining</div>
-                    </div>
-                    <div className="mt-4 h-2.5 rounded-full bg-white/60">
+                  <div key={item.identifier} className="grid items-center gap-3 sm:grid-cols-[64px_minmax(0,1.2fr)_120px]">
+                    <div className="text-[24px] font-medium text-stone-950">{item.identifier}</div>
+                    <div className={`h-3 rounded-full ${item.tone === "critical" ? "bg-red-100" : "bg-amber-100"}`}>
                       <div
                         className={`h-full rounded-full ${item.tone === "critical" ? "bg-red-700" : "bg-amber-700"}`}
                         style={{ width: barWidth(item.progress) }}
                       />
+                    </div>
+                    <div className={`text-right text-[15px] ${item.tone === "critical" ? "text-red-700" : "text-amber-700"}`}>
+                      {formatAmount(item.remaining)}
                     </div>
                   </div>
                 )) : (
