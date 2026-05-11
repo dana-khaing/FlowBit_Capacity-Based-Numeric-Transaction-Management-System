@@ -7,6 +7,7 @@ import {
   faArrowRight,
   faCalendarDays,
   faCircleCheck,
+  faClockRotateLeft,
   faFileInvoice,
   faFolderOpen,
   faLayerGroup,
@@ -148,6 +149,7 @@ export default function Home() {
   const [pendingOverflows, setPendingOverflows] = useState<FlowBitOverflow[]>([]);
   const [approvedOverflows, setApprovedOverflows] = useState<FlowBitOverflow[]>([]);
   const [archivedPeriodCount, setArchivedPeriodCount] = useState(0);
+  const [closedPeriodNames, setClosedPeriodNames] = useState<string[]>([]);
   const [dashboardError, setDashboardError] = useState<string | null>(null);
   const [isDashboardLoading, setIsDashboardLoading] = useState(true);
 
@@ -166,6 +168,7 @@ export default function Home() {
       setPendingOverflows([]);
       setApprovedOverflows([]);
       setArchivedPeriodCount(0);
+      setClosedPeriodNames([]);
       setIsDashboardLoading(false);
       return;
     }
@@ -192,7 +195,9 @@ export default function Home() {
         setActiveLedgers(nextLedgers.filter((ledger) => ledger.is_active && !ledger.is_capacity_reserve));
         setPendingOverflows(nextPending.results);
         setApprovedOverflows(nextApproved.results);
-        setArchivedPeriodCount(periods.filter((period) => !period.is_open).length);
+        const closedPeriods = periods.filter((period) => !period.is_open);
+        setArchivedPeriodCount(closedPeriods.length);
+        setClosedPeriodNames(closedPeriods.map((period) => period.name));
         setDashboardError(null);
       })
       .catch((error) => {
@@ -274,66 +279,51 @@ export default function Home() {
       .slice(0, 6);
   }, [identifierRows]);
 
+  const periodEndLabel = useMemo(() => {
+    if (!activePeriod?.end_date) {
+      return "No active draw";
+    }
+    const parsed = new Date(activePeriod.end_date);
+    if (Number.isNaN(parsed.getTime())) {
+      return activePeriod.end_date;
+    }
+    return parsed.toLocaleString("en-GB", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  }, [activePeriod?.end_date]);
+
+  const nextDrawCountdown = useMemo(() => {
+    if (!activePeriod?.end_date) {
+      return "No countdown";
+    }
+    const target = new Date(activePeriod.end_date).getTime();
+    if (Number.isNaN(target)) {
+      return "No countdown";
+    }
+    const diff = Math.max(0, target - Date.now());
+    const totalHours = Math.floor(diff / (1000 * 60 * 60));
+    const days = Math.floor(totalHours / 24);
+    const hours = totalHours % 24;
+    if (diff === 0) {
+      return "Draw due now";
+    }
+    return `Draw in ${days}d ${hours}h`;
+  }, [activePeriod?.end_date]);
+
+  const latestClosedPeriod = closedPeriodNames[0] ?? "-";
+
   return (
     <AppSectionPage
       eyebrow="Dashboard"
       title="Dashboard"
       description=""
       workspaceLabel="Dashboard"
-      aside={
-        <aside className="space-y-5">
-          <section className="rounded-[28px] border border-stone-900/8 bg-[#f3f0ea] p-5 shadow-[0_8px_24px_rgba(28,24,20,0.03)] sm:p-6">
-            <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">
-              Operations
-            </p>
-            <div className="mt-4 space-y-3">
-              {oversightItems.map((item) => (
-                <Link
-                  key={item.label}
-                  href={item.href}
-                  className="block rounded-[22px] border border-stone-900/8 bg-white px-4 py-4 transition hover:border-stone-900/16 hover:bg-stone-50"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-stone-100 text-stone-700">
-                      <FontAwesomeIcon icon={item.icon} className="h-4 w-4" />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-stone-900">{item.label}</p>
-                      <p className="mt-1 text-sm text-stone-500">{item.helper}</p>
-                    </div>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </section>
-
-          <section className="rounded-[28px] border border-stone-900/8 bg-[#f3f0ea] p-5 shadow-[0_8px_24px_rgba(28,24,20,0.03)] sm:p-6">
-            <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">
-              Current period
-            </p>
-            <div className="mt-4 space-y-3">
-              <div className="rounded-[22px] bg-white px-4 py-4">
-                <p className="text-sm text-stone-500">Active term</p>
-                <p className="mt-1 text-lg font-semibold text-stone-900">
-                  {activePeriod?.name ?? "No active period"}
-                </p>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-                <div className="rounded-[22px] bg-white px-4 py-4">
-                  <p className="text-sm text-stone-500">Archive periods</p>
-                  <p className="mt-1 text-lg font-semibold text-stone-900">{archivedPeriodCount}</p>
-                </div>
-                <div className="rounded-[22px] bg-white px-4 py-4">
-                  <p className="text-sm text-stone-500">Reserve granted</p>
-                  <p className="mt-1 text-lg font-semibold text-stone-900">
-                    {report ? formatAmount(report.reserve_capacity_granted) : "0"}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </section>
-        </aside>
-      }
+      showDefaultAside={false}
+      workspaceClassName="border-0 bg-transparent p-0 shadow-none"
     >
       {isPeriodLoading || isDashboardLoading ? (
         <div className="rounded-[24px] border border-dashed border-stone-300 bg-stone-50 px-5 py-10 text-sm text-stone-500">
@@ -352,53 +342,43 @@ export default function Home() {
           {dashboardError}
         </div>
       ) : (
-        <div className="space-y-6">
-          <section className="rounded-[24px] border border-stone-900/8 bg-[#f7f4ef] px-5 py-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:px-6">
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+        <div className="space-y-7">
+          <section className="rounded-[28px] border border-stone-900/8 bg-white px-6 py-7 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:px-8">
+            <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
               <div>
-                <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">
-                  FlowBit workspace
+                <p className="text-[13px] font-medium uppercase tracking-[0.18em] text-stone-400">
+                  Next draw
                 </p>
-                <h1 className="mt-3 text-3xl font-semibold text-stone-950 sm:text-4xl">
-                  {activePeriod?.name ?? "Current period"} is live.
-                </h1>
-                <p className="mt-3 max-w-3xl text-sm leading-7 text-stone-600 sm:text-base">
-                  Live dashboard view for tickets, ledgers, spill over, exports, and archive work inside the current period.
-                </p>
+                <div className="mt-4 flex items-center gap-4 text-[54px] font-light tracking-[0.18em] text-stone-950 sm:text-[72px]">
+                  <span>000</span>
+                  <span className="text-stone-400">—</span>
+                  <span>000</span>
+                </div>
+                <p className="mt-4 text-lg text-stone-500">{periodEndLabel}</p>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2">
-                {primaryActions.slice(0, 2).map((action) => (
-                  <Link
-                    key={action.label}
-                    href={action.href}
-                    className={`rounded-[22px] px-5 py-5 shadow-[0_6px_18px_rgba(28,24,20,0.04)] transition hover:translate-y-[-1px] ${action.tone}`}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/20">
-                        <FontAwesomeIcon icon={action.icon} className="h-4 w-4" />
-                      </span>
-                      <FontAwesomeIcon icon={faArrowRight} className="h-4 w-4" />
-                    </div>
-                    <p className="mt-4 text-lg font-semibold">{action.label}</p>
-                    <p className="mt-1 text-sm opacity-80">{action.helper}</p>
-                  </Link>
-                ))}
+              <div className="flex flex-col items-start gap-3 xl:items-end">
+                <span className="rounded-full bg-amber-100 px-4 py-2 text-lg font-medium text-amber-900">
+                  {nextDrawCountdown}
+                </span>
+                <p className="text-lg text-stone-400">
+                  Previous: {latestClosedPeriod} · Archived periods {archivedPeriodCount}
+                </p>
               </div>
             </div>
           </section>
 
-          <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <section className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-4">
             {summaryCards.map((card) => (
               <article
                 key={card.label}
-                className="rounded-[24px] border border-stone-900/8 bg-white px-5 py-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)]"
+                className="rounded-[24px] border border-stone-900/5 bg-[#f6f3ed] px-6 py-6 shadow-[0_4px_14px_rgba(28,24,20,0.03)]"
               >
-                <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">
+                <p className="text-[15px] font-medium text-stone-500">
                   {card.label}
                 </p>
-                <p className="mt-3 text-3xl font-semibold text-stone-950">{card.value}</p>
-                <p className="mt-2 text-sm text-stone-500">{card.meta}</p>
+                <p className="mt-4 text-5xl font-light tracking-[-0.04em] text-stone-950">{card.value}</p>
+                <p className={`mt-3 text-lg ${card.label === "Overflow pending" ? "text-rose-700" : "text-stone-400"}`}>{card.meta}</p>
               </article>
             ))}
           </section>
