@@ -1510,7 +1510,90 @@ class PrivateWorkspaceTests(APITestCase):
             if item['number'] == self.identifier.number
         )
         self.assertEqual(row['total_capacity'], '100')
-        self.assertEqual(row['normal_usage'], '60')
+        self.assertEqual(row['normal_usage'], '75')
+        self.assertEqual(row['remaining_capacity'], '25.00')
+
+    def test_dashboard_hot_numbers_include_approved_overflow_amount(self):
+        user_one_ticket = Ticket.objects.create(customer_name='User One Hot Number', created_by=self.user_one)
+        user_one_transaction = Transaction.objects.create(
+            ticket=user_one_ticket,
+            identifier=self.identifier,
+            total_amount=Decimal('80.00'),
+            created_by=self.user_one,
+        )
+        Overflow.objects.create(
+            transaction=user_one_transaction,
+            identifier=self.identifier,
+            owner=self.user_one,
+            period=self.period,
+            excess_amount=Decimal('20.00'),
+            amount_to_approve=Decimal('20.00'),
+            status=Overflow.STATUS_CSO,
+            approved_at=timezone.now(),
+        )
+
+        self.client.force_authenticate(user=self.user_one)
+        dashboard_response = self.client.get('/api/reports/dashboard/', {'period_id': self.period.id})
+
+        self.assertEqual(dashboard_response.status_code, status.HTTP_200_OK)
+        hot_row = next(
+            item
+            for item in dashboard_response.data['hot_numbers']
+            if item['identifier'] == self.identifier.number
+        )
+        self.assertEqual(hot_row['amount'], '120.00')
+        self.assertEqual(hot_row['progress'], 100.0)
+
+    def test_dashboard_full_numbers_include_identifiers_frozen_across_all_ledgers(self):
+        IdentifierLedgerFreeze.objects.create(
+            identifier=self.identifier,
+            period=self.period,
+            owner=self.user_one,
+            applies_to_all=True,
+        )
+
+        self.client.force_authenticate(user=self.user_one)
+        dashboard_response = self.client.get('/api/reports/dashboard/', {'period_id': self.period.id})
+
+        self.assertEqual(dashboard_response.status_code, status.HTTP_200_OK)
+        full_row = next(
+            item
+            for item in dashboard_response.data['full_numbers']
+            if item['identifier'] == self.identifier.number
+        )
+        self.assertEqual(full_row['amount'], '100')
+        self.assertFalse(
+            any(item['identifier'] == self.identifier.number for item in dashboard_response.data['almost_full'])
+        )
+
+    def test_dashboard_full_numbers_can_be_searched_and_paged(self):
+        for value in range(30):
+            identifier = Identifier.objects.create(number=f"{200 + value:03d}")
+            IdentifierLedgerFreeze.objects.create(
+                identifier=identifier,
+                period=self.period,
+                owner=self.user_one,
+                applies_to_all=True,
+            )
+
+        self.client.force_authenticate(user=self.user_one)
+        page_one_response = self.client.get('/api/reports/dashboard/full-numbers/', {
+            'period_id': self.period.id,
+            'page': 1,
+        })
+        search_response = self.client.get('/api/reports/dashboard/full-numbers/', {
+            'period_id': self.period.id,
+            'identifier': '205',
+        })
+
+        self.assertEqual(page_one_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(page_one_response.data['count'], 30)
+        self.assertEqual(page_one_response.data['page_size'], 20)
+        self.assertEqual(len(page_one_response.data['results']), 20)
+
+        self.assertEqual(search_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(search_response.data['count'], 1)
+        self.assertEqual(search_response.data['results'][0]['identifier'], '205')
 
 
 class PrivateWorkflowAPITests(APITestCase):

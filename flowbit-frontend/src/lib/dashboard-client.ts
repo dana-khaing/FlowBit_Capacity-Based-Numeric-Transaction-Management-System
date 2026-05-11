@@ -13,9 +13,12 @@ export type FlowBitDashboardReport = {
   active_ledger_count: number;
   ticket_count: number;
   transaction_count: number;
+  today_ticket_count: number;
   identifier_count: number;
   total_transaction_amount: string;
   total_allocated_amount: string;
+  standard_total_capacity: string;
+  standard_total_allocated_amount: string;
   pending_overflow_count: number;
   pending_overflow_amount: string;
   approved_overflow_count: number;
@@ -23,6 +26,21 @@ export type FlowBitDashboardReport = {
   refunded_overflow_count: number;
   refunded_overflow_amount: string;
   reserve_capacity_granted: string;
+  hot_numbers: Array<{
+    identifier: string;
+    amount: string;
+    progress: number;
+  }>;
+  almost_full: Array<{
+    identifier: string;
+    remaining: string;
+    progress: number;
+    tone: "critical" | "warning";
+  }>;
+  full_numbers: Array<{
+    identifier: string;
+    amount: string;
+  }>;
 };
 
 export type FlowBitIdentifierCapacityRow = {
@@ -45,6 +63,17 @@ export type FlowBitIdentifierCapacityReport = {
   } | null;
   count: number;
   results: FlowBitIdentifierCapacityRow[];
+};
+
+export type FlowBitDashboardFullNumberPage = {
+  count: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+  results: Array<{
+    identifier: string;
+    amount: string;
+  }>;
 };
 
 function authHeaders() {
@@ -74,6 +103,28 @@ export async function fetchIdentifierCapacityReport(periodId?: number) {
   }
   const suffix = query.toString() ? `?${query.toString()}` : "";
   return apiRequest<FlowBitIdentifierCapacityReport>(`/reports/identifiers/capacity/${suffix}`, {
+    method: "GET",
+    headers: authHeaders(),
+  });
+}
+
+export async function fetchDashboardFullNumbers(filters?: {
+  periodId?: number;
+  page?: number;
+  identifier?: string;
+}) {
+  const query = new URLSearchParams();
+  if (filters?.periodId) {
+    query.set("period_id", String(filters.periodId));
+  }
+  if (filters?.page) {
+    query.set("page", String(filters.page));
+  }
+  if (filters?.identifier?.trim()) {
+    query.set("identifier", filters.identifier.trim());
+  }
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return apiRequest<FlowBitDashboardFullNumberPage>(`/reports/dashboard/full-numbers/${suffix}`, {
     method: "GET",
     headers: authHeaders(),
   });
