@@ -13,9 +13,12 @@ export type FlowBitDashboardReport = {
   active_ledger_count: number;
   ticket_count: number;
   transaction_count: number;
+  today_ticket_count: number;
   identifier_count: number;
   total_transaction_amount: string;
   total_allocated_amount: string;
+  standard_total_capacity: string;
+  standard_total_allocated_amount: string;
   pending_overflow_count: number;
   pending_overflow_amount: string;
   approved_overflow_count: number;
