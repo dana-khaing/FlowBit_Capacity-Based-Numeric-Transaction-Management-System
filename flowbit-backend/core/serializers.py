@@ -127,16 +127,7 @@ class PeriodSerializer(serializers.ModelSerializer):
         lucky_draw = getattr(obj, 'lucky_draw', None)
         if lucky_draw is None:
             return "***-***"
-
-        request = self.context.get('request')
-        reveal_for_admin = bool(
-            request
-            and getattr(request, 'user', None)
-            and request.user.is_authenticated
-            and getattr(request.user, 'profile', None)
-            and request.user.profile.role == 'admin'
-        )
-        return lucky_draw.display_number(reveal_for_admin=reveal_for_admin)
+        return lucky_draw.display_number()
 
     def get_lucky_draw_revealed(self, obj):
         lucky_draw = getattr(obj, 'lucky_draw', None)
@@ -264,15 +255,7 @@ class LuckyDrawSerializer(serializers.ModelSerializer):
         ]
 
     def get_display_number(self, obj):
-        request = self.context.get('request')
-        reveal_for_admin = bool(
-            request
-            and getattr(request, 'user', None)
-            and request.user.is_authenticated
-            and getattr(request.user, 'profile', None)
-            and request.user.profile.role == 'admin'
-        )
-        return obj.display_number(reveal_for_admin=reveal_for_admin)
+        return obj.display_number()
 
     def get_winning_identifiers(self, obj):
         return obj.winning_identifiers

@@ -485,7 +485,10 @@ class PeriodViewSet(viewsets.ModelViewSet):
                 }, status=status.HTTP_200_OK)
 
             serializer = LuckyDrawSerializer(lucky_draw, context={'request': request})
-            return Response(serializer.data)
+            data = serializer.data
+            if not is_admin_user(request.user) and not lucky_draw.is_revealed():
+                data['number'] = None
+            return Response(data)
 
         if not is_admin_user(request.user):
             return Response(

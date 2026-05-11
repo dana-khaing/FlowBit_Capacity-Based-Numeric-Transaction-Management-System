@@ -26,7 +26,7 @@ import {
 } from "@/lib/dashboard-client";
 import { fetchLedgers, type FlowBitLedger } from "@/lib/ledger-client";
 import { fetchApprovedOverflowPage, fetchPendingOverflowPage, type FlowBitOverflow } from "@/lib/overflow-client";
-import { fetchPeriods, savePeriodLuckyDraw } from "@/lib/period-client";
+import { fetchPeriodLuckyDraw, fetchPeriods, savePeriodLuckyDraw } from "@/lib/period-client";
 import { fetchTickets, type FlowBitTicketListItem } from "@/lib/ticket-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -474,8 +474,15 @@ export default function Home() {
                   <Button
                     variant="outline"
                     className="rounded-[16px]"
-                    onClick={() => {
-                      setLuckyDrawInput(activePeriod?.lucky_draw_display?.replace(/\D/g, "") === "******" ? "" : activePeriod?.lucky_draw_display?.replace(/\D/g, "") || "");
+                    onClick={async () => {
+                      if (activePeriod) {
+                        try {
+                          const luckyDraw = await fetchPeriodLuckyDraw(activePeriod.id);
+                          setLuckyDrawInput(luckyDraw.number || "");
+                        } catch {
+                          setLuckyDrawInput("");
+                        }
+                      }
                       setIsLuckyDrawModalOpen(true);
                     }}
                   >

@@ -1634,6 +1634,7 @@ class PrivateWorkspaceTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['display_number'], '***-***')
+        self.assertIsNone(response.data['number'])
 
     def test_lucky_draw_winners_report_returns_matching_tickets_and_approved_overflows(self):
         lucky_identifier = Identifier.objects.create(number='123')
