@@ -2733,7 +2733,7 @@ class DashboardReportView(APIView):
                     'identifier': identifier_number,
                     'amount': str(normal_usage),
                 })
-            elif used_amount > 0:
+            elif used_amount > 0 and standard_remaining_capacity > 0:
                 almost_full_rows.append({
                     'identifier': identifier_number,
                     'remaining': str(standard_remaining_capacity),
