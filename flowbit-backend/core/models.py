@@ -167,7 +167,7 @@ class LuckyDraw(models.Model):
 
     @property
     def winning_identifiers(self):
-        return [self.number[:3], self.number[3:]]
+        return [self.number[3:]]
 
     def is_revealed(self):
         if not self.period.is_open:
