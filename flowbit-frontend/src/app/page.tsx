@@ -14,10 +14,8 @@ import {
   faTriangleExclamation,
 } from "@fortawesome/free-solid-svg-icons";
 import { AppSectionPage } from "@/components/app/app-section-page";
-import { AdminActionToast } from "@/components/admin/admin-action-toast";
 import { TICKETS_UPDATED_EVENT } from "@/components/app/workspace-events";
 import { usePeriodState } from "@/components/period/use-period-state";
-import { fetchCurrentUser, getStoredUser, type AuthUser } from "@/lib/auth-client";
 import {
   fetchDashboardReport,
   fetchDashboardFullNumbers,
@@ -26,15 +24,10 @@ import {
 } from "@/lib/dashboard-client";
 import { fetchLedgers, type FlowBitLedger } from "@/lib/ledger-client";
 import { fetchApprovedOverflowPage, fetchPendingOverflowPage, type FlowBitOverflow } from "@/lib/overflow-client";
-import { fetchPeriodLuckyDraw, fetchPeriods, savePeriodLuckyDraw } from "@/lib/period-client";
+import { fetchPeriods, fetchPeriodLuckyDrawWinners, type FlowBitLuckyDrawWinners } from "@/lib/period-client";
 import { fetchTickets, type FlowBitTicketListItem } from "@/lib/ticket-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-
-type ToastState = {
-  type: "success" | "error";
-  message: string;
-} | null;
 
 const primaryActions = [
   {
@@ -143,7 +136,6 @@ function barWidth(progress: number) {
 }
 
 export default function Home() {
-  const [user, setUser] = useState<AuthUser | null>(getStoredUser());
   const [report, setReport] = useState<FlowBitDashboardReport | null>(null);
   const [activeLedgers, setActiveLedgers] = useState<FlowBitLedger[]>([]);
   const [pendingOverflows, setPendingOverflows] = useState<FlowBitOverflow[]>([]);
@@ -159,16 +151,9 @@ export default function Home() {
   const [fullNumberModalData, setFullNumberModalData] = useState<FlowBitDashboardFullNumberPage | null>(null);
   const [isFullNumberModalLoading, setIsFullNumberModalLoading] = useState(false);
   const [fullNumberModalError, setFullNumberModalError] = useState<string | null>(null);
-  const [isLuckyDrawModalOpen, setIsLuckyDrawModalOpen] = useState(false);
-  const [luckyDrawInput, setLuckyDrawInput] = useState("");
-  const [isSavingLuckyDraw, setIsSavingLuckyDraw] = useState(false);
-  const [toast, setToast] = useState<ToastState>(null);
+  const [luckyDrawWinners, setLuckyDrawWinners] = useState<FlowBitLuckyDrawWinners | null>(null);
 
-  const { activePeriod, hasActivePeriod, isLoading: isPeriodLoading, error: periodError, refresh: refreshPeriodState } = usePeriodState();
-
-  useEffect(() => {
-    fetchCurrentUser().then(setUser).catch(() => undefined);
-  }, []);
+  const { activePeriod, hasActivePeriod, isLoading: isPeriodLoading, error: periodError } = usePeriodState();
 
   const refreshDashboard = useCallback(async (background = false) => {
     if (isPeriodLoading) {
@@ -193,12 +178,13 @@ export default function Home() {
     }
 
     try {
-      const [nextReport, nextLedgers, nextPending, nextApproved, nextRecentTickets, periods] = await Promise.all([
+      const [nextReport, nextLedgers, nextPending, nextApproved, nextRecentTickets, nextLuckyDrawWinners, periods] = await Promise.all([
         fetchDashboardReport(activePeriod.id),
         fetchLedgers({ period_id: activePeriod.id }),
         fetchPendingOverflowPage({ periodId: activePeriod.id, page: 1, pageSize: 4 }),
         fetchApprovedOverflowPage({ periodId: activePeriod.id, page: 1, pageSize: 4 }),
         fetchTickets({ periodId: activePeriod.id, limit: 6 }),
+        fetchPeriodLuckyDrawWinners(activePeriod.id),
         fetchPeriods(),
       ]);
       if (!isMounted) {
@@ -209,6 +195,7 @@ export default function Home() {
       setPendingOverflows(nextPending.results);
       setApprovedOverflows(nextApproved.results);
       setRecentTickets(nextRecentTickets);
+      setLuckyDrawWinners(nextLuckyDrawWinners);
       const closedPeriods = periods.filter((period) => !period.is_open);
       setArchivedPeriodCount(closedPeriods.length);
       setClosedPeriodNames(closedPeriods.map((period) => period.name));
@@ -364,7 +351,7 @@ export default function Home() {
 
   const latestClosedPeriod = closedPeriodNames[0] ?? "-";
   const luckyDrawDisplay = activePeriod?.lucky_draw_display || "***-***";
-  const canEditLuckyDraw = user?.role === "admin";
+  const winningIdentifier = luckyDrawWinners?.lucky_draw.winning_identifiers[0] ?? null;
 
   useEffect(() => {
     if (!isFullNumberModalOpen || !activePeriod) {
@@ -403,30 +390,6 @@ export default function Home() {
     };
   }, [activePeriod, fullNumberPage, fullNumberSearch, isFullNumberModalOpen]);
 
-  async function handleSaveLuckyDraw() {
-    if (!activePeriod) {
-      return;
-    }
-    const digits = luckyDrawInput.replace(/\D/g, "").slice(0, 6);
-    if (digits.length !== 6) {
-      setToast({ type: "error", message: "Lucky draw number must be exactly 6 digits." });
-      return;
-    }
-
-    setIsSavingLuckyDraw(true);
-    try {
-      await savePeriodLuckyDraw(activePeriod.id, digits);
-      await refreshPeriodState();
-      await refreshDashboard(true);
-      setToast({ type: "success", message: "Lucky draw number saved." });
-      setIsLuckyDrawModalOpen(false);
-    } catch (error) {
-      setToast({ type: "error", message: error instanceof Error ? error.message : "Request failed." });
-    } finally {
-      setIsSavingLuckyDraw(false);
-    }
-  }
-
   return (
     <AppSectionPage
       eyebrow="Dashboard"
@@ -436,9 +399,6 @@ export default function Home() {
       showDefaultAside={false}
       workspaceClassName="border-0 bg-transparent p-0 shadow-none"
     >
-      {toast ? (
-        <AdminActionToast message={toast.message} type={toast.type} onClose={() => setToast(null)} />
-      ) : null}
       {isPeriodLoading || isDashboardLoading ? (
         <div className="rounded-[24px] border border-dashed border-stone-300 bg-stone-50 px-5 py-10 text-sm text-stone-500">
           Loading dashboard.
@@ -458,7 +418,7 @@ export default function Home() {
       ) : (
         <div className="space-y-7">
           <section className="rounded-[28px] border border-stone-900/8 bg-white px-6 py-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:px-8">
-            <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+            <div className="flex flex-col items-center gap-3 text-center">
               <div>
                 <p className="text-[13px] font-medium uppercase tracking-[0.18em] text-stone-400">
                   Next draw
@@ -469,26 +429,7 @@ export default function Home() {
                 <p className="mt-3 text-base text-stone-500 sm:text-lg">{periodEndLabel}</p>
               </div>
 
-              <div className="flex flex-col items-start gap-2 xl:items-end">
-                {canEditLuckyDraw ? (
-                  <Button
-                    variant="outline"
-                    className="rounded-[16px]"
-                    onClick={async () => {
-                      if (activePeriod) {
-                        try {
-                          const luckyDraw = await fetchPeriodLuckyDraw(activePeriod.id);
-                          setLuckyDrawInput(luckyDraw.number || "");
-                        } catch {
-                          setLuckyDrawInput("");
-                        }
-                      }
-                      setIsLuckyDrawModalOpen(true);
-                    }}
-                  >
-                    {activePeriod?.lucky_draw_announced_at ? "Edit lucky draw" : "Set lucky draw"}
-                  </Button>
-                ) : null}
+              <div className="flex flex-col items-center gap-2">
                 <span className="rounded-full bg-amber-100 px-4 py-2 text-base font-medium text-amber-900 sm:text-lg">
                   {nextDrawCountdown}
                 </span>
@@ -514,6 +455,66 @@ export default function Home() {
               </Link>
             ))}
           </section>
+
+          {luckyDrawWinners?.lucky_draw.announced_at ? (
+            <section className="rounded-[28px] border border-emerald-200 bg-[linear-gradient(135deg,rgba(236,253,245,1),rgba(255,255,255,1))] px-6 py-6 shadow-[0_8px_24px_rgba(16,185,129,0.10)] sm:px-8">
+              <div className="flex flex-col gap-4">
+                <div className="text-center">
+                  <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-emerald-700">
+                    Congratulations
+                  </p>
+                  <h2 className="mt-2 text-2xl font-semibold text-stone-950">Lucky winner</h2>
+                  <p className="mt-2 text-sm text-stone-600">
+                    Winning identifier {winningIdentifier ?? "---"} · Announced {activePeriod?.lucky_draw_announced_at ? formatDateTime(activePeriod.lucky_draw_announced_at) : "-"}
+                  </p>
+                </div>
+
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <div className="rounded-[22px] border border-stone-900/8 bg-white/80 px-4 py-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Winner tickets</p>
+                    <div className="mt-3 space-y-3">
+                      {luckyDrawWinners.tickets.length ? luckyDrawWinners.tickets.map((ticket) => (
+                        <Link
+                          key={ticket.ticket_number}
+                          href="/tickets"
+                          className="block rounded-[18px] border border-stone-900/8 bg-stone-50 px-4 py-3 transition hover:border-stone-300 hover:bg-white"
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-base font-semibold text-stone-950">{ticket.ticket_number}</span>
+                            <span className="text-sm text-stone-600">{formatAmount(ticket.total_amount)}</span>
+                          </div>
+                          <p className="mt-2 text-sm text-stone-500">
+                            Customer {getRecentTicketCustomerName(ticket.customer_name)} · {ticket.matched_identifiers.join(", ")}
+                          </p>
+                        </Link>
+                      )) : (
+                        <p className="text-sm text-stone-500">No winning tickets yet.</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="rounded-[22px] border border-stone-900/8 bg-white/80 px-4 py-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Approved spill over</p>
+                    <div className="mt-3 space-y-3">
+                      {luckyDrawWinners.approved_overflows.length ? luckyDrawWinners.approved_overflows.map((overflow) => (
+                        <div key={overflow.id} className="rounded-[18px] border border-emerald-200 bg-emerald-50 px-4 py-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-base font-semibold text-stone-950">{overflow.identifier_number}</span>
+                            <span className="text-sm text-stone-600">{formatAmount(overflow.amount)}</span>
+                          </div>
+                          <p className="mt-2 text-sm text-stone-500">
+                            {overflow.collaborator_names.length ? overflow.collaborator_names.join(", ") : "Approved"}
+                          </p>
+                        </div>
+                      )) : (
+                        <p className="text-sm text-stone-500">No approved spill over winners.</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+          ) : null}
 
           <section className="grid gap-5 xl:grid-cols-3">
             <article className="rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6">
@@ -795,36 +796,6 @@ export default function Home() {
         </div>
       ) : null}
 
-      {isLuckyDrawModalOpen ? (
-        <div className="fixed inset-0 z-50 bg-stone-950/40 px-4 py-6 backdrop-blur-sm" onClick={() => setIsLuckyDrawModalOpen(false)}>
-          <div
-            className="mx-auto w-full max-w-md rounded-[28px] border border-stone-900/10 bg-white p-5 shadow-[0_24px_80px_rgba(28,24,20,0.24)] sm:p-6"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Lucky draw</p>
-            <h2 className="mt-2 text-2xl font-semibold text-stone-950">Set lucky draw number</h2>
-            <p className="mt-2 text-sm text-stone-500">
-              Enter one shared 6-digit number for this period. Any admin can edit it, and changes are logged in audit.
-            </p>
-            <div className="mt-5">
-              <Input
-                value={luckyDrawInput}
-                onChange={(event) => setLuckyDrawInput(event.target.value.replace(/\D/g, "").slice(0, 6))}
-                placeholder="Enter 6-digit number"
-                disabled={isSavingLuckyDraw}
-              />
-            </div>
-            <div className="mt-5 flex justify-end gap-3">
-              <Button variant="outline" onClick={() => setIsLuckyDrawModalOpen(false)} disabled={isSavingLuckyDraw}>
-                Cancel
-              </Button>
-              <Button onClick={() => void handleSaveLuckyDraw()} disabled={isSavingLuckyDraw}>
-                Save
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </AppSectionPage>
   );
 }
