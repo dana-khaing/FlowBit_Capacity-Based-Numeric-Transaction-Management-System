@@ -2673,8 +2673,21 @@ class DashboardReportView(APIView):
             row['identifier']: row['total'] or Decimal('0.00')
             for row in adjustment_queryset.values('identifier').annotate(total=Sum('amount'))
         }
+        approved_overflow_rows_by_identifier = {}
+        for row in overflow_rows:
+            if row.status != Overflow.STATUS_CSO or row.identifier_id is None:
+                continue
+            approved_overflow_rows_by_identifier[row.identifier_id] = (
+                approved_overflow_rows_by_identifier.get(row.identifier_id, Decimal('0.00'))
+                + (row.excess_amount or Decimal('0.00'))
+            )
 
-        dashboard_identifier_ids = set(normal_usage_rows) | set(reserve_used_rows) | set(reserve_granted_rows)
+        dashboard_identifier_ids = (
+            set(normal_usage_rows)
+            | set(reserve_used_rows)
+            | set(reserve_granted_rows)
+            | set(approved_overflow_rows_by_identifier)
+        )
         dashboard_identifiers = {
             identifier.id: identifier.number
             for identifier in Identifier.objects.filter(id__in=dashboard_identifier_ids)
@@ -2686,10 +2699,17 @@ class DashboardReportView(APIView):
             normal_usage = normal_usage_rows.get(identifier_id, Decimal('0.00'))
             reserve_used = reserve_used_rows.get(identifier_id, Decimal('0.00'))
             reserve_granted = reserve_granted_rows.get(identifier_id, Decimal('0.00'))
+            approved_overflow_amount = approved_overflow_rows_by_identifier.get(identifier_id, Decimal('0.00'))
             total_capacity = standard_capacity_per_identifier + reserve_granted
             used_amount = normal_usage + reserve_used
+            hot_number_amount = normal_usage + approved_overflow_amount
             standard_remaining_capacity = standard_capacity_per_identifier - normal_usage
-            standard_progress = (
+            hot_number_progress = (
+                hot_number_amount / standard_capacity_per_identifier * Decimal('100.00')
+                if standard_capacity_per_identifier > 0
+                else Decimal('0.00')
+            )
+            almost_full_progress = (
                 normal_usage / standard_capacity_per_identifier * Decimal('100.00')
                 if standard_capacity_per_identifier > 0
                 else Decimal('0.00')
@@ -2701,17 +2721,17 @@ class DashboardReportView(APIView):
             identifier_number = dashboard_identifiers.get(identifier_id)
             if not identifier_number:
                 continue
-            if used_amount > 0:
+            if hot_number_amount > 0:
                 hot_number_rows.append({
                     'identifier': identifier_number,
-                    'amount': str(normal_usage),
-                    'progress': float(max(Decimal('0.00'), min(standard_progress, Decimal('100.00')))),
+                    'amount': str(hot_number_amount),
+                    'progress': float(max(Decimal('0.00'), min(hot_number_progress, Decimal('100.00')))),
                 })
             if used_amount > 0:
                 almost_full_rows.append({
                     'identifier': identifier_number,
                     'remaining': str(standard_remaining_capacity),
-                    'progress': float(max(Decimal('0.00'), min(standard_progress, Decimal('100.00')))),
+                    'progress': float(max(Decimal('0.00'), min(almost_full_progress, Decimal('100.00')))),
                     'tone': 'critical' if standard_remaining_capacity <= Decimal('100.00') else 'warning',
                 })
 
