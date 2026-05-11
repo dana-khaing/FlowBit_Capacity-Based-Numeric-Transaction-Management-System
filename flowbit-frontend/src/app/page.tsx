@@ -371,7 +371,7 @@ export default function Home() {
                 </div>
               </div>
 
-              <div className="mt-6 space-y-5">
+              <div className="thin-scrollbar mt-6 max-h-[440px] space-y-5 overflow-y-auto pr-1 sm:max-h-[540px] xl:max-h-[620px]">
                 {hotNumbers.length ? hotNumbers.map((item) => (
                   <div key={item.identifier} className="grid items-center gap-3 sm:grid-cols-[64px_minmax(0,1.2fr)_88px]">
                     <div className="text-[24px] font-medium text-stone-950">{item.identifier}</div>
