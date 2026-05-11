@@ -2647,9 +2647,10 @@ class DashboardReportView(APIView):
             adjustment_queryset = adjustment_queryset.filter(period=period)
             allocation_queryset = allocation_queryset.filter(ledger__period=period)
 
-        standard_capacity_total = ledger_queryset.aggregate(
+        standard_capacity_per_identifier = ledger_queryset.aggregate(
             total=Sum('limit_per_identifier')
         )['total'] or Decimal('0.00')
+        standard_capacity_total = standard_capacity_per_identifier * Decimal(Identifier.objects.count())
         standard_allocated_total = allocation_queryset.filter(
             ledger__is_capacity_reserve=False,
         ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
@@ -2685,15 +2686,15 @@ class DashboardReportView(APIView):
             normal_usage = normal_usage_rows.get(identifier_id, Decimal('0.00'))
             reserve_used = reserve_used_rows.get(identifier_id, Decimal('0.00'))
             reserve_granted = reserve_granted_rows.get(identifier_id, Decimal('0.00'))
-            total_capacity = standard_capacity_total + reserve_granted
+            total_capacity = standard_capacity_per_identifier + reserve_granted
             used_amount = normal_usage + reserve_used
-            standard_remaining_capacity = standard_capacity_total - normal_usage
+            standard_remaining_capacity = standard_capacity_per_identifier - normal_usage
             standard_progress = (
-                normal_usage / standard_capacity_total * Decimal('100.00')
-                if standard_capacity_total > 0
+                normal_usage / standard_capacity_per_identifier * Decimal('100.00')
+                if standard_capacity_per_identifier > 0
                 else Decimal('0.00')
             )
-            if total_capacity <= 0 and standard_capacity_total <= 0:
+            if total_capacity <= 0 and standard_capacity_per_identifier <= 0:
                 continue
             remaining_capacity = total_capacity - used_amount
             progress = (used_amount / total_capacity * Decimal('100.00')) if total_capacity > 0 else Decimal('0.00')
