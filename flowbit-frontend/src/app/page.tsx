@@ -412,25 +412,25 @@ export default function Home() {
         </div>
       ) : (
         <div className="space-y-7">
-          <section className="rounded-[28px] border border-stone-900/8 bg-white px-6 py-7 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:px-8">
-            <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+          <section className="rounded-[28px] border border-stone-900/8 bg-white px-6 py-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:px-8">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
               <div>
                 <p className="text-[13px] font-medium uppercase tracking-[0.18em] text-stone-400">
                   Next draw
                 </p>
-                <div className="mt-4 flex items-center gap-4 text-[54px] font-light tracking-[0.18em] text-stone-950 sm:text-[72px]">
+                <div className="mt-3 flex items-center gap-4 text-[48px] font-light tracking-[0.16em] text-stone-950 sm:text-[64px]">
                   <span>000</span>
                   <span className="text-stone-400">—</span>
                   <span>000</span>
                 </div>
-                <p className="mt-4 text-lg text-stone-500">{periodEndLabel}</p>
+                <p className="mt-3 text-base text-stone-500 sm:text-lg">{periodEndLabel}</p>
               </div>
 
-              <div className="flex flex-col items-start gap-3 xl:items-end">
-                <span className="rounded-full bg-amber-100 px-4 py-2 text-lg font-medium text-amber-900">
+              <div className="flex flex-col items-start gap-2 xl:items-end">
+                <span className="rounded-full bg-amber-100 px-4 py-2 text-base font-medium text-amber-900 sm:text-lg">
                   {nextDrawCountdown}
                 </span>
-                <p className="text-lg text-stone-400">
+                <p className="text-base text-stone-400 sm:text-lg">
                   Previous: {latestClosedPeriod} · Archived periods {archivedPeriodCount}
                 </p>
               </div>
