@@ -5,13 +5,10 @@ import Link from "next/link";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faArrowRight,
-  faCalendarDays,
-  faCircleCheck,
   faClockRotateLeft,
   faFileInvoice,
   faLayerGroup,
   faPlus,
-  faShieldHalved,
   faTicket,
   faTriangleExclamation,
 } from "@fortawesome/free-solid-svg-icons";
@@ -55,12 +52,6 @@ const primaryActions = [
     tone: "bg-emerald-50 text-emerald-900",
     helper: "Check ledger status and capacity view",
   },
-];
-
-const oversightItems = [
-  { label: "Periods", href: "/periods", icon: faCalendarDays, helper: "Admin-only period controls" },
-  { label: "Override codes", href: "/admin/override-codes", icon: faShieldHalved, helper: "Review or rotate admin override access" },
-  { label: "Audit logs", href: "/admin/audit-logs", icon: faCircleCheck, helper: "Trace approvals, refunds, and archive actions" },
 ];
 
 const footerGroups = [
@@ -527,18 +518,6 @@ export default function Home() {
                 )}
               </div>
 
-              <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                {oversightItems.map((item) => (
-                  <Link
-                    key={item.label}
-                    href={item.href}
-                    className="rounded-[22px] border border-stone-900/8 bg-[#f6f3ed] px-4 py-4 transition hover:border-stone-900/16 hover:bg-white"
-                  >
-                    <p className="text-sm font-semibold text-stone-900">{item.label}</p>
-                    <p className="mt-1 text-sm text-stone-500">{item.helper}</p>
-                  </Link>
-                ))}
-              </div>
             </article>
           </section>
 
