@@ -24,7 +24,7 @@ import {
 import { fetchLedgers, type FlowBitLedger } from "@/lib/ledger-client";
 import { fetchApprovedOverflowPage, fetchPendingOverflowPage, type FlowBitOverflow } from "@/lib/overflow-client";
 import { fetchPeriods } from "@/lib/period-client";
-import { fetchTickets } from "@/lib/ticket-client";
+import { fetchTickets, type FlowBitTicketListItem } from "@/lib/ticket-client";
 
 const primaryActions = [
   {
@@ -126,6 +126,14 @@ function formatDateTime(value: string) {
   });
 }
 
+function getRecentTicketCustomerName(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed || /^Walk-in\s+TICKET-/i.test(trimmed)) {
+    return "-";
+  }
+  return trimmed;
+}
+
 function barWidth(progress: number) {
   return `${Math.max(0, Math.min(progress, 100))}%`;
 }
@@ -135,6 +143,7 @@ export default function Home() {
   const [activeLedgers, setActiveLedgers] = useState<FlowBitLedger[]>([]);
   const [pendingOverflows, setPendingOverflows] = useState<FlowBitOverflow[]>([]);
   const [approvedOverflows, setApprovedOverflows] = useState<FlowBitOverflow[]>([]);
+  const [recentTickets, setRecentTickets] = useState<FlowBitTicketListItem[]>([]);
   const [archivedPeriodCount, setArchivedPeriodCount] = useState(0);
   const [closedPeriodNames, setClosedPeriodNames] = useState<string[]>([]);
   const [dashboardError, setDashboardError] = useState<string | null>(null);
@@ -152,6 +161,7 @@ export default function Home() {
       setActiveLedgers([]);
       setPendingOverflows([]);
       setApprovedOverflows([]);
+      setRecentTickets([]);
       setArchivedPeriodCount(0);
       setClosedPeriodNames([]);
       setIsDashboardLoading(false);
@@ -166,9 +176,10 @@ export default function Home() {
       fetchLedgers({ period_id: activePeriod.id }),
       fetchPendingOverflowPage({ periodId: activePeriod.id, page: 1, pageSize: 4 }),
       fetchApprovedOverflowPage({ periodId: activePeriod.id, page: 1, pageSize: 4 }),
+      fetchTickets({ periodId: activePeriod.id, limit: 6 }),
       fetchPeriods(),
     ])
-      .then(([nextReport, nextLedgers, nextPending, nextApproved, periods]) => {
+      .then(([nextReport, nextLedgers, nextPending, nextApproved, nextRecentTickets, periods]) => {
         if (!isMounted) {
           return;
         }
@@ -176,6 +187,7 @@ export default function Home() {
         setActiveLedgers(nextLedgers.filter((ledger) => ledger.is_active && !ledger.is_capacity_reserve));
         setPendingOverflows(nextPending.results);
         setApprovedOverflows(nextApproved.results);
+        setRecentTickets(nextRecentTickets);
         const closedPeriods = periods.filter((period) => !period.is_open);
         setArchivedPeriodCount(closedPeriods.length);
         setClosedPeriodNames(closedPeriods.map((period) => period.name));
@@ -484,43 +496,48 @@ export default function Home() {
                 </span>
                 <div>
                   <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">
-                    Control center
+                    Recent tickets
                   </p>
-                  <h2 className="mt-1 text-xl font-semibold text-stone-950">Current period status</h2>
+                  <h2 className="mt-1 text-xl font-semibold text-stone-950">Latest created tickets</h2>
                 </div>
               </div>
 
-              <div className="mt-6 space-y-3">
-                <div className="rounded-[22px] border border-stone-900/8 bg-[#f6f3ed] px-5 py-4">
-                  <p className="text-sm text-stone-500">Active period</p>
-                  <p className="mt-1 text-xl font-semibold text-stone-950">{activePeriod?.name ?? "-"}</p>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <div className="rounded-[22px] border border-stone-900/8 bg-[#f6f3ed] px-4 py-4">
-                    <p className="text-sm text-stone-500">Reserve</p>
-                    <p className="mt-1 text-lg font-semibold text-stone-950">{report ? formatAmount(report.reserve_capacity_granted) : "0"}</p>
-                  </div>
-                  <div className="rounded-[22px] border border-stone-900/8 bg-[#f6f3ed] px-4 py-4">
-                    <p className="text-sm text-stone-500">Pending</p>
-                    <p className="mt-1 text-lg font-semibold text-amber-800">{pendingOverflows.length}</p>
-                  </div>
-                  <div className="rounded-[22px] border border-stone-900/8 bg-[#f6f3ed] px-4 py-4">
-                    <p className="text-sm text-stone-500">Approved</p>
-                    <p className="mt-1 text-lg font-semibold text-emerald-700">{approvedOverflows.length}</p>
-                  </div>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {oversightItems.map((item) => (
-                    <Link
-                      key={item.label}
-                      href={item.href}
-                      className="rounded-[22px] border border-stone-900/8 bg-[#f6f3ed] px-4 py-4 transition hover:border-stone-900/16 hover:bg-white"
-                    >
-                      <p className="text-sm font-semibold text-stone-900">{item.label}</p>
-                      <p className="mt-1 text-sm text-stone-500">{item.helper}</p>
-                    </Link>
-                  ))}
-                </div>
+              <div className="thin-scrollbar mt-6 max-h-[280px] divide-y divide-stone-900/8 overflow-y-auto pr-1">
+                {recentTickets.length ? recentTickets.map((ticket) => (
+                  <Link
+                    key={ticket.id}
+                    href="/tickets"
+                    className="grid gap-3 py-4 transition first:pt-0 hover:opacity-85 sm:grid-cols-[1fr_auto] sm:items-center"
+                  >
+                    <div>
+                      <p className="text-lg font-semibold text-stone-950">{ticket.ticket_number}</p>
+                      <p className="mt-1 text-[15px] text-stone-500">
+                        {getRecentTicketCustomerName(ticket.customer_name)}
+                      </p>
+                    </div>
+                    <div className="text-left sm:text-right">
+                      <p className="text-[15px] font-medium text-stone-900">
+                        Amount - {formatAmount(ticket.total_amount)}
+                      </p>
+                      <p className="mt-1 text-[14px] text-stone-400">{formatDateTime(ticket.created_at)}</p>
+                    </div>
+                  </Link>
+                )) : (
+                  <p className="text-sm text-stone-500">No recent tickets in this period yet.</p>
+                )}
+              </div>
+
+              <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                {oversightItems.map((item) => (
+                  <Link
+                    key={item.label}
+                    href={item.href}
+                    className="rounded-[22px] border border-stone-900/8 bg-[#f6f3ed] px-4 py-4 transition hover:border-stone-900/16 hover:bg-white"
+                  >
+                    <p className="text-sm font-semibold text-stone-900">{item.label}</p>
+                    <p className="mt-1 text-sm text-stone-500">{item.helper}</p>
+                  </Link>
+                ))}
               </div>
             </article>
           </section>
