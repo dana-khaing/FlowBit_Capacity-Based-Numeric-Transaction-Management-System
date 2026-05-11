@@ -25,14 +25,34 @@ type PeriodFormState = {
   close_time: string;
 };
 
-const defaultFormState: PeriodFormState = {
-  name: "",
-  start_date: "",
-  end_date: "",
-  close_time: "15:00",
-};
-
 type PeriodAction = "create" | "update" | "close" | "reopen" | "delete" | null;
+
+function formatDateFieldValue(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function buildDefaultPeriodFormState(): PeriodFormState {
+  const today = new Date();
+  const endDate = new Date(today);
+
+  if (today.getDate() <= 1) {
+    endDate.setDate(1);
+  } else if (today.getDate() <= 16) {
+    endDate.setDate(16);
+  } else {
+    endDate.setMonth(endDate.getMonth() + 1, 1);
+  }
+
+  return {
+    name: "",
+    start_date: formatDateFieldValue(today),
+    end_date: formatDateFieldValue(endDate),
+    close_time: "23:00",
+  };
+}
 
 function formatPeriodDate(value: string) {
   const parsed = new Date(value);
@@ -53,7 +73,7 @@ function formatPeriodRange(period: FlowBitPeriod) {
 function formatTimeValue(value: string) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
-    return "15:00";
+    return "23:00";
   }
   return `${String(parsed.getHours()).padStart(2, "0")}:${String(parsed.getMinutes()).padStart(2, "0")}`;
 }
@@ -76,9 +96,9 @@ export function PeriodPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [toast, setToast] = useState<ToastState>(null);
-  const [form, setForm] = useState<PeriodFormState>(defaultFormState);
-  const [activePeriodForm, setActivePeriodForm] = useState({ end_date: "", close_time: "15:00" });
-  const [reopenForm, setReopenForm] = useState({ end_date: "", close_time: "15:00" });
+  const [form, setForm] = useState<PeriodFormState>(buildDefaultPeriodFormState);
+  const [activePeriodForm, setActivePeriodForm] = useState({ end_date: "", close_time: "23:00" });
+  const [reopenForm, setReopenForm] = useState({ end_date: "", close_time: "23:00" });
   const [showActionConfirm, setShowActionConfirm] = useState(false);
   const [pendingAction, setPendingAction] = useState<PeriodAction>(null);
   const [overrideCode, setOverrideCode] = useState("");
@@ -117,7 +137,7 @@ export function PeriodPage() {
 
   useEffect(() => {
     if (!activePeriod) {
-      setActivePeriodForm({ end_date: "", close_time: "15:00" });
+      setActivePeriodForm({ end_date: "", close_time: "23:00" });
       return;
     }
 
@@ -129,7 +149,7 @@ export function PeriodPage() {
 
   useEffect(() => {
     if (!latestClosedPeriod) {
-      setReopenForm({ end_date: "", close_time: "15:00" });
+      setReopenForm({ end_date: "", close_time: "23:00" });
       return;
     }
 
@@ -154,10 +174,10 @@ export function PeriodPage() {
         name: form.name.trim(),
         start_date: form.start_date,
         end_date: form.end_date,
-        close_time: form.close_time || "15:00",
+        close_time: form.close_time || "23:00",
         is_open: true,
       });
-      setForm(defaultFormState);
+      setForm(buildDefaultPeriodFormState());
       setToast({ type: "success", message: "Period created successfully." });
       await loadPageData();
       notifyPeriodsUpdated();
@@ -206,7 +226,7 @@ export function PeriodPage() {
       if (pendingAction === "update" && activePeriod) {
         await updatePeriod(activePeriod.id, {
           end_date: activePeriodForm.end_date,
-          close_time: activePeriodForm.close_time || "15:00",
+          close_time: activePeriodForm.close_time || "23:00",
         });
         setToast({ type: "success", message: "Period updated successfully." });
       } else if (pendingAction === "close" && activePeriod) {
@@ -215,7 +235,7 @@ export function PeriodPage() {
       } else if (pendingAction === "reopen" && latestClosedPeriod) {
         await reopenPeriod(latestClosedPeriod.id, {
           end_date: reopenForm.end_date,
-          close_time: reopenForm.close_time || "15:00",
+          close_time: reopenForm.close_time || "23:00",
         });
         setToast({ type: "success", message: "Period reopened successfully." });
       } else if (pendingAction === "delete" && latestClosedPeriod) {

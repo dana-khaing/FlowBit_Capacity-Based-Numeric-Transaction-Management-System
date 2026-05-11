@@ -26,7 +26,8 @@ from .models import (
 )
 
 
-DEFAULT_PERIOD_CLOSE_TIME = time(hour=15, minute=0)
+DEFAULT_PERIOD_CLOSE_TIME = time(hour=23, minute=0)
+DEFAULT_LEDGER_CLOSE_TIME = time(hour=14, minute=30)
 
 
 def _aware_datetime_from_date(value, fallback_time):
@@ -79,6 +80,18 @@ def _serializer_close_time(field):
     return parsed_close_time
 
 
+def _serializer_ledger_close_time(field):
+    serializer = field.parent
+    raw_close_time = serializer.initial_data.get('close_time') if serializer and serializer.initial_data else None
+    if not raw_close_time:
+        return DEFAULT_LEDGER_CLOSE_TIME
+
+    parsed_close_time = serializers.TimeField().to_internal_value(raw_close_time)
+    if getattr(parsed_close_time, 'tzinfo', None) is not None:
+        return parsed_close_time.replace(tzinfo=None)
+    return parsed_close_time
+
+
 class PeriodSerializer(serializers.ModelSerializer):
     ledger_count = serializers.SerializerMethodField()
     start_date = FlexibleDateTimeField(default_time=time.min)
@@ -117,7 +130,7 @@ class PeriodSerializer(serializers.ModelSerializer):
 class LedgerSerializer(serializers.ModelSerializer):
     period_name = serializers.CharField(source='period.name', read_only=True, allow_null=True)
     owner_username = serializers.CharField(source='owner.username', read_only=True, allow_null=True)
-    end_date = FlexibleDateTimeField(default_time=_serializer_close_time, required=False)
+    end_date = FlexibleDateTimeField(default_time=_serializer_ledger_close_time, required=False)
     close_time = serializers.TimeField(write_only=True, required=False)
     is_capacity_reserve = serializers.BooleanField(read_only=True)
 
