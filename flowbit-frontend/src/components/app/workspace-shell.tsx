@@ -2,6 +2,7 @@
 
 import { ReactNode, useState } from "react";
 import { AppHeader } from "@/components/app/app-header";
+import { PreCloseOverflowToast } from "@/components/app/pre-close-overflow-toast";
 import { AppSideDrawer } from "@/components/app/app-side-drawer";
 import { SessionGuard } from "@/components/auth/session-guard";
 
@@ -15,6 +16,7 @@ export function WorkspaceShell({ children }: WorkspaceShellProps) {
   return (
     <SessionGuard>
       <main className="min-h-screen bg-[#efede8] text-stone-900">
+        <PreCloseOverflowToast />
         <div className="print:hidden">
           <AppSideDrawer open={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} />
         </div>
