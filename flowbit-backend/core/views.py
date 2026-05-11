@@ -2704,8 +2704,8 @@ class DashboardReportView(APIView):
             if used_amount > 0:
                 hot_number_rows.append({
                     'identifier': identifier_number,
-                    'amount': str(used_amount),
-                    'progress': float(max(Decimal('0.00'), min(progress, Decimal('100.00')))),
+                    'amount': str(normal_usage),
+                    'progress': float(max(Decimal('0.00'), min(standard_progress, Decimal('100.00')))),
                 })
             if used_amount > 0:
                 almost_full_rows.append({
