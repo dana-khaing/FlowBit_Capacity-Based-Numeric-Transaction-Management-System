@@ -468,9 +468,9 @@ export default function Home() {
                 </div>
               </div>
 
-              <div className="thin-scrollbar mt-6 max-h-[440px] divide-y divide-stone-900/8 overflow-y-auto pr-1 sm:max-h-[540px] xl:max-h-[620px]">
+              <div className="thin-scrollbar mt-6 max-h-[440px] space-y-4 overflow-y-auto pr-1 sm:max-h-[540px] xl:max-h-[620px]">
                 {fullNumbers.length ? fullNumbers.map((item) => (
-                  <div key={item.identifier} className="grid items-center gap-3 py-4 sm:grid-cols-[64px_minmax(0,1.2fr)_104px]">
+                  <div key={item.identifier} className="grid items-center gap-3 sm:grid-cols-[64px_minmax(0,1.2fr)_104px]">
                     <div className="text-[24px] font-medium text-stone-950">{item.identifier}</div>
                     <div className="h-3 rounded-full bg-stone-100">
                       <div className="h-full rounded-full bg-amber-700" style={{ width: "100%" }} />
@@ -478,7 +478,7 @@ export default function Home() {
                     <div className="text-right text-[15px] text-stone-400">{formatAmount(item.amount)}</div>
                   </div>
                 )) : (
-                  <p className="py-4 text-sm text-stone-500">No fully filled numbers yet.</p>
+                  <p className="text-sm text-stone-500">No fully filled numbers yet.</p>
                 )}
               </div>
             </article>
