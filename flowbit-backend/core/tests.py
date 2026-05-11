@@ -17,6 +17,7 @@ from rest_framework.authtoken.models import Token
 
 from core.models import (
     Period,
+    LuckyDraw,
     Identifier,
     IdentifierLedgerFreeze,
     IdentifierCapacityAdjustment,
@@ -1594,6 +1595,45 @@ class PrivateWorkspaceTests(APITestCase):
         self.assertEqual(search_response.status_code, status.HTTP_200_OK)
         self.assertEqual(search_response.data['count'], 1)
         self.assertEqual(search_response.data['results'][0]['identifier'], '205')
+
+    def test_admin_can_create_and_update_period_lucky_draw(self):
+        self.client.force_authenticate(user=self.admin_user)
+
+        create_response = self.client.post(
+            f'/api/periods/{self.period.id}/lucky-draw/',
+            {'number': '123456'},
+            format='json',
+        )
+        update_response = self.client.patch(
+            f'/api/periods/{self.period.id}/lucky-draw/',
+            {'number': '654321'},
+            format='json',
+        )
+
+        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(update_response.status_code, status.HTTP_200_OK)
+        lucky_draw = LuckyDraw.objects.get(period=self.period)
+        self.assertEqual(lucky_draw.number, '654321')
+        self.assertTrue(
+            AuditLog.objects.filter(action='period.lucky_draw_created', target_id=lucky_draw.id).exists()
+        )
+        self.assertTrue(
+            AuditLog.objects.filter(action='period.lucky_draw_updated', target_id=lucky_draw.id).exists()
+        )
+
+    def test_period_lucky_draw_is_masked_before_reveal_for_non_admin(self):
+        LuckyDraw.objects.create(
+            period=self.period,
+            number='123456',
+            announced_by=self.user_one,
+            announced_at=timezone.now(),
+        )
+
+        self.client.force_authenticate(user=self.user_two)
+        response = self.client.get(f'/api/periods/{self.period.id}/lucky-draw/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['display_number'], '***-***')
 
 
 class PrivateWorkflowAPITests(APITestCase):

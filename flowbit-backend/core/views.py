@@ -32,6 +32,7 @@ from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from .models import (
     DEFAULT_HELPER_NAME,
     Period,
+    LuckyDraw,
     Ledger,
     Identifier,
     Transaction,
@@ -64,6 +65,7 @@ from .permissions import (
 from .serializers import (
     FlexibleDateTimeField,
     PeriodSerializer,
+    LuckyDrawSerializer,
     LedgerSerializer,
     IdentifierSerializer,
     TransactionSerializer,
@@ -461,6 +463,63 @@ class PeriodViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(period)
         return Response(serializer.data)
+
+    @action(detail=True, methods=['get', 'post', 'patch'], url_path='lucky-draw')
+    def lucky_draw(self, request, pk=None):
+        period = self.get_object()
+        lucky_draw = getattr(period, 'lucky_draw', None)
+
+        if request.method == 'GET':
+            if lucky_draw is None:
+                return Response({
+                    'period': period.id,
+                    'period_name': period.name,
+                    'number': None,
+                    'display_number': "***-***",
+                    'winning_identifiers': [],
+                    'announced_by': None,
+                    'announced_by_username': None,
+                    'announced_at': None,
+                    'created_at': None,
+                    'updated_at': None,
+                }, status=status.HTTP_200_OK)
+
+            serializer = LuckyDrawSerializer(lucky_draw, context={'request': request})
+            return Response(serializer.data)
+
+        if not is_admin_user(request.user):
+            return Response(
+                {'detail': 'Only admin users can update the lucky draw number.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        serializer = LuckyDrawSerializer(
+            lucky_draw,
+            data=request.data,
+            partial=request.method == 'PATCH',
+            context={'request': request},
+        )
+        serializer.is_valid(raise_exception=True)
+        before = snapshot_instance(lucky_draw) if lucky_draw is not None else None
+        lucky_draw = serializer.save(
+            period=period,
+            announced_by=request.user,
+            announced_at=timezone.now(),
+        )
+        record_audit_log(
+            request,
+            'period.lucky_draw_updated' if before else 'period.lucky_draw_created',
+            target=lucky_draw,
+            details=f"{'Updated' if before else 'Created'} lucky draw for period '{period.name}'",
+            changes={
+                'before': before,
+                'after': snapshot_instance(lucky_draw),
+            },
+        )
+        return Response(
+            LuckyDrawSerializer(lucky_draw, context={'request': request}).data,
+            status=status.HTTP_200_OK if before else status.HTTP_201_CREATED,
+        )
 
     @action(detail=True, methods=['post'], url_path='close')
     def close_period(self, request, pk=None):
