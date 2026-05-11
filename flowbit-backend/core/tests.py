@@ -1513,6 +1513,37 @@ class PrivateWorkspaceTests(APITestCase):
         self.assertEqual(row['normal_usage'], '75')
         self.assertEqual(row['remaining_capacity'], '25.00')
 
+    def test_dashboard_hot_numbers_include_approved_overflow_amount(self):
+        user_one_ticket = Ticket.objects.create(customer_name='User One Hot Number', created_by=self.user_one)
+        user_one_transaction = Transaction.objects.create(
+            ticket=user_one_ticket,
+            identifier=self.identifier,
+            total_amount=Decimal('80.00'),
+            created_by=self.user_one,
+        )
+        Overflow.objects.create(
+            transaction=user_one_transaction,
+            identifier=self.identifier,
+            owner=self.user_one,
+            period=self.period,
+            excess_amount=Decimal('20.00'),
+            amount_to_approve=Decimal('20.00'),
+            status=Overflow.STATUS_CSO,
+            approved_at=timezone.now(),
+        )
+
+        self.client.force_authenticate(user=self.user_one)
+        dashboard_response = self.client.get('/api/reports/dashboard/', {'period_id': self.period.id})
+
+        self.assertEqual(dashboard_response.status_code, status.HTTP_200_OK)
+        hot_row = next(
+            item
+            for item in dashboard_response.data['hot_numbers']
+            if item['identifier'] == self.identifier.number
+        )
+        self.assertEqual(hot_row['amount'], '120.00')
+        self.assertEqual(hot_row['progress'], 100.0)
+
 
 class PrivateWorkflowAPITests(APITestCase):
     def setUp(self):
