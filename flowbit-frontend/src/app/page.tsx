@@ -472,8 +472,8 @@ export default function Home() {
                 {fullNumbers.length ? fullNumbers.map((item) => (
                   <div key={item.identifier} className="grid items-center gap-3 py-4 sm:grid-cols-[64px_minmax(0,1.2fr)_104px]">
                     <div className="text-[24px] font-medium text-stone-950">{item.identifier}</div>
-                    <div className="h-3 rounded-full bg-amber-100">
-                      <div className="h-full w-full rounded-full bg-amber-700" />
+                    <div className="h-3 rounded-full bg-stone-100">
+                      <div className="h-full rounded-full bg-amber-700" style={{ width: "100%" }} />
                     </div>
                     <div className="text-right text-[15px] text-stone-400">{formatAmount(item.amount)}</div>
                   </div>
