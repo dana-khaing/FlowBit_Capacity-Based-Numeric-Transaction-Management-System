@@ -468,97 +468,99 @@ export default function Home() {
             </article>
           </section>
 
-          <section className="grid gap-5 xl:grid-cols-2">
-            <article className="rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6">
+          <section className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+            <article className="rounded-[28px] border border-stone-900/8 bg-white p-6 shadow-[0_8px_24px_rgba(28,24,20,0.04)]">
               <div className="flex items-center gap-3">
                 <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-stone-100 text-stone-700">
-                  <FontAwesomeIcon icon={faLayerGroup} className="h-4 w-4" />
+                  <FontAwesomeIcon icon={faFileInvoice} className="h-4 w-4" />
                 </span>
                 <div>
                   <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">
-                    Live queues
+                    Quick actions
                   </p>
-                  <h2 className="mt-1 text-xl font-semibold text-stone-950">Ledgers and spill over</h2>
+                  <h2 className="mt-1 text-xl font-semibold text-stone-950">Live workflow shortcuts</h2>
                 </div>
               </div>
 
-              <div className="mt-5 grid gap-4 sm:grid-cols-2">
-                <Link
-                  href="/ledgers"
-                  className="rounded-[24px] border border-stone-900/8 bg-stone-50 px-5 py-5 transition hover:border-stone-900/16 hover:bg-white"
-                >
-                  <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Active ledgers</p>
-                  <div className="mt-4 space-y-3">
-                    {activeLedgers.length ? activeLedgers.map((ledger) => (
-                      <div key={ledger.id} className="rounded-[18px] bg-white px-4 py-3">
-                        <div className="flex items-center justify-between gap-3">
-                          <p className="text-sm font-semibold text-stone-900">{ledger.name}</p>
-                          <p className="text-sm text-stone-500">P{ledger.priority}</p>
-                        </div>
-                        <p className="mt-1 text-sm text-stone-500">Capacity {formatAmount(ledger.limit_per_identifier)}</p>
-                      </div>
-                    )) : (
-                      <p className="text-sm text-stone-500">No active working ledgers.</p>
-                    )}
-                  </div>
-                </Link>
-
-                <Link
-                  href="/spill-over"
-                  className="rounded-[24px] border border-stone-900/8 bg-stone-50 px-5 py-5 transition hover:border-stone-900/16 hover:bg-white"
-                >
-                  <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Pending spill over</p>
-                  <div className="mt-4 space-y-3">
-                    {pendingOverflows.length ? pendingOverflows.map((overflow) => (
-                      <div key={overflow.id} className="rounded-[18px] bg-white px-4 py-3">
-                        <div className="flex items-center justify-between gap-3">
-                          <p className="text-lg font-semibold tracking-[0.12em] text-stone-900">{overflow.identifier_number}</p>
-                          <p className="text-sm font-medium text-amber-800">{formatAmount(overflow.excess_amount)}</p>
-                        </div>
-                        <p className="mt-1 text-sm text-stone-500">{overflow.ticket_number || "No ticket"}</p>
-                      </div>
-                    )) : (
-                      <p className="text-sm text-stone-500">No pending spill over right now.</p>
-                    )}
-                  </div>
-                </Link>
-              </div>
-            </article>
-
-            <article className="rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6">
-              <div className="flex items-center gap-3">
-                <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-stone-100 text-stone-700">
-                  <FontAwesomeIcon icon={faFolderOpen} className="h-4 w-4" />
-                </span>
-                <div>
-                  <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">
-                    Sections
-                  </p>
-                  <h2 className="mt-1 text-xl font-semibold text-stone-950">Dashboard groups</h2>
-                </div>
-              </div>
-
-              <div className="mt-5 grid gap-8 border-t border-stone-900/8 pt-6 md:grid-cols-2 xl:grid-cols-4">
-                {footerGroups.map((group) => (
-                  <div key={group.title}>
-                    <h3 className="text-[15px] font-semibold uppercase tracking-[0.14em] text-stone-500">
-                      {group.title}
-                    </h3>
-                    <div className="mt-4 space-y-3">
-                      {group.items.map((item) => (
-                        <Link
-                          key={item.label}
-                          href={item.href}
-                          className="block text-sm text-stone-600 transition hover:text-stone-950"
-                        >
-                          {item.label}
-                        </Link>
-                      ))}
+              <div className="mt-6 grid gap-4 md:grid-cols-2">
+                {primaryActions.map((action) => (
+                  <Link
+                    key={action.label}
+                    href={action.href}
+                    className="rounded-[24px] border border-stone-900/8 bg-[#f6f3ed] px-5 py-5 transition hover:border-stone-900/16 hover:bg-white"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-white text-stone-700 shadow-[0_4px_12px_rgba(28,24,20,0.05)]">
+                        <FontAwesomeIcon icon={action.icon} className="h-4 w-4" />
+                      </span>
+                      <FontAwesomeIcon icon={faArrowRight} className="h-4 w-4 text-stone-400" />
                     </div>
-                  </div>
+                    <p className="mt-4 text-lg font-semibold text-stone-950">{action.label}</p>
+                    <p className="mt-2 text-sm leading-6 text-stone-500">{action.helper}</p>
+                  </Link>
                 ))}
               </div>
             </article>
+
+            <article className="rounded-[28px] border border-stone-900/8 bg-white p-6 shadow-[0_8px_24px_rgba(28,24,20,0.04)]">
+              <div className="flex items-center gap-3">
+                <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-stone-100 text-stone-700">
+                  <FontAwesomeIcon icon={faClockRotateLeft} className="h-4 w-4" />
+                </span>
+                <div>
+                  <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">
+                    Control center
+                  </p>
+                  <h2 className="mt-1 text-xl font-semibold text-stone-950">Current period status</h2>
+                </div>
+              </div>
+
+              <div className="mt-6 space-y-3">
+                <div className="rounded-[22px] border border-stone-900/8 bg-[#f6f3ed] px-5 py-4">
+                  <p className="text-sm text-stone-500">Active period</p>
+                  <p className="mt-1 text-xl font-semibold text-stone-950">{activePeriod?.name ?? "-"}</p>
+                </div>
+                <div className="rounded-[22px] border border-stone-900/8 bg-[#f6f3ed] px-5 py-4">
+                  <p className="text-sm text-stone-500">Reserve granted</p>
+                  <p className="mt-1 text-xl font-semibold text-stone-950">{report ? formatAmount(report.reserve_capacity_granted) : "0"}</p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {oversightItems.map((item) => (
+                    <Link
+                      key={item.label}
+                      href={item.href}
+                      className="rounded-[22px] border border-stone-900/8 bg-[#f6f3ed] px-4 py-4 transition hover:border-stone-900/16 hover:bg-white"
+                    >
+                      <p className="text-sm font-semibold text-stone-900">{item.label}</p>
+                      <p className="mt-1 text-sm text-stone-500">{item.helper}</p>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            </article>
+          </section>
+
+          <section className="rounded-[28px] border border-stone-900/8 bg-white p-6 shadow-[0_8px_24px_rgba(28,24,20,0.04)]">
+            <div className="grid gap-8 md:grid-cols-2 xl:grid-cols-4">
+              {footerGroups.map((group) => (
+                <div key={group.title}>
+                  <h3 className="text-[15px] font-semibold uppercase tracking-[0.14em] text-stone-500">
+                    {group.title}
+                  </h3>
+                  <div className="mt-5 space-y-3">
+                    {group.items.map((item) => (
+                      <Link
+                        key={item.label}
+                        href={item.href}
+                        className="block text-[18px] text-stone-400 transition hover:text-stone-950"
+                      >
+                        {item.label}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
           </section>
         </div>
       )}
