@@ -19,9 +19,7 @@ import { AppSectionPage } from "@/components/app/app-section-page";
 import { usePeriodState } from "@/components/period/use-period-state";
 import {
   fetchDashboardReport,
-  fetchIdentifierCapacityReport,
   type FlowBitDashboardReport,
-  type FlowBitIdentifierCapacityRow,
 } from "@/lib/dashboard-client";
 import { fetchLedgers, type FlowBitLedger } from "@/lib/ledger-client";
 import { fetchApprovedOverflowPage, fetchPendingOverflowPage, type FlowBitOverflow } from "@/lib/overflow-client";
@@ -134,7 +132,6 @@ function barWidth(progress: number) {
 
 export default function Home() {
   const [report, setReport] = useState<FlowBitDashboardReport | null>(null);
-  const [identifierRows, setIdentifierRows] = useState<FlowBitIdentifierCapacityRow[]>([]);
   const [recentTickets, setRecentTickets] = useState<FlowBitTicketListItem[]>([]);
   const [activeLedgers, setActiveLedgers] = useState<FlowBitLedger[]>([]);
   const [pendingOverflows, setPendingOverflows] = useState<FlowBitOverflow[]>([]);
@@ -153,7 +150,6 @@ export default function Home() {
 
     if (!hasActivePeriod || !activePeriod) {
       setReport(null);
-      setIdentifierRows([]);
       setRecentTickets([]);
       setActiveLedgers([]);
       setPendingOverflows([]);
@@ -169,19 +165,17 @@ export default function Home() {
 
     Promise.all([
       fetchDashboardReport(activePeriod.id),
-      fetchIdentifierCapacityReport(activePeriod.id),
       fetchTickets({ periodId: activePeriod.id, limit: 6 }),
       fetchLedgers({ period_id: activePeriod.id }),
       fetchPendingOverflowPage({ periodId: activePeriod.id, page: 1, pageSize: 4 }),
       fetchApprovedOverflowPage({ periodId: activePeriod.id, page: 1, pageSize: 4 }),
       fetchPeriods(),
     ])
-      .then(([nextReport, nextIdentifierReport, nextTickets, nextLedgers, nextPending, nextApproved, periods]) => {
+      .then(([nextReport, nextTickets, nextLedgers, nextPending, nextApproved, periods]) => {
         if (!isMounted) {
           return;
         }
         setReport(nextReport);
-        setIdentifierRows(nextIdentifierReport.results);
         setRecentTickets(nextTickets);
         setActiveLedgers(nextLedgers.filter((ledger) => ledger.is_active && !ledger.is_capacity_reserve));
         setPendingOverflows(nextPending.results);
@@ -212,14 +206,8 @@ export default function Home() {
     if (!report) {
       return [];
     }
-    const allocatedTotal = identifierRows.reduce(
-      (sum, row) => sum + Number(row.normal_usage || "0") + Number(row.reserve_used || "0"),
-      0,
-    );
-    const availableTotal = identifierRows.reduce(
-      (sum, row) => sum + Number(row.total_capacity || "0") + Number(row.reserve_granted || "0"),
-      0,
-    );
+    const allocatedTotal = Number(report.total_allocated_amount || "0");
+    const availableTotal = allocatedTotal + Number(report.reserve_capacity_granted || "0");
     const capacityPercent = availableTotal > 0 ? Math.round((allocatedTotal / availableTotal) * 100) : 0;
     const activeLedgerNames = activeLedgers.map((ledger) => ledger.name).slice(0, 2);
 
@@ -245,41 +233,24 @@ export default function Home() {
         meta: activeLedgerNames.length ? activeLedgerNames.join(" · ") : `${report.ledger_count} total ledgers`,
       },
     ];
-  }, [activeLedgers, identifierRows, pendingOverflows.length, report]);
+  }, [activeLedgers, pendingOverflows.length, report]);
 
   const hotNumbers = useMemo(() => {
-    return identifierRows
-      .map((row) => {
-        const used = Number(row.normal_usage || "0") + Number(row.reserve_used || "0");
-        const total = Number(row.total_capacity || "0") + Number(row.reserve_granted || "0");
-        return {
-          identifier: row.number,
-          amount: used,
-          progress: total > 0 ? (used / total) * 100 : 0,
-        };
-      })
-      .filter((row) => row.amount > 0)
-      .sort((left, right) => right.amount - left.amount)
-      .slice(0, 10);
-  }, [identifierRows]);
+    return report?.hot_numbers.map((row) => ({
+      identifier: row.identifier,
+      amount: Number(row.amount || "0"),
+      progress: row.progress,
+    })) ?? [];
+  }, [report]);
 
   const almostFull = useMemo(() => {
-    return identifierRows
-      .map((row) => {
-        const total = Number(row.total_capacity || "0") + Number(row.reserve_granted || "0");
-        const remaining = Number(row.remaining_capacity || "0");
-        const used = total - remaining;
-        return {
-          identifier: row.number,
-          remaining,
-          progress: total > 0 ? (used / total) * 100 : 0,
-          tone: remaining <= 100 ? "critical" : "warning",
-        };
-      })
-      .filter((row) => row.progress > 0)
-      .sort((left, right) => left.remaining - right.remaining)
-      .slice(0, 6);
-  }, [identifierRows]);
+    return report?.almost_full.map((row) => ({
+      identifier: row.identifier,
+      remaining: Number(row.remaining || "0"),
+      progress: row.progress,
+      tone: row.tone,
+    })) ?? [];
+  }, [report]);
 
   const periodEndLabel = useMemo(() => {
     if (!activePeriod?.end_date) {
