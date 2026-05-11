@@ -2782,7 +2782,7 @@ class DashboardReportView(APIView):
                 adjustment_queryset.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
             ),
             'hot_numbers': hot_number_rows[:20],
-            'almost_full': almost_full_rows[:6],
+            'almost_full': almost_full_rows[:20],
             'full_numbers': full_number_rows[:20],
         }
         return Response(data, status=status.HTTP_200_OK)
