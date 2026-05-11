@@ -1635,6 +1635,44 @@ class PrivateWorkspaceTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['display_number'], '***-***')
 
+    def test_lucky_draw_winners_report_returns_matching_tickets_and_approved_overflows(self):
+        lucky_identifier = Identifier.objects.create(number='123')
+        overflow_identifier = Identifier.objects.create(number='456')
+        LuckyDraw.objects.create(
+            period=self.period,
+            number='123456',
+            announced_by=self.admin_user,
+            announced_at=timezone.now(),
+        )
+
+        winning_ticket = Ticket.objects.create(customer_name='Winner', created_by=self.user_one)
+        winning_transaction = Transaction.objects.create(
+            ticket=winning_ticket,
+            identifier=lucky_identifier,
+            total_amount=Decimal('80.00'),
+            created_by=self.user_one,
+        )
+        winning_overflow = Overflow.objects.create(
+            transaction=winning_transaction,
+            identifier=overflow_identifier,
+            owner=self.user_one,
+            period=self.period,
+            excess_amount=Decimal('25.00'),
+            amount_to_approve=Decimal('25.00'),
+            status=Overflow.STATUS_CSO,
+            approved_at=timezone.now(),
+        )
+
+        self.client.force_authenticate(user=self.user_one)
+        response = self.client.get(f'/api/periods/{self.period.id}/lucky-draw-winners/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['lucky_draw']['display_number'], '123-456')
+        self.assertEqual(response.data['tickets'][0]['ticket_number'], winning_ticket.ticket_number)
+        self.assertIn('123', response.data['tickets'][0]['matched_identifiers'])
+        self.assertEqual(response.data['approved_overflows'][0]['id'], winning_overflow.id)
+        self.assertEqual(response.data['approved_overflows'][0]['identifier_number'], '456')
+
 
 class PrivateWorkflowAPITests(APITestCase):
     def setUp(self):

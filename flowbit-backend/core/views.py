@@ -521,6 +521,82 @@ class PeriodViewSet(viewsets.ModelViewSet):
             status=status.HTTP_200_OK if before else status.HTTP_201_CREATED,
         )
 
+    @action(detail=True, methods=['get'], url_path='lucky-draw-winners')
+    def lucky_draw_winners(self, request, pk=None):
+        period = self.get_object()
+        lucky_draw = getattr(period, 'lucky_draw', None)
+        serialized_draw = (
+            LuckyDrawSerializer(lucky_draw, context={'request': request}).data
+            if lucky_draw is not None
+            else {
+                'period': period.id,
+                'period_name': period.name,
+                'number': None,
+                'display_number': "***-***",
+                'winning_identifiers': [],
+                'announced_by': None,
+                'announced_by_username': None,
+                'announced_at': None,
+                'created_at': None,
+                'updated_at': None,
+            }
+        )
+        if lucky_draw is None:
+            return Response({
+                'lucky_draw': serialized_draw,
+                'tickets': [],
+                'approved_overflows': [],
+            }, status=status.HTTP_200_OK)
+
+        serialized_draw['display_number'] = f"{lucky_draw.number[:3]}-{lucky_draw.number[3:]}"
+
+        winning_identifiers = lucky_draw.winning_identifiers
+        ticket_queryset = Ticket.objects.filter(
+            created_by=request.user,
+            transactions__identifier__number__in=winning_identifiers,
+        ).distinct().prefetch_related('transactions__identifier')
+        tickets = []
+        for ticket in ticket_queryset.order_by('-created_at'):
+            matched_identifiers = sorted({
+                transaction.identifier.number
+                for transaction in ticket.transactions.all()
+                if transaction.identifier.number in winning_identifiers and not transaction.is_refunded
+            })
+            if not matched_identifiers:
+                continue
+            visible_transactions = [transaction for transaction in ticket.transactions.all() if not transaction.is_refunded]
+            total_amount = sum((transaction.total_amount for transaction in visible_transactions), Decimal('0.00'))
+            tickets.append({
+                'ticket_number': ticket.ticket_number,
+                'customer_name': ticket.customer_name,
+                'created_at': ticket.created_at,
+                'matched_identifiers': matched_identifiers,
+                'transaction_count': len(visible_transactions),
+                'total_amount': str(total_amount),
+            })
+
+        approved_overflow_rows = []
+        for overflow in Overflow.objects.filter(
+            owner=request.user,
+            period=period,
+            status=Overflow.STATUS_CSO,
+            identifier__number__in=winning_identifiers,
+        ).select_related('identifier', 'transaction__ticket').prefetch_related('collaborators').order_by('-approved_at', '-id'):
+            approved_overflow_rows.append({
+                'id': overflow.id,
+                'identifier_number': overflow.identifier.number if overflow.identifier_id else '',
+                'ticket_number': overflow.transaction.ticket.ticket_number if overflow.transaction_id and overflow.transaction.ticket_id else None,
+                'amount': str(overflow.amount_to_approve or overflow.excess_amount or Decimal('0.00')),
+                'approved_at': overflow.approved_at,
+                'collaborator_names': [collaborator.full_name for collaborator in overflow.collaborators.all()],
+            })
+
+        return Response({
+            'lucky_draw': serialized_draw,
+            'tickets': tickets,
+            'approved_overflows': approved_overflow_rows,
+        }, status=status.HTTP_200_OK)
+
     @action(detail=True, methods=['post'], url_path='close')
     def close_period(self, request, pk=None):
         period = self.get_object()
