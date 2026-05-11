@@ -384,23 +384,23 @@ export default function Home() {
           </section>
 
           <section className="grid gap-5 xl:grid-cols-3">
-            <article className="rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6">
+            <article className="rounded-[28px] border border-stone-900/8 bg-white p-6 shadow-[0_8px_24px_rgba(28,24,20,0.04)]">
               <div className="flex items-center gap-3">
                 <span className="h-3 w-3 rounded-full bg-lime-600" />
                 <div>
                   <h2 className="text-[17px] font-medium uppercase tracking-[0.08em] text-stone-600">Hot numbers</h2>
-                  <p className="mt-1 text-[15px] text-stone-400">Most used identifiers this period</p>
+                  <p className="mt-1 text-[15px] text-stone-400">Total units entered · {activePeriod?.name ?? "Current period"}</p>
                 </div>
               </div>
 
               <div className="mt-6 space-y-5">
                 {hotNumbers.length ? hotNumbers.map((item) => (
-                  <div key={item.identifier} className="grid items-center gap-3 sm:grid-cols-[64px_minmax(0,1fr)_110px]">
-                    <div className="text-2xl font-medium text-stone-900">{item.identifier}</div>
+                  <div key={item.identifier} className="grid items-center gap-3 sm:grid-cols-[64px_minmax(0,1fr)_120px]">
+                    <div className="text-[24px] font-medium text-stone-950">{item.identifier}</div>
                     <div className="h-3 rounded-full bg-stone-100">
                       <div className="h-full rounded-full bg-lime-600" style={{ width: barWidth(item.progress) }} />
                     </div>
-                    <div className="text-right text-[15px] text-stone-400">{formatAmount(item.amount)}</div>
+                    <div className="text-right text-[15px] text-stone-400">{formatAmount(item.amount)} units</div>
                   </div>
                 )) : (
                   <p className="text-sm text-stone-500">No identifier usage yet.</p>
@@ -408,26 +408,26 @@ export default function Home() {
               </div>
             </article>
 
-            <article className="rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6">
+            <article className="rounded-[28px] border border-stone-900/8 bg-white p-6 shadow-[0_8px_24px_rgba(28,24,20,0.04)]">
               <div className="flex items-center gap-3">
                 <span className="h-3 w-3 rounded-full bg-red-700" />
                 <div>
                   <h2 className="text-[17px] font-medium uppercase tracking-[0.08em] text-stone-600">Almost Full</h2>
-                  <p className="mt-1 text-[15px] text-stone-400">Least remaining capacity</p>
+                  <p className="mt-1 text-[15px] text-stone-400">Least remaining capacity · action needed</p>
                 </div>
               </div>
 
-              <div className="mt-6 space-y-4">
+              <div className="mt-6 max-h-[620px] space-y-4 overflow-y-auto pr-1">
                 {almostFull.length ? almostFull.map((item) => (
                   <div
                     key={item.identifier}
-                    className={`rounded-[22px] border px-4 py-4 ${item.tone === "critical" ? "border-red-200 bg-red-50" : "border-amber-200 bg-amber-50"}`}
+                    className={`rounded-[22px] border px-5 py-4 ${item.tone === "critical" ? "border-red-200 bg-red-50" : "border-amber-200 bg-amber-50"}`}
                   >
                     <div className="flex items-center justify-between gap-3">
-                      <div className="text-2xl font-medium text-stone-900">{item.identifier}</div>
-                      <div className="text-xl font-medium text-stone-700">{formatAmount(item.remaining)} left</div>
+                      <div className="text-[22px] font-medium text-stone-950">{item.identifier}</div>
+                      <div className={`text-[18px] font-medium ${item.tone === "critical" ? "text-red-700" : "text-amber-700"}`}>{formatAmount(item.remaining)} remaining</div>
                     </div>
-                    <div className="mt-3 h-2.5 rounded-full bg-white/60">
+                    <div className="mt-4 h-2.5 rounded-full bg-white/60">
                       <div
                         className={`h-full rounded-full ${item.tone === "critical" ? "bg-red-700" : "bg-amber-700"}`}
                         style={{ width: barWidth(item.progress) }}
@@ -440,24 +440,24 @@ export default function Home() {
               </div>
             </article>
 
-            <article className="rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6">
+            <article className="rounded-[28px] border border-stone-900/8 bg-white p-6 shadow-[0_8px_24px_rgba(28,24,20,0.04)]">
               <div className="flex items-center gap-3">
                 <span className="h-3 w-3 rounded-full bg-amber-700" />
                 <div>
                   <h2 className="text-[17px] font-medium uppercase tracking-[0.08em] text-stone-600">My Recent Entries</h2>
-                  <p className="mt-1 text-[15px] text-stone-400">Latest created tickets</p>
+                  <p className="mt-1 text-[15px] text-stone-400">Your submissions this session</p>
                 </div>
               </div>
 
-              <div className="mt-6 divide-y divide-stone-900/8">
+              <div className="mt-6 max-h-[620px] divide-y divide-stone-900/8 overflow-y-auto">
                 {recentTickets.length ? recentTickets.map((ticket) => (
-                  <Link key={ticket.id} href="/tickets" className="grid gap-3 py-4 sm:grid-cols-[1fr_auto] sm:items-center">
+                  <Link key={ticket.id} href="/tickets" className="grid gap-2 py-4 sm:grid-cols-[1fr_auto] sm:items-center">
                     <div>
-                      <p className="text-lg font-medium text-stone-900">{ticket.ticket_number}</p>
-                      <p className="mt-1 text-[15px] text-stone-400">{getCustomerName(ticket.customer_name)}</p>
+                      <p className="text-[20px] font-medium tracking-[0.08em] text-stone-950">{ticket.identifier_numbers[0] ?? "---"}</p>
+                      <p className="mt-1 text-[15px] text-stone-400">{ticket.ticket_number}</p>
                     </div>
                     <div className="text-left sm:text-right">
-                      <p className="text-xl font-light text-stone-700">Amount - {formatAmount(ticket.total_amount)}</p>
+                      <p className="text-[18px] font-light text-stone-700">→ {formatAmount(ticket.total_amount)}</p>
                       <p className="mt-1 text-[15px] text-stone-400">{formatDateTime(ticket.created_at)}</p>
                     </div>
                   </Link>
