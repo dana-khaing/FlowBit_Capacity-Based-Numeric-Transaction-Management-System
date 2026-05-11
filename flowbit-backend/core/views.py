@@ -2647,6 +2647,26 @@ class DashboardReportView(APIView):
             adjustment_queryset = adjustment_queryset.filter(period=period)
             allocation_queryset = allocation_queryset.filter(ledger__period=period)
 
+        active_standard_ledger_ids = set(
+            ledger_queryset.filter(is_active=True).values_list('id', flat=True)
+        )
+        freeze_rows = IdentifierLedgerFreeze.objects.filter(
+            owner=request.user,
+            period=period,
+        ).filter(
+            Q(applies_to_all=True) | Q(ledger_id__in=active_standard_ledger_ids)
+        ).values('identifier_id', 'applies_to_all', 'ledger_id')
+        freeze_state_by_identifier = {}
+        for row in freeze_rows:
+            state = freeze_state_by_identifier.setdefault(
+                row['identifier_id'],
+                {'all_ledgers': False, 'ledger_ids': set()},
+            )
+            if row['applies_to_all']:
+                state['all_ledgers'] = True
+            elif row['ledger_id']:
+                state['ledger_ids'].add(row['ledger_id'])
+
         standard_capacity_per_identifier = ledger_queryset.aggregate(
             total=Sum('limit_per_identifier')
         )['total'] or Decimal('0.00')
@@ -2687,6 +2707,7 @@ class DashboardReportView(APIView):
             | set(reserve_used_rows)
             | set(reserve_granted_rows)
             | set(approved_overflow_rows_by_identifier)
+            | set(freeze_state_by_identifier)
         )
         dashboard_identifiers = {
             identifier.id: identifier.number
@@ -2701,6 +2722,14 @@ class DashboardReportView(APIView):
             reserve_used = reserve_used_rows.get(identifier_id, Decimal('0.00'))
             reserve_granted = reserve_granted_rows.get(identifier_id, Decimal('0.00'))
             approved_overflow_amount = approved_overflow_rows_by_identifier.get(identifier_id, Decimal('0.00'))
+            freeze_state = freeze_state_by_identifier.get(
+                identifier_id,
+                {'all_ledgers': False, 'ledger_ids': set()},
+            )
+            all_standard_ledgers_frozen = freeze_state['all_ledgers'] or (
+                bool(active_standard_ledger_ids)
+                and active_standard_ledger_ids.issubset(freeze_state['ledger_ids'])
+            )
             total_capacity = standard_capacity_per_identifier + reserve_granted
             used_amount = normal_usage + reserve_used
             hot_number_amount = normal_usage + approved_overflow_amount
@@ -2728,10 +2757,10 @@ class DashboardReportView(APIView):
                     'amount': str(hot_number_amount),
                     'progress': float(max(Decimal('0.00'), min(hot_number_progress, Decimal('100.00')))),
                 })
-            if standard_remaining_capacity <= 0 and hot_number_amount > 0:
+            if (standard_remaining_capacity <= 0 and hot_number_amount > 0) or all_standard_ledgers_frozen:
                 full_number_rows.append({
                     'identifier': identifier_number,
-                    'amount': str(hot_number_amount),
+                    'amount': str(max(hot_number_amount, standard_capacity_per_identifier)),
                 })
             elif hot_number_amount > 0 and standard_remaining_capacity > 0:
                 almost_full_rows.append({
