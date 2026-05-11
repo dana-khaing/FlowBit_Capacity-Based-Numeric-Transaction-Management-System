@@ -1566,6 +1566,35 @@ class PrivateWorkspaceTests(APITestCase):
             any(item['identifier'] == self.identifier.number for item in dashboard_response.data['almost_full'])
         )
 
+    def test_dashboard_full_numbers_can_be_searched_and_paged(self):
+        for value in range(30):
+            identifier = Identifier.objects.create(number=f"{200 + value:03d}")
+            IdentifierLedgerFreeze.objects.create(
+                identifier=identifier,
+                period=self.period,
+                owner=self.user_one,
+                applies_to_all=True,
+            )
+
+        self.client.force_authenticate(user=self.user_one)
+        page_one_response = self.client.get('/api/reports/dashboard/full-numbers/', {
+            'period_id': self.period.id,
+            'page': 1,
+        })
+        search_response = self.client.get('/api/reports/dashboard/full-numbers/', {
+            'period_id': self.period.id,
+            'identifier': '205',
+        })
+
+        self.assertEqual(page_one_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(page_one_response.data['count'], 30)
+        self.assertEqual(page_one_response.data['page_size'], 20)
+        self.assertEqual(len(page_one_response.data['results']), 20)
+
+        self.assertEqual(search_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(search_response.data['count'], 1)
+        self.assertEqual(search_response.data['results'][0]['identifier'], '205')
+
 
 class PrivateWorkflowAPITests(APITestCase):
     def setUp(self):
