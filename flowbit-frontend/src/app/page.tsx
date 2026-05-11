@@ -206,15 +206,15 @@ export default function Home() {
     if (!report) {
       return [];
     }
-    const allocatedTotal = Number(report.total_allocated_amount || "0");
-    const availableTotal = allocatedTotal + Number(report.reserve_capacity_granted || "0");
+    const allocatedTotal = Number(report.standard_total_allocated_amount || "0");
+    const availableTotal = Number(report.standard_total_capacity || "0");
     const capacityPercent = availableTotal > 0 ? Math.round((allocatedTotal / availableTotal) * 100) : 0;
     const activeLedgerNames = activeLedgers.map((ledger) => ledger.name).slice(0, 2);
 
     return [
       {
         label: "Total entries today",
-        value: String(report.transaction_count),
+        value: String(report.today_ticket_count),
         meta: `${report.ticket_count} tickets in current period`,
       },
       {
@@ -341,7 +341,7 @@ export default function Home() {
             </div>
           </section>
 
-          <section className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-4">
+          <section className="grid gap-4 lg:grid-cols-4">
             {summaryCards.map((card) => (
               <article
                 key={card.label}

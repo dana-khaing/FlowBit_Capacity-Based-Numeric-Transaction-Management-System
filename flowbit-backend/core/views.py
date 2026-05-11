@@ -2650,6 +2650,11 @@ class DashboardReportView(APIView):
         standard_capacity_total = ledger_queryset.filter(is_active=True).aggregate(
             total=Sum('limit_per_identifier')
         )['total'] or Decimal('0.00')
+        standard_allocated_total = allocation_queryset.filter(
+            ledger__is_capacity_reserve=False,
+        ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+        today = timezone.localdate()
+        today_ticket_count = ticket_queryset.filter(created_at__date=today).count()
 
         normal_usage_rows = {
             row['transaction__identifier']: row['total'] or Decimal('0.00')
@@ -2682,7 +2687,13 @@ class DashboardReportView(APIView):
             reserve_granted = reserve_granted_rows.get(identifier_id, Decimal('0.00'))
             total_capacity = standard_capacity_total + reserve_granted
             used_amount = normal_usage + reserve_used
-            if total_capacity <= 0:
+            standard_remaining_capacity = standard_capacity_total - normal_usage
+            standard_progress = (
+                normal_usage / standard_capacity_total * Decimal('100.00')
+                if standard_capacity_total > 0
+                else Decimal('0.00')
+            )
+            if total_capacity <= 0 and standard_capacity_total <= 0:
                 continue
             remaining_capacity = total_capacity - used_amount
             progress = (used_amount / total_capacity * Decimal('100.00')) if total_capacity > 0 else Decimal('0.00')
@@ -2698,9 +2709,9 @@ class DashboardReportView(APIView):
             if used_amount > 0:
                 almost_full_rows.append({
                     'identifier': identifier_number,
-                    'remaining': str(remaining_capacity),
-                    'progress': float(max(Decimal('0.00'), min(progress, Decimal('100.00')))),
-                    'tone': 'critical' if remaining_capacity <= Decimal('100.00') else 'warning',
+                    'remaining': str(standard_remaining_capacity),
+                    'progress': float(max(Decimal('0.00'), min(standard_progress, Decimal('100.00')))),
+                    'tone': 'critical' if standard_remaining_capacity <= Decimal('100.00') else 'warning',
                 })
 
         hot_number_rows.sort(key=lambda row: Decimal(row['amount']), reverse=True)
@@ -2724,6 +2735,7 @@ class DashboardReportView(APIView):
             'active_ledger_count': ledger_queryset.filter(is_active=True).count(),
             'ticket_count': ticket_queryset.count(),
             'transaction_count': transaction_queryset.count(),
+            'today_ticket_count': today_ticket_count,
             'identifier_count': transaction_queryset.values('identifier').distinct().count(),
             'total_transaction_amount': str(
                 transaction_queryset.aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
@@ -2731,6 +2743,8 @@ class DashboardReportView(APIView):
             'total_allocated_amount': str(
                 allocation_queryset.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
             ),
+            'standard_total_capacity': str(standard_capacity_total),
+            'standard_total_allocated_amount': str(standard_allocated_total),
             'pending_overflow_count': len(pending_overflow_rows),
             'pending_overflow_amount': str(sum((row.excess_amount for row in pending_overflow_rows), Decimal('0.00'))),
             'approved_overflow_count': len(approved_overflow_rows),
