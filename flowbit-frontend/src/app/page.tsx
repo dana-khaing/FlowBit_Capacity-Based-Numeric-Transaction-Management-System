@@ -376,7 +376,7 @@ export default function Home() {
 
               <div className="thin-scrollbar mt-6 max-h-[440px] space-y-5 overflow-y-auto pr-1 sm:max-h-[540px] xl:max-h-[620px]">
                 {hotNumbers.length ? hotNumbers.map((item) => (
-                  <div key={item.identifier} className="grid items-center gap-3 sm:grid-cols-[64px_minmax(0,1.2fr)_88px]">
+                  <div key={item.identifier} className="grid items-center gap-3 sm:grid-cols-[64px_minmax(0,1.2fr)_104px]">
                     <div className="text-[24px] font-medium text-stone-950">{item.identifier}</div>
                     <div className="h-3 rounded-full bg-stone-100">
                       <div className="h-full rounded-full bg-lime-600" style={{ width: barWidth(item.progress) }} />
@@ -400,7 +400,7 @@ export default function Home() {
 
               <div className="thin-scrollbar mt-6 max-h-[440px] space-y-4 overflow-y-auto pr-1 sm:max-h-[540px] xl:max-h-[620px]">
                 {almostFull.length ? almostFull.map((item) => (
-                  <div key={item.identifier} className="grid items-center gap-3 sm:grid-cols-[64px_minmax(0,1.2fr)_120px]">
+                  <div key={item.identifier} className="grid items-center gap-3 sm:grid-cols-[64px_minmax(0,1.2fr)_104px]">
                     <div className="text-[24px] font-medium text-stone-950">{item.identifier}</div>
                     <div className={`h-3 rounded-full ${item.tone === "critical" ? "bg-red-100" : "bg-amber-100"}`}>
                       <div
@@ -429,7 +429,7 @@ export default function Home() {
 
               <div className="thin-scrollbar mt-6 max-h-[440px] divide-y divide-stone-900/8 overflow-y-auto pr-1 sm:max-h-[540px] xl:max-h-[620px]">
                 {fullNumbers.length ? fullNumbers.map((item) => (
-                  <div key={item.identifier} className="grid items-center gap-3 py-4 sm:grid-cols-[64px_minmax(0,1fr)_88px]">
+                  <div key={item.identifier} className="grid items-center gap-3 py-4 sm:grid-cols-[64px_minmax(0,1.2fr)_104px]">
                     <div className="text-[24px] font-medium text-stone-950">{item.identifier}</div>
                     <div className="h-3 rounded-full bg-amber-100">
                       <div className="h-full w-full rounded-full bg-amber-700" />
