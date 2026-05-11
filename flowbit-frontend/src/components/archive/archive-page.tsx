@@ -27,7 +27,12 @@ import {
   type FlowBitCollaborator,
   type FlowBitOverflow,
 } from "@/lib/overflow-client";
-import { fetchPeriods, type FlowBitPeriod } from "@/lib/period-client";
+import {
+  fetchPeriodLuckyDrawWinners,
+  fetchPeriods,
+  type FlowBitLuckyDrawWinners,
+  type FlowBitPeriod,
+} from "@/lib/period-client";
 import {
   fetchTicketDetail,
   fetchTicketPage,
@@ -84,6 +89,7 @@ export function ArchivePage() {
   const [ticketPage, setTicketPage] = useState(1);
   const [ticketTotalPages, setTicketTotalPages] = useState(1);
   const [approvedOverflows, setApprovedOverflows] = useState<FlowBitOverflow[]>([]);
+  const [luckyDrawWinners, setLuckyDrawWinners] = useState<FlowBitLuckyDrawWinners | null>(null);
   const [overflowPage, setOverflowPage] = useState(1);
   const [overflowTotalPages, setOverflowTotalPages] = useState(1);
   const [ledgerPage, setLedgerPage] = useState(1);
@@ -210,6 +216,7 @@ export function ArchivePage() {
       setTicketTotalPages(1);
       setApprovedOverflows([]);
       setOverflowTotalPages(1);
+      setLuckyDrawWinners(null);
       return;
     }
 
@@ -224,13 +231,14 @@ export function ArchivePage() {
         pageSize: ARCHIVE_PAGE_SIZE,
         sort: "newest",
       }),
+      fetchPeriodLuckyDrawWinners(selectedPeriodId),
       fetchApprovedOverflowPage({
         periodId: selectedPeriodId,
         page: overflowPage,
         pageSize: ARCHIVE_PAGE_SIZE,
       }),
     ])
-      .then(([archivedLedgers, ticketPageResponse, overflowPageResponse]) => {
+      .then(([archivedLedgers, ticketPageResponse, luckyDrawResponse, overflowPageResponse]) => {
         if (!isMounted) {
           return;
         }
@@ -247,6 +255,7 @@ export function ArchivePage() {
         setTicketEntries(ticketPageResponse.summary.total_entries);
         setTicketTotalAmount(ticketPageResponse.summary.total_amount);
         setTicketTotalPages(ticketPageResponse.total_pages);
+        setLuckyDrawWinners(luckyDrawResponse);
         setApprovedOverflows(overflowPageResponse.results);
         setOverflowTotalPages(overflowPageResponse.total_pages);
       })
@@ -614,9 +623,74 @@ export function ArchivePage() {
                   <FontAwesomeIcon icon={faTrophy} className="h-5 w-5 text-stone-300" />
                 </div>
                 <div className="mt-5 flex min-h-0 flex-1 flex-col">
-                  <div className="flex flex-1 items-center rounded-[22px] border border-dashed border-stone-300 bg-stone-50 px-4 py-4 text-sm text-stone-500">
-                    No archived lucky draw numbers are stored yet.
-                  </div>
+                  {luckyDrawWinners?.lucky_draw.number ? (
+                    <div className="thin-scrollbar flex flex-1 flex-col overflow-y-auto pr-1">
+                      <div className="rounded-[22px] border border-amber-200 bg-amber-50 px-4 py-4">
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-700">
+                          Lucky draw number
+                        </p>
+                        <p className="mt-2 text-3xl font-semibold tracking-[0.14em] text-stone-950">
+                          {luckyDrawWinners.lucky_draw.display_number}
+                        </p>
+                        <p className="mt-2 text-sm text-stone-600">
+                          Announced {formatArchiveDateTime(luckyDrawWinners.lucky_draw.announced_at)}
+                        </p>
+                      </div>
+
+                      <div className="mt-4 rounded-[22px] border border-emerald-200 bg-emerald-50 px-4 py-4">
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">
+                          Congratulations
+                        </p>
+                        <p className="mt-2 text-lg font-semibold text-stone-950">Lucky winners</p>
+                      </div>
+
+                      <div className="mt-4 space-y-3">
+                        {luckyDrawWinners.tickets.map((ticket) => (
+                          <button
+                            key={ticket.ticket_number}
+                            type="button"
+                            onClick={() => void openTicket(ticket.ticket_number)}
+                            className="w-full rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4 text-left transition hover:border-stone-300 hover:bg-white"
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="text-base font-semibold text-stone-950">{ticket.ticket_number}</span>
+                              <span className="text-sm font-medium text-stone-600">{formatTicketAmount(ticket.total_amount)}</span>
+                            </div>
+                            <p className="mt-2 text-sm text-stone-600">
+                              Winner identifiers: {ticket.matched_identifiers.join(", ")}
+                            </p>
+                          </button>
+                        ))}
+
+                        {luckyDrawWinners.approved_overflows.map((overflow) => (
+                          <button
+                            key={overflow.id}
+                            type="button"
+                            onClick={() => overflow.ticket_number ? void openTicket(overflow.ticket_number) : undefined}
+                            className="w-full rounded-[22px] border border-emerald-200 bg-emerald-50 px-4 py-4 text-left transition hover:border-emerald-300 hover:bg-emerald-100"
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="text-base font-semibold text-stone-950">{overflow.identifier_number}</span>
+                              <span className="text-sm font-medium text-stone-600">{formatTicketAmount(overflow.amount)}</span>
+                            </div>
+                            <p className="mt-2 text-sm text-stone-600">
+                              Approved spill over{overflow.collaborator_names.length ? ` · ${overflow.collaborator_names.join(", ")}` : ""}
+                            </p>
+                          </button>
+                        ))}
+
+                        {!luckyDrawWinners.tickets.length && !luckyDrawWinners.approved_overflows.length ? (
+                          <div className="rounded-[22px] border border-dashed border-stone-300 bg-stone-50 px-4 py-4 text-sm text-stone-500">
+                            No winning tickets or approved spill over for this period.
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-1 items-center rounded-[22px] border border-dashed border-stone-300 bg-stone-50 px-4 py-4 text-sm text-stone-500">
+                      No archived lucky draw numbers are stored yet.
+                    </div>
+                  )}
                 </div>
               </article>
 

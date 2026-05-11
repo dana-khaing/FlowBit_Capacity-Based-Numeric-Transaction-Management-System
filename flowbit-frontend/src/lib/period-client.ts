@@ -8,6 +8,43 @@ export type FlowBitPeriod = {
   end_date: string;
   close_time?: string | null;
   is_open: boolean;
+  lucky_draw_display?: string;
+  lucky_draw_revealed?: boolean;
+  lucky_draw_announced_at?: string | null;
+};
+
+export type FlowBitLuckyDraw = {
+  id?: number | null;
+  period: number;
+  period_name: string;
+  number: string | null;
+  display_number: string;
+  winning_identifiers: string[];
+  announced_by: number | null;
+  announced_by_username: string | null;
+  announced_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+export type FlowBitLuckyDrawWinners = {
+  lucky_draw: FlowBitLuckyDraw;
+  tickets: Array<{
+    ticket_number: string;
+    customer_name: string;
+    created_at: string;
+    matched_identifiers: string[];
+    transaction_count: number;
+    total_amount: string;
+  }>;
+  approved_overflows: Array<{
+    id: number;
+    identifier_number: string;
+    ticket_number: string | null;
+    amount: string;
+    approved_at: string | null;
+    collaborator_names: string[];
+  }>;
 };
 
 type CurrentPeriodResponse = FlowBitPeriod;
@@ -112,5 +149,27 @@ export async function deletePeriod(periodId: number, adminOverrideCode?: string)
     method: "DELETE",
     headers: authHeaders(),
     body: JSON.stringify(adminOverrideCode ? { admin_override_code: adminOverrideCode } : {}),
+  });
+}
+
+export async function fetchPeriodLuckyDraw(periodId: number) {
+  return apiRequest<FlowBitLuckyDraw>(`/periods/${periodId}/lucky-draw/`, {
+    method: "GET",
+    headers: authHeaders(),
+  });
+}
+
+export async function savePeriodLuckyDraw(periodId: number, number: string) {
+  return apiRequest<FlowBitLuckyDraw>(`/periods/${periodId}/lucky-draw/`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ number }),
+  });
+}
+
+export async function fetchPeriodLuckyDrawWinners(periodId: number) {
+  return apiRequest<FlowBitLuckyDrawWinners>(`/periods/${periodId}/lucky-draw-winners/`, {
+    method: "GET",
+    headers: authHeaders(),
   });
 }
