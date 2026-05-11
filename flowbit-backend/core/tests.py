@@ -1544,6 +1544,28 @@ class PrivateWorkspaceTests(APITestCase):
         self.assertEqual(hot_row['amount'], '120.00')
         self.assertEqual(hot_row['progress'], 100.0)
 
+    def test_dashboard_full_numbers_include_identifiers_frozen_across_all_ledgers(self):
+        IdentifierLedgerFreeze.objects.create(
+            identifier=self.identifier,
+            period=self.period,
+            owner=self.user_one,
+            applies_to_all=True,
+        )
+
+        self.client.force_authenticate(user=self.user_one)
+        dashboard_response = self.client.get('/api/reports/dashboard/', {'period_id': self.period.id})
+
+        self.assertEqual(dashboard_response.status_code, status.HTTP_200_OK)
+        full_row = next(
+            item
+            for item in dashboard_response.data['full_numbers']
+            if item['identifier'] == self.identifier.number
+        )
+        self.assertEqual(full_row['amount'], '100')
+        self.assertFalse(
+            any(item['identifier'] == self.identifier.number for item in dashboard_response.data['almost_full'])
+        )
+
 
 class PrivateWorkflowAPITests(APITestCase):
     def setUp(self):
