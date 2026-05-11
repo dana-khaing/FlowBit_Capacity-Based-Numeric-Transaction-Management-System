@@ -9,7 +9,6 @@ import {
   faCircleCheck,
   faClockRotateLeft,
   faFileInvoice,
-  faFolderOpen,
   faLayerGroup,
   faPlus,
   faShieldHalved,
@@ -129,14 +128,6 @@ function formatDateTime(value: string) {
   });
 }
 
-function getCustomerName(value: string | null | undefined) {
-  const normalized = value?.trim() || "";
-  if (!normalized || normalized.startsWith("Walk-in ")) {
-    return "-";
-  }
-  return normalized;
-}
-
 function barWidth(progress: number) {
   return `${Math.max(0, Math.min(progress, 100))}%`;
 }
@@ -221,29 +212,40 @@ export default function Home() {
     if (!report) {
       return [];
     }
+    const allocatedTotal = identifierRows.reduce(
+      (sum, row) => sum + Number(row.normal_usage || "0") + Number(row.reserve_used || "0"),
+      0,
+    );
+    const availableTotal = identifierRows.reduce(
+      (sum, row) => sum + Number(row.total_capacity || "0") + Number(row.reserve_granted || "0"),
+      0,
+    );
+    const capacityPercent = availableTotal > 0 ? Math.round((allocatedTotal / availableTotal) * 100) : 0;
+    const activeLedgerNames = activeLedgers.map((ledger) => ledger.name).slice(0, 2);
+
     return [
       {
-        label: "Total tickets",
-        value: String(report.ticket_count),
-        meta: `${report.transaction_count} entries`,
+        label: "Total entries today",
+        value: String(report.transaction_count),
+        meta: `${report.ticket_count} tickets in current period`,
       },
       {
         label: "Capacity used",
-        value: formatAmount(report.total_allocated_amount),
-        meta: `${report.identifier_count} identifiers active`,
+        value: `${capacityPercent}%`,
+        meta: `${formatAmount(allocatedTotal)} / ${formatAmount(availableTotal)}`,
       },
       {
         label: "Overflow pending",
         value: String(report.pending_overflow_count),
-        meta: formatAmount(report.pending_overflow_amount),
+        meta: pendingOverflows.length ? "Needs approval" : "Queue clear",
       },
       {
         label: "Active ledgers",
         value: String(report.active_ledger_count),
-        meta: `${report.ledger_count} total ledgers`,
+        meta: activeLedgerNames.length ? activeLedgerNames.join(" · ") : `${report.ledger_count} total ledgers`,
       },
     ];
-  }, [report]);
+  }, [activeLedgers, identifierRows, pendingOverflows.length, report]);
 
   const hotNumbers = useMemo(() => {
     return identifierRows
