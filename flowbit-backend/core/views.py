@@ -2704,14 +2704,14 @@ class DashboardReportView(APIView):
             total_capacity = standard_capacity_per_identifier + reserve_granted
             used_amount = normal_usage + reserve_used
             hot_number_amount = normal_usage + approved_overflow_amount
-            standard_remaining_capacity = standard_capacity_per_identifier - normal_usage
+            standard_remaining_capacity = standard_capacity_per_identifier - hot_number_amount
             hot_number_progress = (
                 hot_number_amount / standard_capacity_per_identifier * Decimal('100.00')
                 if standard_capacity_per_identifier > 0
                 else Decimal('0.00')
             )
             almost_full_progress = (
-                normal_usage / standard_capacity_per_identifier * Decimal('100.00')
+                hot_number_amount / standard_capacity_per_identifier * Decimal('100.00')
                 if standard_capacity_per_identifier > 0
                 else Decimal('0.00')
             )
@@ -2728,12 +2728,12 @@ class DashboardReportView(APIView):
                     'amount': str(hot_number_amount),
                     'progress': float(max(Decimal('0.00'), min(hot_number_progress, Decimal('100.00')))),
                 })
-            if standard_remaining_capacity <= 0 and normal_usage > 0:
+            if standard_remaining_capacity <= 0 and hot_number_amount > 0:
                 full_number_rows.append({
                     'identifier': identifier_number,
-                    'amount': str(normal_usage),
+                    'amount': str(hot_number_amount),
                 })
-            elif used_amount > 0 and standard_remaining_capacity > 0:
+            elif hot_number_amount > 0 and standard_remaining_capacity > 0:
                 almost_full_rows.append({
                     'identifier': identifier_number,
                     'remaining': str(standard_remaining_capacity),
