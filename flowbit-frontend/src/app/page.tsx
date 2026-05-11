@@ -24,7 +24,7 @@ import {
 import { fetchLedgers, type FlowBitLedger } from "@/lib/ledger-client";
 import { fetchApprovedOverflowPage, fetchPendingOverflowPage, type FlowBitOverflow } from "@/lib/overflow-client";
 import { fetchPeriods } from "@/lib/period-client";
-import { fetchTickets, type FlowBitTicketListItem } from "@/lib/ticket-client";
+import { fetchTickets } from "@/lib/ticket-client";
 
 const primaryActions = [
   {
@@ -132,7 +132,6 @@ function barWidth(progress: number) {
 
 export default function Home() {
   const [report, setReport] = useState<FlowBitDashboardReport | null>(null);
-  const [recentTickets, setRecentTickets] = useState<FlowBitTicketListItem[]>([]);
   const [activeLedgers, setActiveLedgers] = useState<FlowBitLedger[]>([]);
   const [pendingOverflows, setPendingOverflows] = useState<FlowBitOverflow[]>([]);
   const [approvedOverflows, setApprovedOverflows] = useState<FlowBitOverflow[]>([]);
@@ -150,7 +149,6 @@ export default function Home() {
 
     if (!hasActivePeriod || !activePeriod) {
       setReport(null);
-      setRecentTickets([]);
       setActiveLedgers([]);
       setPendingOverflows([]);
       setApprovedOverflows([]);
@@ -165,18 +163,16 @@ export default function Home() {
 
     Promise.all([
       fetchDashboardReport(activePeriod.id),
-      fetchTickets({ periodId: activePeriod.id, limit: 6 }),
       fetchLedgers({ period_id: activePeriod.id }),
       fetchPendingOverflowPage({ periodId: activePeriod.id, page: 1, pageSize: 4 }),
       fetchApprovedOverflowPage({ periodId: activePeriod.id, page: 1, pageSize: 4 }),
       fetchPeriods(),
     ])
-      .then(([nextReport, nextTickets, nextLedgers, nextPending, nextApproved, periods]) => {
+      .then(([nextReport, nextLedgers, nextPending, nextApproved, periods]) => {
         if (!isMounted) {
           return;
         }
         setReport(nextReport);
-        setRecentTickets(nextTickets);
         setActiveLedgers(nextLedgers.filter((ledger) => ledger.is_active && !ledger.is_capacity_reserve));
         setPendingOverflows(nextPending.results);
         setApprovedOverflows(nextApproved.results);
@@ -253,6 +249,13 @@ export default function Home() {
       remaining: Number(row.remaining || "0"),
       progress: row.progress,
       tone: row.tone,
+    })) ?? [];
+  }, [report]);
+
+  const fullNumbers = useMemo(() => {
+    return report?.full_numbers.map((row) => ({
+      identifier: row.identifier,
+      amount: Number(row.amount || "0"),
     })) ?? [];
   }, [report]);
 
@@ -419,25 +422,22 @@ export default function Home() {
               <div className="flex items-center gap-3">
                 <span className="h-3 w-3 rounded-full bg-amber-700" />
                 <div>
-                  <h2 className="text-[17px] font-medium uppercase tracking-[0.08em] text-stone-600">My Recent Entries</h2>
-                  <p className="mt-1 text-[15px] text-stone-400">Your submissions this session</p>
+                  <h2 className="text-[17px] font-medium uppercase tracking-[0.08em] text-stone-600">Full Number</h2>
+                  <p className="mt-1 text-[15px] text-stone-400">Numbers already at full standard capacity</p>
                 </div>
               </div>
 
               <div className="thin-scrollbar mt-6 max-h-[440px] divide-y divide-stone-900/8 overflow-y-auto pr-1 sm:max-h-[540px] xl:max-h-[620px]">
-                {recentTickets.length ? recentTickets.map((ticket) => (
-                  <Link key={ticket.id} href="/tickets" className="grid gap-2 py-4 sm:grid-cols-[1fr_auto] sm:items-center">
-                    <div>
-                      <p className="text-[20px] font-medium tracking-[0.08em] text-stone-950">{ticket.identifier_numbers[0] ?? "---"}</p>
-                      <p className="mt-1 text-[15px] text-stone-400">{ticket.ticket_number}</p>
+                {fullNumbers.length ? fullNumbers.map((item) => (
+                  <div key={item.identifier} className="grid items-center gap-3 py-4 sm:grid-cols-[64px_minmax(0,1fr)_88px]">
+                    <div className="text-[24px] font-medium text-stone-950">{item.identifier}</div>
+                    <div className="h-3 rounded-full bg-amber-100">
+                      <div className="h-full w-full rounded-full bg-amber-700" />
                     </div>
-                    <div className="text-left sm:text-right">
-                      <p className="text-[18px] font-light text-stone-700">→ {formatAmount(ticket.total_amount)}</p>
-                      <p className="mt-1 text-[15px] text-stone-400">{formatDateTime(ticket.created_at)}</p>
-                    </div>
-                  </Link>
+                    <div className="text-right text-[15px] text-stone-400">{formatAmount(item.amount)}</div>
+                  </div>
                 )) : (
-                  <p className="py-4 text-sm text-stone-500">No recent entries yet.</p>
+                  <p className="py-4 text-sm text-stone-500">No fully filled numbers yet.</p>
                 )}
               </div>
             </article>
