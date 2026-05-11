@@ -2647,7 +2647,7 @@ class DashboardReportView(APIView):
             adjustment_queryset = adjustment_queryset.filter(period=period)
             allocation_queryset = allocation_queryset.filter(ledger__period=period)
 
-        standard_capacity_total = ledger_queryset.filter(is_active=True).aggregate(
+        standard_capacity_total = ledger_queryset.aggregate(
             total=Sum('limit_per_identifier')
         )['total'] or Decimal('0.00')
         standard_allocated_total = allocation_queryset.filter(
