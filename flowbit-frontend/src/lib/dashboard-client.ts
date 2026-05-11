@@ -37,6 +37,10 @@ export type FlowBitDashboardReport = {
     progress: number;
     tone: "critical" | "warning";
   }>;
+  full_numbers: Array<{
+    identifier: string;
+    amount: string;
+  }>;
 };
 
 export type FlowBitIdentifierCapacityRow = {

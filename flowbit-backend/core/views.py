@@ -2695,6 +2695,7 @@ class DashboardReportView(APIView):
 
         hot_number_rows = []
         almost_full_rows = []
+        full_number_rows = []
         for identifier_id in dashboard_identifier_ids:
             normal_usage = normal_usage_rows.get(identifier_id, Decimal('0.00'))
             reserve_used = reserve_used_rows.get(identifier_id, Decimal('0.00'))
@@ -2727,7 +2728,12 @@ class DashboardReportView(APIView):
                     'amount': str(hot_number_amount),
                     'progress': float(max(Decimal('0.00'), min(hot_number_progress, Decimal('100.00')))),
                 })
-            if used_amount > 0:
+            if standard_remaining_capacity <= 0 and normal_usage > 0:
+                full_number_rows.append({
+                    'identifier': identifier_number,
+                    'amount': str(normal_usage),
+                })
+            elif used_amount > 0:
                 almost_full_rows.append({
                     'identifier': identifier_number,
                     'remaining': str(standard_remaining_capacity),
@@ -2777,6 +2783,7 @@ class DashboardReportView(APIView):
             ),
             'hot_numbers': hot_number_rows[:20],
             'almost_full': almost_full_rows[:6],
+            'full_numbers': full_number_rows[:20],
         }
         return Response(data, status=status.HTTP_200_OK)
 
