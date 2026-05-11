@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -13,6 +13,7 @@ import {
   faTriangleExclamation,
 } from "@fortawesome/free-solid-svg-icons";
 import { AppSectionPage } from "@/components/app/app-section-page";
+import { TICKETS_UPDATED_EVENT } from "@/components/app/workspace-events";
 import { usePeriodState } from "@/components/period/use-period-state";
 import {
   fetchDashboardReport,
@@ -142,7 +143,7 @@ export default function Home() {
 
   const { activePeriod, hasActivePeriod, isLoading: isPeriodLoading, error: periodError } = usePeriodState();
 
-  useEffect(() => {
+  const refreshDashboard = useCallback(async (background = false) => {
     if (isPeriodLoading) {
       return;
     }
@@ -160,46 +161,83 @@ export default function Home() {
     }
 
     let isMounted = true;
-    setIsDashboardLoading(true);
+    if (!background) {
+      setIsDashboardLoading(true);
+    }
 
-    Promise.all([
-      fetchDashboardReport(activePeriod.id),
-      fetchLedgers({ period_id: activePeriod.id }),
-      fetchPendingOverflowPage({ periodId: activePeriod.id, page: 1, pageSize: 4 }),
-      fetchApprovedOverflowPage({ periodId: activePeriod.id, page: 1, pageSize: 4 }),
-      fetchTickets({ periodId: activePeriod.id, limit: 6 }),
-      fetchPeriods(),
-    ])
-      .then(([nextReport, nextLedgers, nextPending, nextApproved, nextRecentTickets, periods]) => {
-        if (!isMounted) {
-          return;
-        }
-        setReport(nextReport);
-        setActiveLedgers(nextLedgers.filter((ledger) => ledger.is_active && !ledger.is_capacity_reserve));
-        setPendingOverflows(nextPending.results);
-        setApprovedOverflows(nextApproved.results);
-        setRecentTickets(nextRecentTickets);
-        const closedPeriods = periods.filter((period) => !period.is_open);
-        setArchivedPeriodCount(closedPeriods.length);
-        setClosedPeriodNames(closedPeriods.map((period) => period.name));
-        setDashboardError(null);
-      })
-      .catch((error) => {
-        if (!isMounted) {
-          return;
-        }
-        setDashboardError(error instanceof Error ? error.message : "Request failed.");
-      })
-      .finally(() => {
-        if (isMounted) {
-          setIsDashboardLoading(false);
-        }
-      });
+    try {
+      const [nextReport, nextLedgers, nextPending, nextApproved, nextRecentTickets, periods] = await Promise.all([
+        fetchDashboardReport(activePeriod.id),
+        fetchLedgers({ period_id: activePeriod.id }),
+        fetchPendingOverflowPage({ periodId: activePeriod.id, page: 1, pageSize: 4 }),
+        fetchApprovedOverflowPage({ periodId: activePeriod.id, page: 1, pageSize: 4 }),
+        fetchTickets({ periodId: activePeriod.id, limit: 6 }),
+        fetchPeriods(),
+      ]);
+      if (!isMounted) {
+        return;
+      }
+      setReport(nextReport);
+      setActiveLedgers(nextLedgers.filter((ledger) => ledger.is_active && !ledger.is_capacity_reserve));
+      setPendingOverflows(nextPending.results);
+      setApprovedOverflows(nextApproved.results);
+      setRecentTickets(nextRecentTickets);
+      const closedPeriods = periods.filter((period) => !period.is_open);
+      setArchivedPeriodCount(closedPeriods.length);
+      setClosedPeriodNames(closedPeriods.map((period) => period.name));
+      setDashboardError(null);
+    } catch (error) {
+      if (!isMounted) {
+        return;
+      }
+      setDashboardError(error instanceof Error ? error.message : "Request failed.");
+    } finally {
+      if (isMounted) {
+        setIsDashboardLoading(false);
+      }
+    }
 
     return () => {
       isMounted = false;
     };
-  }, [activePeriod?.id, hasActivePeriod, isPeriodLoading]);
+  }, [activePeriod, hasActivePeriod, isPeriodLoading]);
+
+  useEffect(() => {
+    let cleanup: (() => void) | undefined;
+
+    refreshDashboard().then((nextCleanup) => {
+      cleanup = nextCleanup;
+    });
+
+    return () => {
+      cleanup?.();
+    };
+  }, [refreshDashboard]);
+
+  useEffect(() => {
+    function handleTicketUpdate() {
+      void refreshDashboard(true);
+    }
+
+    function handleFocus() {
+      void refreshDashboard(true);
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") {
+        void refreshDashboard(true);
+      }
+    }
+
+    window.addEventListener(TICKETS_UPDATED_EVENT, handleTicketUpdate);
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.removeEventListener(TICKETS_UPDATED_EVENT, handleTicketUpdate);
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [refreshDashboard]);
 
   const summaryCards = useMemo(() => {
     if (!report) {

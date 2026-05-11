@@ -14,6 +14,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { AdminConfirmModal } from "@/components/admin/admin-confirm-modal";
 import { AdminActionToast } from "@/components/admin/admin-action-toast";
+import { notifyTicketsUpdated } from "@/components/app/workspace-events";
 import { WorkspaceShell } from "@/components/app/workspace-shell";
 import { TicketReceiptCard } from "@/components/tickets/ticket-receipt-card";
 import {
@@ -1038,6 +1039,7 @@ export function TicketCreationPage() {
           type: "success",
           message: `Ticket ${response.ticket?.ticket_number || response.ticket_number} created.`,
         });
+        notifyTicketsUpdated();
         setLastCreatedTicket({
           ticketNumber: response.ticket?.ticket_number || response.ticket_number || "Pending",
           customerName: getCustomerDisplayName(
