@@ -2647,6 +2647,65 @@ class DashboardReportView(APIView):
             adjustment_queryset = adjustment_queryset.filter(period=period)
             allocation_queryset = allocation_queryset.filter(ledger__period=period)
 
+        standard_capacity_total = ledger_queryset.filter(is_active=True).aggregate(
+            total=Sum('limit_per_identifier')
+        )['total'] or Decimal('0.00')
+
+        normal_usage_rows = {
+            row['transaction__identifier']: row['total'] or Decimal('0.00')
+            for row in allocation_queryset.filter(ledger__is_capacity_reserve=False)
+            .values('transaction__identifier')
+            .annotate(total=Sum('amount'))
+        }
+        reserve_used_rows = {
+            row['transaction__identifier']: row['total'] or Decimal('0.00')
+            for row in allocation_queryset.filter(ledger__is_capacity_reserve=True)
+            .values('transaction__identifier')
+            .annotate(total=Sum('amount'))
+        }
+        reserve_granted_rows = {
+            row['identifier']: row['total'] or Decimal('0.00')
+            for row in adjustment_queryset.values('identifier').annotate(total=Sum('amount'))
+        }
+
+        dashboard_identifier_ids = set(normal_usage_rows) | set(reserve_used_rows) | set(reserve_granted_rows)
+        dashboard_identifiers = {
+            identifier.id: identifier.number
+            for identifier in Identifier.objects.filter(id__in=dashboard_identifier_ids)
+        }
+
+        hot_number_rows = []
+        almost_full_rows = []
+        for identifier_id in dashboard_identifier_ids:
+            normal_usage = normal_usage_rows.get(identifier_id, Decimal('0.00'))
+            reserve_used = reserve_used_rows.get(identifier_id, Decimal('0.00'))
+            reserve_granted = reserve_granted_rows.get(identifier_id, Decimal('0.00'))
+            total_capacity = standard_capacity_total + reserve_granted
+            used_amount = normal_usage + reserve_used
+            if total_capacity <= 0:
+                continue
+            remaining_capacity = total_capacity - used_amount
+            progress = (used_amount / total_capacity * Decimal('100.00')) if total_capacity > 0 else Decimal('0.00')
+            identifier_number = dashboard_identifiers.get(identifier_id)
+            if not identifier_number:
+                continue
+            if used_amount > 0:
+                hot_number_rows.append({
+                    'identifier': identifier_number,
+                    'amount': str(used_amount),
+                    'progress': float(max(Decimal('0.00'), min(progress, Decimal('100.00')))),
+                })
+            if used_amount > 0:
+                almost_full_rows.append({
+                    'identifier': identifier_number,
+                    'remaining': str(remaining_capacity),
+                    'progress': float(max(Decimal('0.00'), min(progress, Decimal('100.00')))),
+                    'tone': 'critical' if remaining_capacity <= Decimal('100.00') else 'warning',
+                })
+
+        hot_number_rows.sort(key=lambda row: Decimal(row['amount']), reverse=True)
+        almost_full_rows.sort(key=lambda row: Decimal(row['remaining']))
+
         pending_overflow_rows = [row for row in overflow_rows if row.status == Overflow.STATUS_TCSO]
         approved_overflow_rows = [
             row for row in overflow_rows if row.status in {Overflow.STATUS_CSO, Overflow.STATUS_OVERKILL}
@@ -2681,6 +2740,8 @@ class DashboardReportView(APIView):
             'reserve_capacity_granted': str(
                 adjustment_queryset.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
             ),
+            'hot_numbers': hot_number_rows[:10],
+            'almost_full': almost_full_rows[:6],
         }
         return Response(data, status=status.HTTP_200_OK)
 
