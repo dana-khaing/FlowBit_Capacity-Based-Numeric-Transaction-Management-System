@@ -62,7 +62,7 @@ const defaultLedgerForm: LedgerFormState = {
   name: "",
   limit_per_identifier: "100.00",
   priority: "1",
-  close_time: "15:00",
+  close_time: "14:30",
 };
 
 function formatDateTime(value: string | null) {
@@ -109,7 +109,7 @@ function formatCompactAmount(value: string) {
 function formatTimeValue(value: string) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
-    return "15:00";
+    return "14:30";
   }
 
   return `${String(parsed.getHours()).padStart(2, "0")}:${String(parsed.getMinutes()).padStart(2, "0")}`;
@@ -165,7 +165,7 @@ export function LedgerPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [overrideCode, setOverrideCode] = useState("");
-  const [reopenForm, setReopenForm] = useState<LedgerReopenFormState>({ end_date: "", close_time: "15:00" });
+  const [reopenForm, setReopenForm] = useState<LedgerReopenFormState>({ end_date: "", close_time: "14:30" });
   const [draggedLedgerId, setDraggedLedgerId] = useState<number | null>(null);
 
   const { activePeriod, hasActivePeriod, error: periodError } = usePeriodState();
@@ -290,7 +290,7 @@ export function LedgerPage() {
           name: form.name.trim(),
           limit_per_identifier: form.limit_per_identifier,
           priority: Number(form.priority),
-          close_time: form.close_time || "15:00",
+          close_time: form.close_time || "14:30",
           admin_override_code: requiresOverride ? overrideCode : undefined,
         });
         setForm(defaultLedgerForm);
