@@ -522,9 +522,19 @@ export default function Home() {
                   <p className="text-sm text-stone-500">Active period</p>
                   <p className="mt-1 text-xl font-semibold text-stone-950">{activePeriod?.name ?? "-"}</p>
                 </div>
-                <div className="rounded-[22px] border border-stone-900/8 bg-[#f6f3ed] px-5 py-4">
-                  <p className="text-sm text-stone-500">Reserve granted</p>
-                  <p className="mt-1 text-xl font-semibold text-stone-950">{report ? formatAmount(report.reserve_capacity_granted) : "0"}</p>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-[22px] border border-stone-900/8 bg-[#f6f3ed] px-4 py-4">
+                    <p className="text-sm text-stone-500">Reserve</p>
+                    <p className="mt-1 text-lg font-semibold text-stone-950">{report ? formatAmount(report.reserve_capacity_granted) : "0"}</p>
+                  </div>
+                  <div className="rounded-[22px] border border-stone-900/8 bg-[#f6f3ed] px-4 py-4">
+                    <p className="text-sm text-stone-500">Pending</p>
+                    <p className="mt-1 text-lg font-semibold text-amber-800">{pendingOverflows.length}</p>
+                  </div>
+                  <div className="rounded-[22px] border border-stone-900/8 bg-[#f6f3ed] px-4 py-4">
+                    <p className="text-sm text-stone-500">Approved</p>
+                    <p className="mt-1 text-lg font-semibold text-emerald-700">{approvedOverflows.length}</p>
+                  </div>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   {oversightItems.map((item) => (
