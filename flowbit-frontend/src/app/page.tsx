@@ -419,9 +419,9 @@ export default function Home() {
                   Next draw
                 </p>
                 <div className="mt-3 flex items-center gap-4 text-[48px] font-light tracking-[0.16em] text-stone-950 sm:text-[64px]">
-                  <span>000</span>
+                  <span>***</span>
                   <span className="text-stone-400">—</span>
-                  <span>000</span>
+                  <span>***</span>
                 </div>
                 <p className="mt-3 text-base text-stone-500 sm:text-lg">{periodEndLabel}</p>
               </div>
