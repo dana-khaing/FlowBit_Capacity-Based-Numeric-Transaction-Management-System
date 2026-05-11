@@ -23,6 +23,17 @@ export type FlowBitDashboardReport = {
   refunded_overflow_count: number;
   refunded_overflow_amount: string;
   reserve_capacity_granted: string;
+  hot_numbers: Array<{
+    identifier: string;
+    amount: string;
+    progress: number;
+  }>;
+  almost_full: Array<{
+    identifier: string;
+    remaining: string;
+    progress: number;
+    tone: "critical" | "warning";
+  }>;
 };
 
 export type FlowBitIdentifierCapacityRow = {
