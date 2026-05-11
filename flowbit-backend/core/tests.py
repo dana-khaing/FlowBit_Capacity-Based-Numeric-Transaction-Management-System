@@ -1510,7 +1510,8 @@ class PrivateWorkspaceTests(APITestCase):
             if item['number'] == self.identifier.number
         )
         self.assertEqual(row['total_capacity'], '100')
-        self.assertEqual(row['normal_usage'], '60')
+        self.assertEqual(row['normal_usage'], '75')
+        self.assertEqual(row['remaining_capacity'], '25.00')
 
 
 class PrivateWorkflowAPITests(APITestCase):
