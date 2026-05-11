@@ -6,6 +6,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faArrowRight,
   faClockRotateLeft,
+  faExpand,
   faFileInvoice,
   faLayerGroup,
   faPlus,
@@ -17,12 +18,16 @@ import { TICKETS_UPDATED_EVENT } from "@/components/app/workspace-events";
 import { usePeriodState } from "@/components/period/use-period-state";
 import {
   fetchDashboardReport,
+  fetchDashboardFullNumbers,
   type FlowBitDashboardReport,
+  type FlowBitDashboardFullNumberPage,
 } from "@/lib/dashboard-client";
 import { fetchLedgers, type FlowBitLedger } from "@/lib/ledger-client";
 import { fetchApprovedOverflowPage, fetchPendingOverflowPage, type FlowBitOverflow } from "@/lib/overflow-client";
 import { fetchPeriods } from "@/lib/period-client";
 import { fetchTickets, type FlowBitTicketListItem } from "@/lib/ticket-client";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 const primaryActions = [
   {
@@ -140,6 +145,12 @@ export default function Home() {
   const [closedPeriodNames, setClosedPeriodNames] = useState<string[]>([]);
   const [dashboardError, setDashboardError] = useState<string | null>(null);
   const [isDashboardLoading, setIsDashboardLoading] = useState(true);
+  const [isFullNumberModalOpen, setIsFullNumberModalOpen] = useState(false);
+  const [fullNumberSearch, setFullNumberSearch] = useState("");
+  const [fullNumberPage, setFullNumberPage] = useState(1);
+  const [fullNumberModalData, setFullNumberModalData] = useState<FlowBitDashboardFullNumberPage | null>(null);
+  const [isFullNumberModalLoading, setIsFullNumberModalLoading] = useState(false);
+  const [fullNumberModalError, setFullNumberModalError] = useState<string | null>(null);
 
   const { activePeriod, hasActivePeriod, isLoading: isPeriodLoading, error: periodError } = usePeriodState();
 
@@ -337,6 +348,43 @@ export default function Home() {
 
   const latestClosedPeriod = closedPeriodNames[0] ?? "-";
 
+  useEffect(() => {
+    if (!isFullNumberModalOpen || !activePeriod) {
+      return;
+    }
+
+    let isMounted = true;
+    setIsFullNumberModalLoading(true);
+
+    fetchDashboardFullNumbers({
+      periodId: activePeriod.id,
+      page: fullNumberPage,
+      identifier: fullNumberSearch,
+    })
+      .then((response) => {
+        if (!isMounted) {
+          return;
+        }
+        setFullNumberModalData(response);
+        setFullNumberModalError(null);
+      })
+      .catch((error) => {
+        if (!isMounted) {
+          return;
+        }
+        setFullNumberModalError(error instanceof Error ? error.message : "Request failed.");
+      })
+      .finally(() => {
+        if (isMounted) {
+          setIsFullNumberModalLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activePeriod, fullNumberPage, fullNumberSearch, isFullNumberModalOpen]);
+
   return (
     <AppSectionPage
       eyebrow="Dashboard"
@@ -460,12 +508,26 @@ export default function Home() {
             </article>
 
             <article className="rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6">
-              <div className="flex items-center gap-3">
-                <span className="h-3 w-3 rounded-full bg-amber-700" />
-                <div>
-                  <h2 className="text-[17px] font-medium uppercase tracking-[0.08em] text-stone-600">Full Number</h2>
-                  <p className="mt-1 text-[15px] text-stone-400">Numbers already at full standard capacity</p>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <span className="h-3 w-3 rounded-full bg-amber-700" />
+                  <div>
+                    <h2 className="text-[17px] font-medium uppercase tracking-[0.08em] text-stone-600">Full Number</h2>
+                    <p className="mt-1 text-[15px] text-stone-400">Numbers already at full standard capacity</p>
+                  </div>
                 </div>
+                <Button
+                  variant="ghost"
+                  className="h-10 rounded-[16px] px-3 text-stone-500"
+                  onClick={() => {
+                    setFullNumberPage(1);
+                    setFullNumberSearch("");
+                    setIsFullNumberModalOpen(true);
+                  }}
+                >
+                  <FontAwesomeIcon icon={faExpand} className="h-4 w-4" />
+                  Open
+                </Button>
               </div>
 
               <div className="thin-scrollbar mt-6 max-h-[440px] space-y-4 overflow-y-auto pr-1 sm:max-h-[540px] xl:max-h-[620px]">
@@ -583,6 +645,93 @@ export default function Home() {
           </section>
         </div>
       )}
+
+      {isFullNumberModalOpen ? (
+        <div
+          className="fixed inset-0 z-50 bg-stone-950/40 px-4 py-6 backdrop-blur-sm"
+          onClick={() => setIsFullNumberModalOpen(false)}
+        >
+          <div
+            className="mx-auto flex max-h-[92vh] w-full max-w-3xl flex-col rounded-[28px] border border-stone-900/10 bg-white p-5 shadow-[0_24px_80px_rgba(28,24,20,0.24)] sm:p-6"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">
+                  Full number
+                </p>
+                <h2 className="mt-2 text-2xl font-semibold text-stone-950">Full number list</h2>
+                <p className="mt-2 text-sm text-stone-500">Search by identifier and browse 20 rows per page.</p>
+              </div>
+              <Button variant="ghost" className="h-10 rounded-[16px] px-3" onClick={() => setIsFullNumberModalOpen(false)}>
+                Close
+              </Button>
+            </div>
+
+            <div className="mt-5">
+              <Input
+                value={fullNumberSearch}
+                onChange={(event) => {
+                  setFullNumberSearch(event.target.value.replace(/\D/g, "").slice(0, 3));
+                  setFullNumberPage(1);
+                }}
+                placeholder="Search identifier"
+              />
+            </div>
+
+            <div className="thin-scrollbar mt-5 flex-1 space-y-4 overflow-y-auto pr-1">
+              {isFullNumberModalLoading ? (
+                <p className="text-sm text-stone-500">Loading full numbers.</p>
+              ) : fullNumberModalError ? (
+                <p className="text-sm text-rose-700">{fullNumberModalError}</p>
+              ) : fullNumberModalData?.results.length ? (
+                fullNumberModalData.results.map((item) => (
+                  <div key={`${item.identifier}-${item.amount}`} className="grid items-center gap-3 sm:grid-cols-[64px_minmax(0,1.2fr)_104px]">
+                    <div className="text-[24px] font-medium text-stone-950">{item.identifier}</div>
+                    <div className="h-3 rounded-full bg-stone-100">
+                      <div className="h-full rounded-full bg-amber-700" style={{ width: "100%" }} />
+                    </div>
+                    <div className="text-right text-[15px] text-stone-400">{formatAmount(item.amount)}</div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-stone-500">No full numbers match this search.</p>
+              )}
+            </div>
+
+            <div className="mt-5 flex items-center justify-between gap-3 border-t border-stone-900/8 pt-4">
+              <p className="text-sm text-stone-500">
+                {fullNumberModalData ? `${fullNumberModalData.count} total` : "0 total"}
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  className="rounded-[16px]"
+                  disabled={!fullNumberModalData || fullNumberModalData.page <= 1}
+                  onClick={() => setFullNumberPage((current) => Math.max(1, current - 1))}
+                >
+                  Previous
+                </Button>
+                <span className="min-w-[76px] text-center text-sm text-stone-500">
+                  Page {fullNumberModalData?.page ?? 1} / {fullNumberModalData?.total_pages ?? 1}
+                </span>
+                <Button
+                  variant="outline"
+                  className="rounded-[16px]"
+                  disabled={!fullNumberModalData || fullNumberModalData.page >= fullNumberModalData.total_pages}
+                  onClick={() =>
+                    setFullNumberPage((current) =>
+                      fullNumberModalData ? Math.min(fullNumberModalData.total_pages, current + 1) : current,
+                    )
+                  }
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </AppSectionPage>
   );
 }

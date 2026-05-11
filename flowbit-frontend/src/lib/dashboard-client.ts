@@ -65,6 +65,17 @@ export type FlowBitIdentifierCapacityReport = {
   results: FlowBitIdentifierCapacityRow[];
 };
 
+export type FlowBitDashboardFullNumberPage = {
+  count: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+  results: Array<{
+    identifier: string;
+    amount: string;
+  }>;
+};
+
 function authHeaders() {
   const token = getStoredToken();
   if (!token) {
@@ -92,6 +103,28 @@ export async function fetchIdentifierCapacityReport(periodId?: number) {
   }
   const suffix = query.toString() ? `?${query.toString()}` : "";
   return apiRequest<FlowBitIdentifierCapacityReport>(`/reports/identifiers/capacity/${suffix}`, {
+    method: "GET",
+    headers: authHeaders(),
+  });
+}
+
+export async function fetchDashboardFullNumbers(filters?: {
+  periodId?: number;
+  page?: number;
+  identifier?: string;
+}) {
+  const query = new URLSearchParams();
+  if (filters?.periodId) {
+    query.set("period_id", String(filters.periodId));
+  }
+  if (filters?.page) {
+    query.set("page", String(filters.page));
+  }
+  if (filters?.identifier?.trim()) {
+    query.set("identifier", filters.identifier.trim());
+  }
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return apiRequest<FlowBitDashboardFullNumberPage>(`/reports/dashboard/full-numbers/${suffix}`, {
     method: "GET",
     headers: authHeaders(),
   });
