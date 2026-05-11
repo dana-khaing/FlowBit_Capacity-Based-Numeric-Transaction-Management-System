@@ -216,21 +216,25 @@ export default function Home() {
         label: "Total entries today",
         value: String(report.today_ticket_count),
         meta: `${report.ticket_count} tickets in current period`,
+        href: "/tickets",
       },
       {
         label: "Capacity used",
         value: `${capacityPercent}%`,
         meta: `${formatAmount(allocatedTotal)} / ${formatAmount(availableTotal)}`,
+        href: "/ledgers",
       },
       {
         label: "Overflow pending",
         value: String(report.pending_overflow_count),
         meta: pendingOverflows.length ? "Needs approval" : "Queue clear",
+        href: "/spill-over",
       },
       {
         label: "Active ledgers",
         value: String(report.active_ledger_count),
         meta: activeLedgerNames.length ? activeLedgerNames.join(" · ") : `${report.ledger_count} total ledgers`,
+        href: "/ledgers",
       },
     ];
   }, [activeLedgers, pendingOverflows.length, report]);
@@ -343,16 +347,17 @@ export default function Home() {
 
           <section className="grid gap-4 lg:grid-cols-4">
             {summaryCards.map((card) => (
-              <article
+              <Link
                 key={card.label}
-                className="rounded-[24px] border border-stone-900/5 bg-[#f6f3ed] px-6 py-6 shadow-[0_4px_14px_rgba(28,24,20,0.03)]"
+                href={card.href}
+                className="rounded-[24px] border border-stone-900/5 bg-[#f6f3ed] px-6 py-6 shadow-[0_4px_14px_rgba(28,24,20,0.03)] transition hover:border-stone-900/12 hover:bg-white"
               >
                 <p className="text-[15px] font-medium text-stone-500">
                   {card.label}
                 </p>
                 <p className="mt-4 text-5xl font-light tracking-[-0.04em] text-stone-950">{card.value}</p>
                 <p className={`mt-3 text-lg ${card.label === "Overflow pending" ? "text-rose-700" : "text-stone-400"}`}>{card.meta}</p>
-              </article>
+              </Link>
             ))}
           </section>
 
