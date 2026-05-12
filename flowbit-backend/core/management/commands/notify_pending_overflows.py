@@ -4,7 +4,8 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 
 from core.audit import record_system_audit_log
-from core.models import Overflow, OverflowNotification, Period, _period_overflow_filter
+from core.models import Overflow, OverflowNotification, Period, UserNotification, _period_overflow_filter
+from core.views import create_user_notification
 
 
 class Command(BaseCommand):
@@ -42,6 +43,19 @@ class Command(BaseCommand):
                 )
                 if created:
                     created_count += 1
+                create_user_notification(
+                    recipient=overflow.owner,
+                    title='Pending spill over before period close',
+                    message=(
+                        f"Identifier {overflow.transaction.identifier.number} still has pending spill over "
+                        f"before {period.end_date:%Y-%m-%d %H:%M}."
+                    ),
+                    category=UserNotification.CATEGORY_SYSTEM,
+                    level=UserNotification.LEVEL_IMPORTANT,
+                    action_href='/spill-over',
+                    source_key=f'pre-close-overflow:{overflow.id}',
+                    period=period,
+                )
 
         self.stdout.write(
             self.style.SUCCESS(f'Created {created_count} pending overflow notification(s)')

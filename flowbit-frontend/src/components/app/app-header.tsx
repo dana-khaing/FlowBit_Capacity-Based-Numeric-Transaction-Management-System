@@ -4,12 +4,13 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faArrowRightFromBracket, faBars } from "@fortawesome/free-solid-svg-icons";
+import { faArrowRightFromBracket, faBars, faBell, faBullhorn, faTriangleExclamation } from "@fortawesome/free-solid-svg-icons";
 import { AdminConfirmModal } from "@/components/admin/admin-confirm-modal";
 import { usePeriodState } from "@/components/period/use-period-state";
 import { Button } from "@/components/ui/button";
 import { ProfileAvatar } from "@/components/profile/profile-avatar";
 import { fetchCurrentUser, getStoredUser, logoutFromBackend, type AuthUser } from "@/lib/auth-client";
+import { fetchNotificationSummary, markNotificationRead, type FlowBitNotification } from "@/lib/notification-client";
 
 type AppHeaderProps = {
   onMenuClick: () => void;
@@ -20,12 +21,20 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLogoutPending, setIsLogoutPending] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+  const [notificationSummary, setNotificationSummary] = useState<{ unread_count: number; recent: FlowBitNotification[] }>({
+    unread_count: 0,
+    recent: [],
+  });
   const { activePeriod } = usePeriodState();
 
   useEffect(() => {
     setUser(getStoredUser());
     fetchCurrentUser().then(setUser).catch(() => {
       // SessionGuard handles redirect on invalid sessions.
+    });
+    fetchNotificationSummary().then(setNotificationSummary).catch(() => {
+      // Header can stay quiet if notification fetch fails.
     });
   }, []);
 
@@ -39,6 +48,31 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
   const periodLabel = activePeriod ? activePeriod.name : "No active period";
   const navActionClassName =
     "inline-flex h-12 items-center justify-center gap-3 rounded-[20px] border border-stone-900/10 bg-white px-4 py-3 text-sm font-semibold text-stone-700 transition hover:bg-stone-50";
+
+  function notificationIcon(notification: FlowBitNotification) {
+    if (notification.category === "ANNOUNCEMENT") {
+      return faBullhorn;
+    }
+    if (notification.level === "IMPORTANT" || notification.level === "WARNING") {
+      return faTriangleExclamation;
+    }
+    return faBell;
+  }
+
+  async function handleNotificationClick(notification: FlowBitNotification) {
+    try {
+      if (!notification.is_read) {
+        await markNotificationRead(notification.id);
+        const nextSummary = await fetchNotificationSummary();
+        setNotificationSummary(nextSummary);
+      }
+    } catch {
+      // Let navigation continue.
+    } finally {
+      setIsNotificationOpen(false);
+      router.push(notification.action_href || "/notifications");
+    }
+  }
 
   return (
     <>
@@ -70,6 +104,81 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
         <div className="flex items-center gap-3">
           <div className="hidden rounded-full border border-dashed border-stone-900/12 bg-stone-50 px-4 py-2 text-sm text-stone-500 sm:block">
             Period: {periodLabel}
+          </div>
+          <div className="relative">
+            <Button
+              variant="outline"
+              className="h-12 w-12 rounded-[20px] p-0"
+              onClick={() => setIsNotificationOpen((current) => !current)}
+              aria-label="Open notifications"
+            >
+              <FontAwesomeIcon icon={faBell} className="h-4 w-4" />
+              {notificationSummary.unread_count ? (
+                <span className="absolute -right-1 -top-1 inline-flex min-w-[22px] items-center justify-center rounded-full bg-rose-600 px-1.5 py-1 text-[10px] font-semibold text-white">
+                  {notificationSummary.unread_count > 9 ? "9+" : notificationSummary.unread_count}
+                </span>
+              ) : null}
+            </Button>
+
+            {isNotificationOpen ? (
+              <div className="absolute right-0 top-[calc(100%+12px)] z-50 w-[360px] rounded-[28px] border border-stone-900/10 bg-white p-4 shadow-[0_24px_80px_rgba(28,24,20,0.18)]">
+                <div className="flex items-center justify-between gap-3 px-1 pb-3">
+                  <div>
+                    <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Notifications</p>
+                    <p className="mt-1 text-sm text-stone-500">{notificationSummary.unread_count} unread</p>
+                  </div>
+                  <Link
+                    href="/notifications"
+                    onClick={() => setIsNotificationOpen(false)}
+                    className="text-sm font-semibold text-stone-700 transition hover:text-stone-950"
+                  >
+                    View all
+                  </Link>
+                </div>
+
+                <div className="space-y-3">
+                  {notificationSummary.recent.length ? notificationSummary.recent.map((notification) => (
+                    <button
+                      key={notification.id}
+                      type="button"
+                      onClick={() => void handleNotificationClick(notification)}
+                      className={`flex w-full items-start gap-3 rounded-[22px] border px-4 py-4 text-left transition ${
+                        notification.is_read
+                          ? "border-stone-200 bg-stone-50"
+                          : "border-stone-900/10 bg-white shadow-[0_6px_16px_rgba(28,24,20,0.04)]"
+                      }`}
+                    >
+                      <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-stone-100 text-stone-700">
+                        <FontAwesomeIcon icon={notificationIcon(notification)} className="h-4 w-4" />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <p className="truncate text-sm font-semibold text-stone-950">{notification.title}</p>
+                          {!notification.is_read ? (
+                            <span className="rounded-full bg-stone-950 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+                              New
+                            </span>
+                          ) : null}
+                        </div>
+                        <p className="mt-1 line-clamp-2 text-sm leading-5 text-stone-500">{notification.message}</p>
+                        <p className="mt-2 text-xs font-medium text-stone-400">
+                          {new Date(notification.created_at).toLocaleString("en-GB", {
+                            day: "2-digit",
+                            month: "short",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </p>
+                      </div>
+                    </button>
+                  )) : (
+                    <div className="rounded-[22px] border border-dashed border-stone-300 bg-stone-50 px-4 py-4 text-sm text-stone-500">
+                      No recent notifications.
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : null}
           </div>
           <Link
             href="/profile"

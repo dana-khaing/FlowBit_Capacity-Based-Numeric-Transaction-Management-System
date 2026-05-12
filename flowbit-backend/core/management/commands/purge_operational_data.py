@@ -10,6 +10,7 @@ from core.models import (
     LedgerAllocation,
     Overflow,
     OverflowNotification,
+    UserNotification,
     PasswordResetToken,
     Period,
     Ticket,
@@ -31,6 +32,7 @@ class Command(BaseCommand):
         dry_run = options["dry_run"]
         targets = [
             ("overflow_notifications", OverflowNotification),
+            ("user_notifications", UserNotification),
             ("capacity_adjustments", IdentifierCapacityAdjustment),
             ("ledger_allocations", LedgerAllocation),
             ("overflows", Overflow),

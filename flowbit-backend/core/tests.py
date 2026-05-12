@@ -25,6 +25,7 @@ from core.models import (
     LedgerAllocation,
     Overflow,
     OverflowNotification,
+    UserNotification,
     AuditLog,
     PasswordResetToken,
     Profile,
@@ -856,6 +857,12 @@ class RolePermissionTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.regular_user.refresh_from_db()
         self.assertEqual(self.regular_user.profile.role, 'admin')
+        self.assertTrue(
+            UserNotification.objects.filter(
+                recipient=self.regular_user,
+                title='Account role updated',
+            ).exists()
+        )
 
     def test_admin_cannot_downgrade_own_account(self):
         self.client.force_authenticate(user=self.admin_user)
@@ -882,6 +889,12 @@ class RolePermissionTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.admin_user.refresh_from_db()
         self.assertTrue(self.admin_user.profile.check_master_override_password('override-999'))
+        self.assertTrue(
+            UserNotification.objects.filter(
+                recipient=self.admin_user,
+                title='Override access updated',
+            ).exists()
+        )
 
     def test_admin_can_set_initial_master_override_password_without_existing_override(self):
         self.client.force_authenticate(user=self.admin_user)
@@ -1721,6 +1734,105 @@ class PrivateWorkspaceTests(APITestCase):
         self.assertFalse(LuckyDraw.objects.filter(id=lucky_draw.id).exists())
         self.assertTrue(
             AuditLog.objects.filter(action='period.lucky_draw_deleted').exists()
+        )
+
+    def test_user_notification_list_is_scoped_to_current_user(self):
+        UserNotification.objects.create(
+            recipient=self.user_one,
+            category=UserNotification.CATEGORY_SYSTEM,
+            level=UserNotification.LEVEL_IMPORTANT,
+            title='User One Notice',
+            message='Only user one should see this.',
+        )
+        UserNotification.objects.create(
+            recipient=self.user_two,
+            category=UserNotification.CATEGORY_SYSTEM,
+            level=UserNotification.LEVEL_IMPORTANT,
+            title='User Two Notice',
+            message='Only user two should see this.',
+        )
+
+        self.client.force_authenticate(user=self.user_one)
+        response = self.client.get('/api/notifications/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['title'], 'User One Notice')
+
+    def test_admin_can_broadcast_notification_to_all_users(self):
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.post('/api/notifications/broadcast/', {
+            'title': 'System maintenance',
+            'message': 'FlowBit will be updated tonight.',
+            'level': UserNotification.LEVEL_WARNING,
+            'action_href': '/profile',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(
+            UserNotification.objects.filter(title='System maintenance').count(),
+            User.objects.filter(is_active=True).count(),
+        )
+
+    def test_lucky_draw_announcement_creates_system_notifications(self):
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.post(
+            f'/api/periods/{self.period.id}/lucky-draw/',
+            {'number': '123456'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(
+            UserNotification.objects.filter(
+                title='Lucky draw announced',
+                period=self.period,
+            ).count(),
+            User.objects.filter(is_active=True).count(),
+        )
+
+    def test_period_and_ledger_changes_create_system_notifications(self):
+        self.client.force_authenticate(user=self.admin_user)
+
+        period_update_response = self.client.patch(
+            f'/api/periods/{self.period.id}/',
+            {'end_date': '2027-12-30', 'close_time': '22:00'},
+            format='json',
+        )
+        ledger_create_response = self.client.post('/api/ledgers/', {
+            'period': self.period.id,
+            'name': 'Alert Ledger',
+            'end_date': '2027-12-30',
+            'close_time': '14:30',
+            'limit_per_identifier': '100',
+            'priority': 2,
+            'is_active': True,
+        }, format='json')
+
+        self.assertEqual(period_update_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(ledger_create_response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(
+            UserNotification.objects.filter(title='Period updated', period=self.period).exists()
+        )
+        self.assertTrue(
+            UserNotification.objects.filter(title='Ledger created', period=self.period).exists()
+        )
+
+    def test_auto_closed_period_creates_system_notifications(self):
+        self.period.start_date = timezone.now() - timezone.timedelta(days=2)
+        self.period.end_date = timezone.now() - timezone.timedelta(minutes=1)
+        self.period.save(update_fields=['start_date', 'end_date'])
+
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.get('/api/periods/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            UserNotification.objects.filter(
+                title='Period auto-closed',
+                period=self.period,
+            ).count(),
+            User.objects.filter(is_active=True).count(),
         )
 
     def test_period_lucky_draw_cannot_change_after_period_end(self):
@@ -2621,6 +2733,12 @@ class PrivateWorkflowAPITests(APITestCase):
         self.assertTrue(self.active_transaction.is_refunded)
         self.active_ticket.refresh_from_db()
         self.assertEqual(self.active_ticket.total_amount, Decimal('0.00'))
+        self.assertTrue(
+            UserNotification.objects.filter(
+                recipient=self.approver,
+                title='Transaction refunded',
+            ).exists()
+        )
         audit_entry = AuditLog.objects.filter(action='transaction.refunded').latest('timestamp')
         self.assertEqual(audit_entry.changes['identifier_number'], self.identifier.number)
         self.assertEqual(audit_entry.changes['refund_amount'], '75.00')
@@ -2661,6 +2779,12 @@ class PrivateWorkflowAPITests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.active_ticket.refresh_from_db()
         self.assertEqual(self.active_ticket.total_amount, Decimal('51.00'))
+        self.assertTrue(
+            UserNotification.objects.filter(
+                recipient=self.approver,
+                title='Spill over refunded',
+            ).exists()
+        )
 
     def test_ticket_total_amount_converts_refunded_spill_over_from_basis_amount(self):
         high_value_ticket = Ticket.objects.create(
@@ -3803,6 +3927,28 @@ class PrivateWorkflowAPITests(APITestCase):
                 identifier=self.identifier,
                 period=self.active_period,
                 owner=self.approver,
+            ).exists()
+        )
+        self.assertTrue(
+            UserNotification.objects.filter(
+                recipient=self.approver,
+                title='Identifier unfrozen',
+            ).exists()
+        )
+
+    def test_freeze_all_creates_identifier_notification(self):
+        response = self.client.post(
+            f'/api/identifiers/{self.identifier.id}/freeze/',
+            {'scope': 'all'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(
+            UserNotification.objects.filter(
+                recipient=self.approver,
+                title='Identifier frozen',
+                period=self.active_period,
             ).exists()
         )
 
