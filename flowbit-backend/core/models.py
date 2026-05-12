@@ -170,9 +170,7 @@ class LuckyDraw(models.Model):
         return [self.number[3:]]
 
     def is_revealed(self):
-        if not self.period.is_open:
-            return True
-        return timezone.now() >= self.period.lucky_draw_reveal_at
+        return bool(self.announced_at)
 
     def display_number(self, reveal_for_admin=False):
         if self.is_revealed() or reveal_for_admin:

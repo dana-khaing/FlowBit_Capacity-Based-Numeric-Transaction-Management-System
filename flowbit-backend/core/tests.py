@@ -1621,7 +1621,7 @@ class PrivateWorkspaceTests(APITestCase):
             AuditLog.objects.filter(action='period.lucky_draw_updated', target_id=lucky_draw.id).exists()
         )
 
-    def test_period_lucky_draw_is_masked_before_reveal_for_non_admin(self):
+    def test_period_lucky_draw_hides_raw_number_for_non_admin(self):
         LuckyDraw.objects.create(
             period=self.period,
             number='123456',
@@ -1633,8 +1633,25 @@ class PrivateWorkspaceTests(APITestCase):
         response = self.client.get(f'/api/periods/{self.period.id}/lucky-draw/')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['display_number'], '***-***')
+        self.assertEqual(response.data['display_number'], '123-456')
         self.assertIsNone(response.data['number'])
+
+    def test_admin_can_delete_period_lucky_draw_before_period_end(self):
+        lucky_draw = LuckyDraw.objects.create(
+            period=self.period,
+            number='123456',
+            announced_by=self.admin_user,
+            announced_at=timezone.now(),
+        )
+
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.delete(f'/api/periods/{self.period.id}/lucky-draw/')
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(LuckyDraw.objects.filter(id=lucky_draw.id).exists())
+        self.assertTrue(
+            AuditLog.objects.filter(action='period.lucky_draw_deleted').exists()
+        )
 
     def test_period_lucky_draw_cannot_change_after_period_end(self):
         self.period.start_date = timezone.now() - timezone.timedelta(days=1)
