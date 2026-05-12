@@ -17,6 +17,7 @@ from rest_framework.authtoken.models import Token
 
 from core.models import (
     Period,
+    LuckyDraw,
     Identifier,
     IdentifierLedgerFreeze,
     IdentifierCapacityAdjustment,
@@ -1594,6 +1595,192 @@ class PrivateWorkspaceTests(APITestCase):
         self.assertEqual(search_response.status_code, status.HTTP_200_OK)
         self.assertEqual(search_response.data['count'], 1)
         self.assertEqual(search_response.data['results'][0]['identifier'], '205')
+
+    def test_dashboard_hot_numbers_can_be_searched_and_paged(self):
+        for value in range(25):
+            identifier = Identifier.objects.create(number=f"{300 + value:03d}")
+            ticket = Ticket.objects.create(customer_name=f'Hot {value}', created_by=self.user_one)
+            transaction = Transaction.objects.create(
+                ticket=ticket,
+                identifier=identifier,
+                total_amount=Decimal('80.00'),
+                created_by=self.user_one,
+            )
+            Overflow.objects.create(
+                transaction=transaction,
+                identifier=identifier,
+                owner=self.user_one,
+                period=self.period,
+                excess_amount=Decimal('20.00'),
+                amount_to_approve=Decimal('20.00'),
+                status=Overflow.STATUS_CSO,
+                approved_at=timezone.now(),
+            )
+
+        self.client.force_authenticate(user=self.user_one)
+        page_one_response = self.client.get('/api/reports/dashboard/hot-numbers/', {
+            'period_id': self.period.id,
+            'page': 1,
+        })
+        search_response = self.client.get('/api/reports/dashboard/hot-numbers/', {
+            'period_id': self.period.id,
+            'identifier': '305',
+        })
+
+        self.assertEqual(page_one_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(page_one_response.data['count'], 25)
+        self.assertEqual(page_one_response.data['page_size'], 20)
+        self.assertEqual(len(page_one_response.data['results']), 20)
+
+        self.assertEqual(search_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(search_response.data['count'], 1)
+        self.assertEqual(search_response.data['results'][0]['identifier'], '305')
+
+    def test_dashboard_almost_full_can_be_searched_and_paged(self):
+        for value in range(25):
+            identifier = Identifier.objects.create(number=f"{400 + value:03d}")
+            ticket = Ticket.objects.create(customer_name=f'Almost {value}', created_by=self.user_one)
+            Transaction.objects.create(
+                ticket=ticket,
+                identifier=identifier,
+                total_amount=Decimal('60.00'),
+                created_by=self.user_one,
+            )
+
+        self.client.force_authenticate(user=self.user_one)
+        page_one_response = self.client.get('/api/reports/dashboard/almost-full/', {
+            'period_id': self.period.id,
+            'page': 1,
+        })
+        search_response = self.client.get('/api/reports/dashboard/almost-full/', {
+            'period_id': self.period.id,
+            'identifier': '405',
+        })
+
+        self.assertEqual(page_one_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(page_one_response.data['count'], 25)
+        self.assertEqual(page_one_response.data['page_size'], 20)
+        self.assertEqual(len(page_one_response.data['results']), 20)
+
+        self.assertEqual(search_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(search_response.data['count'], 1)
+        self.assertEqual(search_response.data['results'][0]['identifier'], '405')
+
+    def test_admin_can_create_and_update_period_lucky_draw(self):
+        self.client.force_authenticate(user=self.admin_user)
+
+        create_response = self.client.post(
+            f'/api/periods/{self.period.id}/lucky-draw/',
+            {'number': '123456'},
+            format='json',
+        )
+        update_response = self.client.patch(
+            f'/api/periods/{self.period.id}/lucky-draw/',
+            {'number': '654321'},
+            format='json',
+        )
+
+        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(update_response.status_code, status.HTTP_200_OK)
+        lucky_draw = LuckyDraw.objects.get(period=self.period)
+        self.assertEqual(lucky_draw.number, '654321')
+        self.assertTrue(
+            AuditLog.objects.filter(action='period.lucky_draw_created', target_id=lucky_draw.id).exists()
+        )
+        self.assertTrue(
+            AuditLog.objects.filter(action='period.lucky_draw_updated', target_id=lucky_draw.id).exists()
+        )
+
+    def test_period_lucky_draw_hides_raw_number_for_non_admin(self):
+        LuckyDraw.objects.create(
+            period=self.period,
+            number='123456',
+            announced_by=self.user_one,
+            announced_at=timezone.now(),
+        )
+
+        self.client.force_authenticate(user=self.user_two)
+        response = self.client.get(f'/api/periods/{self.period.id}/lucky-draw/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['display_number'], '123-456')
+        self.assertIsNone(response.data['number'])
+
+    def test_admin_can_delete_period_lucky_draw_before_period_end(self):
+        lucky_draw = LuckyDraw.objects.create(
+            period=self.period,
+            number='123456',
+            announced_by=self.admin_user,
+            announced_at=timezone.now(),
+        )
+
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.delete(f'/api/periods/{self.period.id}/lucky-draw/')
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(LuckyDraw.objects.filter(id=lucky_draw.id).exists())
+        self.assertTrue(
+            AuditLog.objects.filter(action='period.lucky_draw_deleted').exists()
+        )
+
+    def test_period_lucky_draw_cannot_change_after_period_end(self):
+        self.period.start_date = timezone.now() - timezone.timedelta(days=1)
+        self.period.is_open = False
+        self.period.end_date = timezone.now() - timezone.timedelta(minutes=5)
+        self.period.save(update_fields=['start_date', 'is_open', 'end_date'])
+        LuckyDraw.objects.create(
+            period=self.period,
+            number='123456',
+            announced_by=self.admin_user,
+            announced_at=timezone.now() - timezone.timedelta(hours=1),
+        )
+
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.patch(
+            f'/api/periods/{self.period.id}/lucky-draw/',
+            {'number': '654321'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['detail'], 'Lucky draw number cannot be changed after the period ends.')
+
+    def test_lucky_draw_winners_report_returns_matching_tickets_and_approved_overflows(self):
+        winning_identifier = Identifier.objects.create(number='456')
+        LuckyDraw.objects.create(
+            period=self.period,
+            number='123456',
+            announced_by=self.admin_user,
+            announced_at=timezone.now(),
+        )
+
+        winning_ticket = Ticket.objects.create(customer_name='Winner', created_by=self.user_one)
+        winning_transaction = Transaction.objects.create(
+            ticket=winning_ticket,
+            identifier=winning_identifier,
+            total_amount=Decimal('80.00'),
+            created_by=self.user_one,
+        )
+        winning_overflow = Overflow.objects.create(
+            transaction=winning_transaction,
+            identifier=winning_identifier,
+            owner=self.user_one,
+            period=self.period,
+            excess_amount=Decimal('25.00'),
+            amount_to_approve=Decimal('25.00'),
+            status=Overflow.STATUS_CSO,
+            approved_at=timezone.now(),
+        )
+
+        self.client.force_authenticate(user=self.user_one)
+        response = self.client.get(f'/api/periods/{self.period.id}/lucky-draw-winners/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['lucky_draw']['display_number'], '123-456')
+        self.assertEqual(response.data['tickets'][0]['ticket_number'], winning_ticket.ticket_number)
+        self.assertEqual(response.data['tickets'][0]['matched_identifiers'], ['456'])
+        self.assertEqual(response.data['approved_overflows'][0]['id'], winning_overflow.id)
+        self.assertEqual(response.data['approved_overflows'][0]['identifier_number'], '456')
 
 
 class PrivateWorkflowAPITests(APITestCase):

@@ -9,6 +9,7 @@ from django.utils.dateparse import parse_date, parse_datetime
 from rest_framework import serializers
 from .models import (
     Period,
+    LuckyDraw,
     Ledger,
     Identifier,
     IdentifierLedgerFreeze,
@@ -26,7 +27,8 @@ from .models import (
 )
 
 
-DEFAULT_PERIOD_CLOSE_TIME = time(hour=15, minute=0)
+DEFAULT_PERIOD_CLOSE_TIME = time(hour=23, minute=0)
+DEFAULT_LEDGER_CLOSE_TIME = time(hour=14, minute=30)
 
 
 def _aware_datetime_from_date(value, fallback_time):
@@ -79,8 +81,23 @@ def _serializer_close_time(field):
     return parsed_close_time
 
 
+def _serializer_ledger_close_time(field):
+    serializer = field.parent
+    raw_close_time = serializer.initial_data.get('close_time') if serializer and serializer.initial_data else None
+    if not raw_close_time:
+        return DEFAULT_LEDGER_CLOSE_TIME
+
+    parsed_close_time = serializers.TimeField().to_internal_value(raw_close_time)
+    if getattr(parsed_close_time, 'tzinfo', None) is not None:
+        return parsed_close_time.replace(tzinfo=None)
+    return parsed_close_time
+
+
 class PeriodSerializer(serializers.ModelSerializer):
     ledger_count = serializers.SerializerMethodField()
+    lucky_draw_display = serializers.SerializerMethodField()
+    lucky_draw_revealed = serializers.SerializerMethodField()
+    lucky_draw_announced_at = serializers.SerializerMethodField()
     start_date = FlexibleDateTimeField(default_time=time.min)
     end_date = FlexibleDateTimeField(default_time=_serializer_close_time)
     close_time = serializers.TimeField(write_only=True, required=False)
@@ -96,12 +113,31 @@ class PeriodSerializer(serializers.ModelSerializer):
             'closed_at',
             'created_at',
             'ledger_count',
+            'lucky_draw_display',
+            'lucky_draw_revealed',
+            'lucky_draw_announced_at',
             'close_time',
         ]
         read_only_fields = ['closed_at', 'created_at', 'ledger_count']
 
     def get_ledger_count(self, obj):
         return obj.ledgers.filter(is_capacity_reserve=False).count()
+
+    def get_lucky_draw_display(self, obj):
+        lucky_draw = getattr(obj, 'lucky_draw', None)
+        if lucky_draw is None:
+            return "***-***"
+        return lucky_draw.display_number()
+
+    def get_lucky_draw_revealed(self, obj):
+        lucky_draw = getattr(obj, 'lucky_draw', None)
+        if lucky_draw is None:
+            return False
+        return lucky_draw.is_revealed()
+
+    def get_lucky_draw_announced_at(self, obj):
+        lucky_draw = getattr(obj, 'lucky_draw', None)
+        return lucky_draw.announced_at if lucky_draw is not None else None
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
@@ -117,7 +153,7 @@ class PeriodSerializer(serializers.ModelSerializer):
 class LedgerSerializer(serializers.ModelSerializer):
     period_name = serializers.CharField(source='period.name', read_only=True, allow_null=True)
     owner_username = serializers.CharField(source='owner.username', read_only=True, allow_null=True)
-    end_date = FlexibleDateTimeField(default_time=_serializer_close_time, required=False)
+    end_date = FlexibleDateTimeField(default_time=_serializer_ledger_close_time, required=False)
     close_time = serializers.TimeField(write_only=True, required=False)
     is_capacity_reserve = serializers.BooleanField(read_only=True)
 
@@ -183,6 +219,52 @@ class LedgerSerializer(serializers.ModelSerializer):
                 })
 
         return attrs
+
+
+class LuckyDrawSerializer(serializers.ModelSerializer):
+    display_number = serializers.SerializerMethodField()
+    winning_identifiers = serializers.SerializerMethodField()
+    period_name = serializers.CharField(source='period.name', read_only=True)
+    announced_by_username = serializers.CharField(source='announced_by.username', read_only=True, allow_null=True)
+
+    class Meta:
+        model = LuckyDraw
+        fields = [
+            'id',
+            'period',
+            'period_name',
+            'number',
+            'display_number',
+            'winning_identifiers',
+            'announced_by',
+            'announced_by_username',
+            'announced_at',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = [
+            'period',
+            'period_name',
+            'display_number',
+            'winning_identifiers',
+            'announced_by',
+            'announced_by_username',
+            'announced_at',
+            'created_at',
+            'updated_at',
+        ]
+
+    def get_display_number(self, obj):
+        return obj.display_number()
+
+    def get_winning_identifiers(self, obj):
+        return obj.winning_identifiers
+
+    def validate_number(self, value):
+        digits = ''.join(char for char in str(value) if char.isdigit())
+        if len(digits) != 6:
+            raise serializers.ValidationError("Lucky draw number must be exactly 6 digits.")
+        return digits
 
 
 class TicketSerializer(serializers.ModelSerializer):
