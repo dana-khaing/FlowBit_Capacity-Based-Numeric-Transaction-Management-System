@@ -1779,6 +1779,33 @@ class PrivateWorkspaceTests(APITestCase):
             User.objects.filter(is_active=True).count(),
         )
 
+    def test_period_and_ledger_changes_create_system_notifications(self):
+        self.client.force_authenticate(user=self.admin_user)
+
+        period_update_response = self.client.patch(
+            f'/api/periods/{self.period.id}/',
+            {'end_date': '2027-12-30', 'close_time': '22:00'},
+            format='json',
+        )
+        ledger_create_response = self.client.post('/api/ledgers/', {
+            'period': self.period.id,
+            'name': 'Alert Ledger',
+            'end_date': '2027-12-30',
+            'close_time': '14:30',
+            'limit_per_identifier': '100',
+            'priority': 2,
+            'is_active': True,
+        }, format='json')
+
+        self.assertEqual(period_update_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(ledger_create_response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(
+            UserNotification.objects.filter(title='Period updated', period=self.period).exists()
+        )
+        self.assertTrue(
+            UserNotification.objects.filter(title='Ledger created', period=self.period).exists()
+        )
+
     def test_period_lucky_draw_cannot_change_after_period_end(self):
         self.period.start_date = timezone.now() - timezone.timedelta(days=1)
         self.period.is_open = False
@@ -2677,6 +2704,12 @@ class PrivateWorkflowAPITests(APITestCase):
         self.assertTrue(self.active_transaction.is_refunded)
         self.active_ticket.refresh_from_db()
         self.assertEqual(self.active_ticket.total_amount, Decimal('0.00'))
+        self.assertTrue(
+            UserNotification.objects.filter(
+                recipient=self.approver,
+                title='Transaction refunded',
+            ).exists()
+        )
         audit_entry = AuditLog.objects.filter(action='transaction.refunded').latest('timestamp')
         self.assertEqual(audit_entry.changes['identifier_number'], self.identifier.number)
         self.assertEqual(audit_entry.changes['refund_amount'], '75.00')
@@ -2717,6 +2750,12 @@ class PrivateWorkflowAPITests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.active_ticket.refresh_from_db()
         self.assertEqual(self.active_ticket.total_amount, Decimal('51.00'))
+        self.assertTrue(
+            UserNotification.objects.filter(
+                recipient=self.approver,
+                title='Spill over refunded',
+            ).exists()
+        )
 
     def test_ticket_total_amount_converts_refunded_spill_over_from_basis_amount(self):
         high_value_ticket = Ticket.objects.create(
