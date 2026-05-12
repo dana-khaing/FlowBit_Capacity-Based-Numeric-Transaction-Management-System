@@ -293,6 +293,46 @@ def broadcast_user_notification(
     return created_count
 
 
+def notify_period_change(*, period, action_label, message, request_user, action_href='/periods'):
+    broadcast_user_notification(
+        title=f'Period {action_label}',
+        message=message,
+        category=UserNotification.CATEGORY_SYSTEM,
+        level=UserNotification.LEVEL_IMPORTANT,
+        action_href=action_href,
+        source_key=f'period:{action_label}:{period.id}:{timezone.now().isoformat()}',
+        created_by=request_user,
+        period=period,
+    )
+
+
+def notify_ledger_change(*, ledger, action_label, message, request_user, action_href='/ledgers'):
+    broadcast_user_notification(
+        title=f'Ledger {action_label}',
+        message=message,
+        category=UserNotification.CATEGORY_SYSTEM,
+        level=UserNotification.LEVEL_WARNING,
+        action_href=action_href,
+        source_key=f'ledger:{action_label}:{ledger.id}:{timezone.now().isoformat()}',
+        created_by=request_user,
+        period=ledger.period,
+    )
+
+
+def notify_refund_change(*, recipient, title, message, request_user, action_href='/tickets', source_key='', period=None):
+    create_user_notification(
+        recipient=recipient,
+        title=title,
+        message=message,
+        category=UserNotification.CATEGORY_SYSTEM,
+        level=UserNotification.LEVEL_WARNING,
+        action_href=action_href,
+        source_key=source_key,
+        created_by=request_user,
+        period=period,
+    )
+
+
 def _ticket_refund_summary(ticket):
     transactions = list(ticket.transactions.all())
     visible_transactions = [transaction for transaction in transactions if not transaction.is_refunded]
@@ -468,6 +508,12 @@ class PeriodViewSet(viewsets.ModelViewSet):
         period = serializer.save()
         for user in User.objects.all().order_by('id'):
             Ledger.get_capacity_reserve(period, user, create=True)
+        notify_period_change(
+            period=period,
+            action_label='created',
+            message=f"{period.name} has been created and opened for operations.",
+            request_user=self.request.user,
+        )
         record_audit_log(
             self.request,
             'period.created',
@@ -480,6 +526,12 @@ class PeriodViewSet(viewsets.ModelViewSet):
         before = snapshot_instance(self.get_object())
         period = serializer.save()
         period.sync_reserve_ledgers()
+        notify_period_change(
+            period=period,
+            action_label='updated',
+            message=f"{period.name} has been updated. Review the latest period schedule.",
+            request_user=self.request.user,
+        )
         record_audit_log(
             self.request,
             'period.updated',
@@ -497,6 +549,12 @@ class PeriodViewSet(viewsets.ModelViewSet):
 
         before = snapshot_instance(instance)
         period_name = instance.name
+        notify_period_change(
+            period=instance,
+            action_label='deleted',
+            message=f"{period_name} has been deleted by admin.",
+            request_user=self.request.user,
+        )
         instance.ledgers.all().delete()
         super().perform_destroy(instance)
         record_audit_log(
@@ -734,6 +792,12 @@ class PeriodViewSet(viewsets.ModelViewSet):
             helper_name=helper_name_from_request(request),
             closing_user=request.user if request.user.is_authenticated else None,
         )
+        notify_period_change(
+            period=period,
+            action_label='closed',
+            message=f"{period.name} has been closed.",
+            request_user=request.user,
+        )
         record_audit_log(
             request,
             'period.closed',
@@ -787,6 +851,12 @@ class PeriodViewSet(viewsets.ModelViewSet):
             message = exc.messages[0] if getattr(exc, 'messages', None) else str(exc)
             return Response({"detail": message}, status=status.HTTP_400_BAD_REQUEST)
 
+        notify_period_change(
+            period=period,
+            action_label='reopened',
+            message=f"{period.name} has been reopened with a new end date.",
+            request_user=request.user,
+        )
         record_audit_log(
             request,
             'period.reopened',
@@ -868,6 +938,12 @@ class LedgerViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         ledger = serializer.save(owner=self.request.user)
+        notify_ledger_change(
+            ledger=ledger,
+            action_label='created',
+            message=f"{ledger.name} has been created for {ledger.period.name if ledger.period else 'the current period'}.",
+            request_user=self.request.user,
+        )
         record_audit_log(
             self.request,
             'ledger.created',
@@ -879,6 +955,12 @@ class LedgerViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         before = snapshot_instance(self.get_object())
         ledger = serializer.save()
+        notify_ledger_change(
+            ledger=ledger,
+            action_label='updated',
+            message=f"{ledger.name} has been updated.",
+            request_user=self.request.user,
+        )
         record_audit_log(
             self.request,
             'ledger.updated',
@@ -896,6 +978,12 @@ class LedgerViewSet(viewsets.ModelViewSet):
 
         before = snapshot_instance(instance)
         ledger_name = instance.name
+        notify_ledger_change(
+            ledger=instance,
+            action_label='deleted',
+            message=f"{ledger_name} has been deleted.",
+            request_user=self.request.user,
+        )
         super().perform_destroy(instance)
         record_audit_log(
             self.request,
@@ -943,6 +1031,12 @@ class LedgerViewSet(viewsets.ModelViewSet):
             return Response({"detail": detail}, status=status.HTTP_400_BAD_REQUEST)
 
         ledger.close()
+        notify_ledger_change(
+            ledger=ledger,
+            action_label='closed',
+            message=f"{ledger.name} has been closed.",
+            request_user=request.user,
+        )
         record_audit_log(
             request,
             'ledger.closed',
@@ -1002,6 +1096,12 @@ class LedgerViewSet(viewsets.ModelViewSet):
             detail = exc.message_dict if hasattr(exc, 'message_dict') else exc.messages[0]
             return Response({"detail": detail}, status=status.HTTP_400_BAD_REQUEST)
 
+        notify_ledger_change(
+            ledger=ledger,
+            action_label='reopened',
+            message=f"{ledger.name} has been reopened.",
+            request_user=request.user,
+        )
         record_audit_log(
             request,
             'ledger.reopened',
@@ -2379,6 +2479,18 @@ class OverflowViewSet(viewsets.ModelViewSet):
                     'overflow_id': overflow_id,
                 },
             )
+            if overflow.owner_id:
+                notify_refund_change(
+                    recipient=overflow.owner,
+                    title='Spill over refunded',
+                    message=(
+                        f"Spill over for identifier {overflow_identifier_number} on ticket {overflow_ticket_number or '-'} was refunded."
+                    ),
+                    request_user=request.user,
+                    action_href='/spill-over',
+                    source_key=f'refund:overflow:{overflow_id}:{timezone.now().isoformat()}',
+                    period=overflow.period,
+                )
             return Response({
                 "message": "Overflow refunded successfully",
                 "overflow": serializer_data,
@@ -2405,6 +2517,15 @@ class OverflowViewSet(viewsets.ModelViewSet):
                     'identifier_number': overflow.transaction.identifier.number,
                     'refund_amount': str(refund_amount),
                 },
+            )
+            notify_refund_change(
+                recipient=overflow.transaction.created_by,
+                title='Transaction refunded',
+                message=f"Transaction {overflow.transaction.order_number} on ticket {overflow.transaction.ticket.ticket_number if overflow.transaction.ticket_id else '-'} was refunded.",
+                request_user=request.user,
+                action_href='/tickets',
+                source_key=f'refund:transaction:{overflow.transaction.id}:{timezone.now().isoformat()}',
+                period=overflow.period,
             )
             return Response({
                 "message": f"Transaction '{overflow.transaction.order_number}' refunded successfully",
@@ -2434,6 +2555,15 @@ class OverflowViewSet(viewsets.ModelViewSet):
                     'resolution_type': Overflow.RESOLUTION_REFUND_TICKET,
                     **refund_summary,
                 },
+            )
+            notify_refund_change(
+                recipient=ticket.created_by,
+                title='Ticket refunded',
+                message=f"Ticket {ticket.ticket_number} was refunded.",
+                request_user=request.user,
+                action_href='/tickets',
+                source_key=f'refund:ticket:{ticket.id}:{timezone.now().isoformat()}',
+                period=ticket.transactions.first().allocations.first().ledger.period if ticket.transactions.exists() and ticket.transactions.first().allocations.exists() else None,
             )
             return Response({
                 "message": f"Ticket '{ticket.ticket_number}' refunded successfully",
@@ -4382,6 +4512,15 @@ class TicketRefundView(APIView):
                     **refund_summary,
                 },
             )
+            notify_refund_change(
+                recipient=ticket.created_by,
+                title='Ticket refunded',
+                message=f"Ticket {ticket.ticket_number} was refunded.",
+                request_user=request.user,
+                action_href='/tickets',
+                source_key=f'ticket-refund:{ticket.id}:{timezone.now().isoformat()}',
+                period=ticket.transactions.first().overflows.first().period if ticket.transactions.exists() and ticket.transactions.first().overflows.exists() else None,
+            )
             return Response({
                 "message": f"Ticket '{ticket.ticket_number}' refunded successfully",
             }, status=status.HTTP_200_OK)
@@ -4418,6 +4557,15 @@ class TicketRefundView(APIView):
                 'identifier_number': transaction_obj.identifier.number,
                 'refund_amount': str(transaction_obj.total_amount),
             },
+        )
+        notify_refund_change(
+            recipient=ticket.created_by,
+            title='Transaction refunded',
+            message=f"Transaction {transaction_obj.order_number} on ticket {ticket.ticket_number} was refunded.",
+            request_user=request.user,
+            action_href='/tickets',
+            source_key=f'ticket-transaction-refund:{transaction_obj.id}:{timezone.now().isoformat()}',
+            period=transaction_obj.overflows.first().period if transaction_obj.overflows.exists() else None,
         )
         return Response({
             "message": f"Transaction '{transaction_obj.order_number}' refunded successfully",
