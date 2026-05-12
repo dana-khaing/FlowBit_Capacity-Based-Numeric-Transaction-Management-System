@@ -1636,6 +1636,28 @@ class PrivateWorkspaceTests(APITestCase):
         self.assertEqual(response.data['display_number'], '***-***')
         self.assertIsNone(response.data['number'])
 
+    def test_period_lucky_draw_cannot_change_after_period_end(self):
+        self.period.start_date = timezone.now() - timezone.timedelta(days=1)
+        self.period.is_open = False
+        self.period.end_date = timezone.now() - timezone.timedelta(minutes=5)
+        self.period.save(update_fields=['start_date', 'is_open', 'end_date'])
+        LuckyDraw.objects.create(
+            period=self.period,
+            number='123456',
+            announced_by=self.admin_user,
+            announced_at=timezone.now() - timezone.timedelta(hours=1),
+        )
+
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.patch(
+            f'/api/periods/{self.period.id}/lucky-draw/',
+            {'number': '654321'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['detail'], 'Lucky draw number cannot be changed after the period ends.')
+
     def test_lucky_draw_winners_report_returns_matching_tickets_and_approved_overflows(self):
         winning_identifier = Identifier.objects.create(number='456')
         LuckyDraw.objects.create(
