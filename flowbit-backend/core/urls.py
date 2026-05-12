@@ -12,6 +12,8 @@ from .views import (
     CollaboratorViewSet,
     UserManagementViewSet,
     DashboardReportView,
+    DashboardHotNumberReportView,
+    DashboardAlmostFullReportView,
     DashboardFullNumberReportView,
     IdentifierCapacityReportView,
     LoginView,
@@ -55,6 +57,8 @@ urlpatterns = [
     path('auth/reset-password/', ResetPasswordConfirmView.as_view(), name='auth-reset-password'),
 
     path('reports/dashboard/', DashboardReportView.as_view(), name='report-dashboard'),
+    path('reports/dashboard/hot-numbers/', DashboardHotNumberReportView.as_view(), name='report-dashboard-hot-numbers'),
+    path('reports/dashboard/almost-full/', DashboardAlmostFullReportView.as_view(), name='report-dashboard-almost-full'),
     path('reports/dashboard/full-numbers/', DashboardFullNumberReportView.as_view(), name='report-dashboard-full-numbers'),
     path('reports/identifiers/capacity/', IdentifierCapacityReportView.as_view(), name='report-identifier-capacity'),
 

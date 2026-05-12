@@ -1596,6 +1596,76 @@ class PrivateWorkspaceTests(APITestCase):
         self.assertEqual(search_response.data['count'], 1)
         self.assertEqual(search_response.data['results'][0]['identifier'], '205')
 
+    def test_dashboard_hot_numbers_can_be_searched_and_paged(self):
+        for value in range(25):
+            identifier = Identifier.objects.create(number=f"{300 + value:03d}")
+            ticket = Ticket.objects.create(customer_name=f'Hot {value}', created_by=self.user_one)
+            transaction = Transaction.objects.create(
+                ticket=ticket,
+                identifier=identifier,
+                total_amount=Decimal('80.00'),
+                created_by=self.user_one,
+            )
+            Overflow.objects.create(
+                transaction=transaction,
+                identifier=identifier,
+                owner=self.user_one,
+                period=self.period,
+                excess_amount=Decimal('20.00'),
+                amount_to_approve=Decimal('20.00'),
+                status=Overflow.STATUS_CSO,
+                approved_at=timezone.now(),
+            )
+
+        self.client.force_authenticate(user=self.user_one)
+        page_one_response = self.client.get('/api/reports/dashboard/hot-numbers/', {
+            'period_id': self.period.id,
+            'page': 1,
+        })
+        search_response = self.client.get('/api/reports/dashboard/hot-numbers/', {
+            'period_id': self.period.id,
+            'identifier': '305',
+        })
+
+        self.assertEqual(page_one_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(page_one_response.data['count'], 25)
+        self.assertEqual(page_one_response.data['page_size'], 20)
+        self.assertEqual(len(page_one_response.data['results']), 20)
+
+        self.assertEqual(search_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(search_response.data['count'], 1)
+        self.assertEqual(search_response.data['results'][0]['identifier'], '305')
+
+    def test_dashboard_almost_full_can_be_searched_and_paged(self):
+        for value in range(25):
+            identifier = Identifier.objects.create(number=f"{400 + value:03d}")
+            ticket = Ticket.objects.create(customer_name=f'Almost {value}', created_by=self.user_one)
+            Transaction.objects.create(
+                ticket=ticket,
+                identifier=identifier,
+                total_amount=Decimal('60.00'),
+                created_by=self.user_one,
+            )
+
+        self.client.force_authenticate(user=self.user_one)
+        page_one_response = self.client.get('/api/reports/dashboard/almost-full/', {
+            'period_id': self.period.id,
+            'page': 1,
+        })
+        search_response = self.client.get('/api/reports/dashboard/almost-full/', {
+            'period_id': self.period.id,
+            'identifier': '405',
+        })
+
+        self.assertEqual(page_one_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(page_one_response.data['count'], 25)
+        self.assertEqual(page_one_response.data['page_size'], 20)
+        self.assertEqual(len(page_one_response.data['results']), 20)
+
+        self.assertEqual(search_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(search_response.data['count'], 1)
+        self.assertEqual(search_response.data['results'][0]['identifier'], '405')
+
     def test_admin_can_create_and_update_period_lucky_draw(self):
         self.client.force_authenticate(user=self.admin_user)
 
