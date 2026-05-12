@@ -38,6 +38,7 @@ from .models import (
     Transaction,
     Overflow,
     OverflowNotification,
+    UserNotification,
     AuditLog,
     Profile,
     PasswordResetToken,
@@ -72,6 +73,8 @@ from .serializers import (
     OverflowSerializer,
     CollaboratorSerializer,
     OverflowNotificationSerializer,
+    UserNotificationSerializer,
+    NotificationBroadcastSerializer,
     TicketSerializer,
     TicketDetailSerializer,
     AuditLogSerializer,
@@ -216,6 +219,78 @@ def helper_name_from_request(request):
     if getattr(request, 'user', None) and request.user.is_authenticated:
         return request.user.username
     return DEFAULT_HELPER_NAME
+
+
+def create_user_notification(
+    *,
+    recipient,
+    title,
+    message,
+    category=UserNotification.CATEGORY_SYSTEM,
+    level=UserNotification.LEVEL_INFO,
+    action_href='',
+    source_key='',
+    created_by=None,
+    period=None,
+):
+    defaults = {
+        'category': category,
+        'level': level,
+        'title': title,
+        'message': message,
+        'action_href': action_href,
+        'created_by': created_by,
+        'period': period,
+    }
+
+    if source_key:
+        notification, created = UserNotification.objects.update_or_create(
+            recipient=recipient,
+            source_key=source_key,
+            defaults=defaults,
+        )
+        return notification, created
+
+    notification = UserNotification.objects.create(
+        recipient=recipient,
+        category=category,
+        level=level,
+        title=title,
+        message=message,
+        action_href=action_href,
+        created_by=created_by,
+        period=period,
+    )
+    return notification, True
+
+
+def broadcast_user_notification(
+    *,
+    title,
+    message,
+    category=UserNotification.CATEGORY_ANNOUNCEMENT,
+    level=UserNotification.LEVEL_INFO,
+    action_href='',
+    source_key='',
+    created_by=None,
+    period=None,
+):
+    created_count = 0
+    for recipient in User.objects.filter(is_active=True).order_by('id'):
+        _, created = create_user_notification(
+            recipient=recipient,
+            title=title,
+            message=message,
+            category=category,
+            level=level,
+            action_href=action_href,
+            source_key=source_key,
+            created_by=created_by,
+            period=period,
+        )
+        if created:
+            created_count += 1
+    return created_count
 
 
 def _ticket_refund_summary(ticket):
@@ -510,6 +585,16 @@ class PeriodViewSet(viewsets.ModelViewSet):
                 )
 
             before = snapshot_instance(lucky_draw)
+            broadcast_user_notification(
+                title='Lucky draw removed',
+                message=f"The lucky draw number for {period.name} has been removed by admin.",
+                category=UserNotification.CATEGORY_SYSTEM,
+                level=UserNotification.LEVEL_WARNING,
+                action_href='/periods',
+                source_key=f'lucky-draw-removed:{period.id}:{before.get("updated_at", before.get("id", ""))}',
+                created_by=request.user,
+                period=period,
+            )
             lucky_draw.delete()
             record_audit_log(
                 request,
@@ -531,6 +616,16 @@ class PeriodViewSet(viewsets.ModelViewSet):
             period=period,
             announced_by=request.user,
             announced_at=timezone.now(),
+        )
+        broadcast_user_notification(
+            title='Lucky draw announced',
+            message=f"{period.name} lucky draw number is now {lucky_draw.display_number(reveal_for_admin=True)}.",
+            category=UserNotification.CATEGORY_SYSTEM,
+            level=UserNotification.LEVEL_IMPORTANT,
+            action_href='/',
+            source_key=f'lucky-draw-announced:{period.id}:{lucky_draw.number}',
+            created_by=request.user,
+            period=period,
         )
         record_audit_log(
             request,
@@ -2357,6 +2452,73 @@ class OverflowNotificationViewSet(viewsets.ReadOnlyModelViewSet):
     )
     serializer_class = OverflowNotificationSerializer
     permission_classes = [IsAuthenticated]
+
+
+class UserNotificationViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = UserNotification.objects.select_related('created_by', 'period', 'recipient')
+    serializer_class = UserNotificationSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = super().get_queryset().filter(recipient=self.request.user)
+        category = (self.request.query_params.get('category') or '').strip().upper()
+        unread_only = (self.request.query_params.get('unread_only') or '').strip().lower()
+        limit = self.request.query_params.get('limit')
+
+        if category:
+            queryset = queryset.filter(category=category)
+        if unread_only in {'1', 'true', 'yes'}:
+            queryset = queryset.filter(read_at__isnull=True)
+        if limit:
+            try:
+                queryset = queryset[: max(1, int(limit))]
+            except ValueError:
+                pass
+        return queryset
+
+    @action(detail=False, methods=['get'], url_path='summary')
+    def summary(self, request):
+        queryset = super().get_queryset().filter(recipient=request.user)
+        recent = queryset[:4]
+        unread_count = queryset.filter(read_at__isnull=True).count()
+        return Response({
+            'unread_count': unread_count,
+            'recent': UserNotificationSerializer(recent, many=True).data,
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], url_path='mark-all-read')
+    def mark_all_read(self, request):
+        updated = self.get_queryset().filter(read_at__isnull=True).update(read_at=timezone.now())
+        return Response({'message': 'Notifications marked as read.', 'updated_count': updated}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='mark-read')
+    def mark_read(self, request, pk=None):
+        notification = self.get_object()
+        notification.mark_read()
+        return Response(UserNotificationSerializer(notification).data, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], url_path='broadcast', permission_classes=[IsAdminRole])
+    def broadcast(self, request):
+        serializer = NotificationBroadcastSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        created_count = broadcast_user_notification(
+            title=serializer.validated_data['title'],
+            message=serializer.validated_data['message'],
+            category=UserNotification.CATEGORY_ANNOUNCEMENT,
+            level=serializer.validated_data['level'],
+            action_href=serializer.validated_data.get('action_href', ''),
+            created_by=request.user,
+        )
+        record_audit_log(
+            request,
+            'notifications.broadcasted',
+            details=f"Broadcasted notification '{serializer.validated_data['title']}'",
+            changes={'recipient_count': created_count},
+        )
+        return Response(
+            {'message': 'Notification sent to all users.', 'recipient_count': created_count},
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
