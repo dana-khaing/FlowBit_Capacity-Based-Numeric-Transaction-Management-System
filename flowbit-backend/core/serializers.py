@@ -17,6 +17,7 @@ from .models import (
     LedgerAllocation,
     Overflow,
     OverflowNotification,
+    UserNotification,
     AuditLog,
     Profile,
     PasswordResetToken,
@@ -792,6 +793,41 @@ class OverflowNotificationSerializer(serializers.ModelSerializer):
             'order_number',
             'identifier_number',
         ]
+
+
+class UserNotificationSerializer(serializers.ModelSerializer):
+    created_by_username = serializers.CharField(source='created_by.username', read_only=True, allow_null=True)
+    period_name = serializers.CharField(source='period.name', read_only=True, allow_null=True)
+    is_read = serializers.SerializerMethodField()
+
+    class Meta:
+        model = UserNotification
+        fields = [
+            'id',
+            'category',
+            'level',
+            'title',
+            'message',
+            'action_href',
+            'created_by',
+            'created_by_username',
+            'period',
+            'period_name',
+            'read_at',
+            'is_read',
+            'created_at',
+        ]
+        read_only_fields = fields
+
+    def get_is_read(self, obj):
+        return obj.is_read
+
+
+class NotificationBroadcastSerializer(serializers.Serializer):
+    title = serializers.CharField(max_length=140)
+    message = serializers.CharField()
+    action_href = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    level = serializers.ChoiceField(choices=UserNotification.LEVEL_CHOICES, default=UserNotification.LEVEL_INFO)
 
 
 class TransactionSerializer(serializers.ModelSerializer):

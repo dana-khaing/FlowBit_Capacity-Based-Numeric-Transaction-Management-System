@@ -1306,6 +1306,76 @@ class OverflowNotification(models.Model):
         return f"{self.notification_type} - {self.overflow}"
 
 
+class UserNotification(models.Model):
+    CATEGORY_SYSTEM = 'SYSTEM'
+    CATEGORY_ANNOUNCEMENT = 'ANNOUNCEMENT'
+    CATEGORY_CHOICES = (
+        (CATEGORY_SYSTEM, 'System'),
+        (CATEGORY_ANNOUNCEMENT, 'Announcement'),
+    )
+
+    LEVEL_INFO = 'INFO'
+    LEVEL_WARNING = 'WARNING'
+    LEVEL_IMPORTANT = 'IMPORTANT'
+    LEVEL_CHOICES = (
+        (LEVEL_INFO, 'Info'),
+        (LEVEL_WARNING, 'Warning'),
+        (LEVEL_IMPORTANT, 'Important'),
+    )
+
+    recipient = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='notifications',
+    )
+    category = models.CharField(max_length=32, choices=CATEGORY_CHOICES, default=CATEGORY_SYSTEM)
+    level = models.CharField(max_length=16, choices=LEVEL_CHOICES, default=LEVEL_INFO)
+    title = models.CharField(max_length=140)
+    message = models.TextField()
+    action_href = models.CharField(max_length=255, blank=True)
+    source_key = models.CharField(max_length=255, blank=True, default='')
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        related_name='sent_notifications',
+        null=True,
+        blank=True,
+    )
+    period = models.ForeignKey(
+        Period,
+        on_delete=models.SET_NULL,
+        related_name='notifications',
+        null=True,
+        blank=True,
+    )
+    read_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['recipient', 'source_key'],
+                condition=~Q(source_key=''),
+                name='unique_user_notification_source_per_recipient',
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.recipient.username} - {self.title}"
+
+    @property
+    def is_read(self):
+        return self.read_at is not None
+
+    def mark_read(self, save=True):
+        if self.read_at is None:
+            self.read_at = timezone.now()
+            if save:
+                self.save(update_fields=['read_at'])
+        return self
+
+
 def _grant_capacity_adjustment(overflow, amount, adjustment_type, helper_name):
     if amount == 0:
         return None
