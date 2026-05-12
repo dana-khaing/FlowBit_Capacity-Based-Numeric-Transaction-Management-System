@@ -2978,6 +2978,205 @@ class DashboardReportView(APIView):
         return Response(data, status=status.HTTP_200_OK)
 
 
+class DashboardHotNumberReportView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        period = selected_period_from_request(request)
+        ledger_queryset = Ledger.objects.filter(owner=request.user, is_capacity_reserve=False)
+        adjustment_queryset = IdentifierCapacityAdjustment.objects.filter(owner=request.user)
+        allocation_queryset = LedgerAllocation.objects.filter(transaction__created_by=request.user)
+        overflow_rows = period_overflow_rows(period, user=request.user)
+
+        if period is not None:
+            ledger_queryset = ledger_queryset.filter(period=period)
+            adjustment_queryset = adjustment_queryset.filter(period=period)
+            allocation_queryset = allocation_queryset.filter(ledger__period=period)
+
+        standard_capacity_per_identifier = ledger_queryset.aggregate(
+            total=Sum('limit_per_identifier')
+        )['total'] or Decimal('0.00')
+        normal_usage_rows = {
+            row['transaction__identifier']: row['total'] or Decimal('0.00')
+            for row in allocation_queryset.filter(ledger__is_capacity_reserve=False)
+            .values('transaction__identifier')
+            .annotate(total=Sum('amount'))
+        }
+        approved_overflow_rows_by_identifier = {}
+        for row in overflow_rows:
+            if row.status != Overflow.STATUS_CSO or row.identifier_id is None:
+                continue
+            approved_overflow_rows_by_identifier[row.identifier_id] = (
+                approved_overflow_rows_by_identifier.get(row.identifier_id, Decimal('0.00'))
+                + (row.excess_amount or Decimal('0.00'))
+            )
+
+        identifier_filter = (request.query_params.get('identifier') or '').strip()
+        dashboard_identifier_ids = set(normal_usage_rows) | set(approved_overflow_rows_by_identifier)
+        identifier_queryset = Identifier.objects.filter(id__in=dashboard_identifier_ids)
+        if identifier_filter:
+            identifier_queryset = identifier_queryset.filter(number__icontains=identifier_filter)
+        dashboard_identifiers = {
+            identifier.id: identifier.number
+            for identifier in identifier_queryset
+        }
+
+        rows = []
+        for identifier_id, identifier_number in dashboard_identifiers.items():
+            hot_number_amount = (
+                normal_usage_rows.get(identifier_id, Decimal('0.00'))
+                + approved_overflow_rows_by_identifier.get(identifier_id, Decimal('0.00'))
+            )
+            if hot_number_amount <= 0:
+                continue
+            progress = (
+                hot_number_amount / standard_capacity_per_identifier * Decimal('100.00')
+                if standard_capacity_per_identifier > 0
+                else Decimal('0.00')
+            )
+            rows.append({
+                'identifier': identifier_number,
+                'amount': str(hot_number_amount),
+                'progress': float(max(Decimal('0.00'), min(progress, Decimal('100.00')))),
+            })
+
+        rows.sort(key=lambda row: Decimal(row['amount']), reverse=True)
+
+        page_size = 20
+        page = max(1, int(request.query_params.get('page', 1) or 1))
+        total_count = len(rows)
+        total_pages = max(1, (total_count + page_size - 1) // page_size)
+        if page > total_pages:
+            page = total_pages
+        start = (page - 1) * page_size
+        end = start + page_size
+
+        return Response({
+            'count': total_count,
+            'page': page,
+            'page_size': page_size,
+            'total_pages': total_pages,
+            'results': rows[start:end],
+        }, status=status.HTTP_200_OK)
+
+
+class DashboardAlmostFullReportView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        period = selected_period_from_request(request)
+        ledger_queryset = Ledger.objects.filter(
+            owner=request.user,
+            is_capacity_reserve=False,
+        )
+        allocation_queryset = LedgerAllocation.objects.filter(transaction__created_by=request.user)
+        overflow_rows = period_overflow_rows(period, user=request.user)
+
+        if period is not None:
+            ledger_queryset = ledger_queryset.filter(period=period)
+            allocation_queryset = allocation_queryset.filter(ledger__period=period)
+
+        active_standard_ledger_ids = set(
+            ledger_queryset.filter(is_active=True).values_list('id', flat=True)
+        )
+        freeze_rows = IdentifierLedgerFreeze.objects.filter(
+            owner=request.user,
+            period=period,
+        ).filter(
+            Q(applies_to_all=True) | Q(ledger_id__in=active_standard_ledger_ids)
+        ).values('identifier_id', 'applies_to_all', 'ledger_id')
+        freeze_state_by_identifier = {}
+        for row in freeze_rows:
+            state = freeze_state_by_identifier.setdefault(
+                row['identifier_id'],
+                {'all_ledgers': False, 'ledger_ids': set()},
+            )
+            if row['applies_to_all']:
+                state['all_ledgers'] = True
+            elif row['ledger_id']:
+                state['ledger_ids'].add(row['ledger_id'])
+
+        standard_capacity_per_identifier = ledger_queryset.aggregate(
+            total=Sum('limit_per_identifier')
+        )['total'] or Decimal('0.00')
+        normal_usage_rows = {
+            row['transaction__identifier']: row['total'] or Decimal('0.00')
+            for row in allocation_queryset.filter(ledger__is_capacity_reserve=False)
+            .values('transaction__identifier')
+            .annotate(total=Sum('amount'))
+        }
+        approved_overflow_rows_by_identifier = {}
+        for row in overflow_rows:
+            if row.status != Overflow.STATUS_CSO or row.identifier_id is None:
+                continue
+            approved_overflow_rows_by_identifier[row.identifier_id] = (
+                approved_overflow_rows_by_identifier.get(row.identifier_id, Decimal('0.00'))
+                + (row.excess_amount or Decimal('0.00'))
+            )
+
+        identifier_filter = (request.query_params.get('identifier') or '').strip()
+        dashboard_identifier_ids = (
+            set(normal_usage_rows)
+            | set(approved_overflow_rows_by_identifier)
+            | set(freeze_state_by_identifier)
+        )
+        identifier_queryset = Identifier.objects.filter(id__in=dashboard_identifier_ids)
+        if identifier_filter:
+            identifier_queryset = identifier_queryset.filter(number__icontains=identifier_filter)
+        dashboard_identifiers = {
+            identifier.id: identifier.number
+            for identifier in identifier_queryset
+        }
+
+        rows = []
+        for identifier_id, identifier_number in dashboard_identifiers.items():
+            hot_number_amount = (
+                normal_usage_rows.get(identifier_id, Decimal('0.00'))
+                + approved_overflow_rows_by_identifier.get(identifier_id, Decimal('0.00'))
+            )
+            freeze_state = freeze_state_by_identifier.get(
+                identifier_id,
+                {'all_ledgers': False, 'ledger_ids': set()},
+            )
+            all_standard_ledgers_frozen = freeze_state['all_ledgers'] or (
+                bool(active_standard_ledger_ids)
+                and active_standard_ledger_ids.issubset(freeze_state['ledger_ids'])
+            )
+            standard_remaining_capacity = standard_capacity_per_identifier - hot_number_amount
+            if all_standard_ledgers_frozen or hot_number_amount <= 0 or standard_remaining_capacity <= 0:
+                continue
+            progress = (
+                hot_number_amount / standard_capacity_per_identifier * Decimal('100.00')
+                if standard_capacity_per_identifier > 0
+                else Decimal('0.00')
+            )
+            rows.append({
+                'identifier': identifier_number,
+                'remaining': str(standard_remaining_capacity),
+                'progress': float(max(Decimal('0.00'), min(progress, Decimal('100.00')))),
+                'tone': 'critical' if standard_remaining_capacity <= Decimal('100.00') else 'warning',
+            })
+
+        rows.sort(key=lambda row: Decimal(row['remaining']))
+
+        page_size = 20
+        page = max(1, int(request.query_params.get('page', 1) or 1))
+        total_count = len(rows)
+        total_pages = max(1, (total_count + page_size - 1) // page_size)
+        if page > total_pages:
+            page = total_pages
+        start = (page - 1) * page_size
+        end = start + page_size
+
+        return Response({
+            'count': total_count,
+            'page': page,
+            'page_size': page_size,
+            'total_pages': total_pages,
+            'results': rows[start:end],
+        }, status=status.HTTP_200_OK)
+
+
 class DashboardFullNumberReportView(APIView):
     permission_classes = [IsAuthenticated]
 
