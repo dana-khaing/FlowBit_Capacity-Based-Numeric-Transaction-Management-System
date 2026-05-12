@@ -509,9 +509,6 @@ export function PeriodPage() {
                       Only admin users can add or edit the 6-digit lucky draw number, and it locks automatically after the period ends.
                     </p>
                   </div>
-                  <span className="rounded-full bg-stone-100 px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-stone-600">
-                    {luckyDraw?.number ? `${luckyDraw.number.slice(0, 3)}-${luckyDraw.number.slice(3)}` : "Not added"}
-                  </span>
                 </div>
 
                 <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
