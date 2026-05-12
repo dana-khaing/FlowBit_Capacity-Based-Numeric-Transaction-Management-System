@@ -25,6 +25,7 @@ from core.models import (
     LedgerAllocation,
     Overflow,
     OverflowNotification,
+    UserNotification,
     AuditLog,
     PasswordResetToken,
     Profile,
@@ -1721,6 +1722,61 @@ class PrivateWorkspaceTests(APITestCase):
         self.assertFalse(LuckyDraw.objects.filter(id=lucky_draw.id).exists())
         self.assertTrue(
             AuditLog.objects.filter(action='period.lucky_draw_deleted').exists()
+        )
+
+    def test_user_notification_list_is_scoped_to_current_user(self):
+        UserNotification.objects.create(
+            recipient=self.user_one,
+            category=UserNotification.CATEGORY_SYSTEM,
+            level=UserNotification.LEVEL_IMPORTANT,
+            title='User One Notice',
+            message='Only user one should see this.',
+        )
+        UserNotification.objects.create(
+            recipient=self.user_two,
+            category=UserNotification.CATEGORY_SYSTEM,
+            level=UserNotification.LEVEL_IMPORTANT,
+            title='User Two Notice',
+            message='Only user two should see this.',
+        )
+
+        self.client.force_authenticate(user=self.user_one)
+        response = self.client.get('/api/notifications/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['title'], 'User One Notice')
+
+    def test_admin_can_broadcast_notification_to_all_users(self):
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.post('/api/notifications/broadcast/', {
+            'title': 'System maintenance',
+            'message': 'FlowBit will be updated tonight.',
+            'level': UserNotification.LEVEL_WARNING,
+            'action_href': '/profile',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(
+            UserNotification.objects.filter(title='System maintenance').count(),
+            User.objects.filter(is_active=True).count(),
+        )
+
+    def test_lucky_draw_announcement_creates_system_notifications(self):
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.post(
+            f'/api/periods/{self.period.id}/lucky-draw/',
+            {'number': '123456'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(
+            UserNotification.objects.filter(
+                title='Lucky draw announced',
+                period=self.period,
+            ).count(),
+            User.objects.filter(is_active=True).count(),
         )
 
     def test_period_lucky_draw_cannot_change_after_period_end(self):
