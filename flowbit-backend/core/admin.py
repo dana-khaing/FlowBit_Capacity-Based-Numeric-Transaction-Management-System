@@ -7,6 +7,7 @@ from .models import (
     Identifier,
     IdentifierCapacityAdjustment,
     OverflowNotification,
+    UserNotification,
     Transaction,
     LedgerAllocation,
     Overflow,
@@ -198,6 +199,13 @@ class OverflowNotificationAdmin(admin.ModelAdmin):
     list_display = ('overflow', 'period', 'notification_type', 'created_at')
     list_filter = ('notification_type', 'period')
     search_fields = ('overflow__transaction__order_number', 'message')
+
+
+@admin.register(UserNotification)
+class UserNotificationAdmin(admin.ModelAdmin):
+    list_display = ('recipient', 'category', 'level', 'title', 'created_by', 'period', 'read_at', 'created_at')
+    list_filter = ('category', 'level', 'period', 'created_at')
+    search_fields = ('recipient__username', 'title', 'message', 'created_by__username')
 
 
 @admin.register(Collaborator)

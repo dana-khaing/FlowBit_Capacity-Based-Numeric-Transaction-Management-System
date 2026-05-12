@@ -38,6 +38,7 @@ from .models import (
     Transaction,
     Overflow,
     OverflowNotification,
+    UserNotification,
     AuditLog,
     Profile,
     PasswordResetToken,
@@ -72,6 +73,8 @@ from .serializers import (
     OverflowSerializer,
     CollaboratorSerializer,
     OverflowNotificationSerializer,
+    UserNotificationSerializer,
+    NotificationBroadcastSerializer,
     TicketSerializer,
     TicketDetailSerializer,
     AuditLogSerializer,
@@ -216,6 +219,163 @@ def helper_name_from_request(request):
     if getattr(request, 'user', None) and request.user.is_authenticated:
         return request.user.username
     return DEFAULT_HELPER_NAME
+
+
+def create_user_notification(
+    *,
+    recipient,
+    title,
+    message,
+    category=UserNotification.CATEGORY_SYSTEM,
+    level=UserNotification.LEVEL_INFO,
+    action_href='',
+    source_key='',
+    created_by=None,
+    period=None,
+):
+    defaults = {
+        'category': category,
+        'level': level,
+        'title': title,
+        'message': message,
+        'action_href': action_href,
+        'created_by': created_by,
+        'period': period,
+    }
+
+    if source_key:
+        notification, created = UserNotification.objects.update_or_create(
+            recipient=recipient,
+            source_key=source_key,
+            defaults=defaults,
+        )
+        return notification, created
+
+    notification = UserNotification.objects.create(
+        recipient=recipient,
+        category=category,
+        level=level,
+        title=title,
+        message=message,
+        action_href=action_href,
+        created_by=created_by,
+        period=period,
+    )
+    return notification, True
+
+
+def broadcast_user_notification(
+    *,
+    title,
+    message,
+    category=UserNotification.CATEGORY_ANNOUNCEMENT,
+    level=UserNotification.LEVEL_INFO,
+    action_href='',
+    source_key='',
+    created_by=None,
+    period=None,
+):
+    created_count = 0
+    for recipient in User.objects.filter(is_active=True).order_by('id'):
+        _, created = create_user_notification(
+            recipient=recipient,
+            title=title,
+            message=message,
+            category=category,
+            level=level,
+            action_href=action_href,
+            source_key=source_key,
+            created_by=created_by,
+            period=period,
+        )
+        if created:
+            created_count += 1
+    return created_count
+
+
+def notify_period_change(*, period, action_label, message, request_user, action_href='/periods'):
+    broadcast_user_notification(
+        title=f'Period {action_label}',
+        message=message,
+        category=UserNotification.CATEGORY_SYSTEM,
+        level=UserNotification.LEVEL_IMPORTANT,
+        action_href=action_href,
+        source_key=f'period:{action_label}:{period.id}:{timezone.now().isoformat()}',
+        created_by=request_user,
+        period=period,
+    )
+
+
+def notify_ledger_change(*, ledger, action_label, message, request_user, action_href='/ledgers'):
+    broadcast_user_notification(
+        title=f'Ledger {action_label}',
+        message=message,
+        category=UserNotification.CATEGORY_SYSTEM,
+        level=UserNotification.LEVEL_WARNING,
+        action_href=action_href,
+        source_key=f'ledger:{action_label}:{ledger.id}:{timezone.now().isoformat()}',
+        created_by=request_user,
+        period=ledger.period,
+    )
+
+
+def notify_refund_change(*, recipient, title, message, request_user, action_href='/tickets', source_key='', period=None):
+    create_user_notification(
+        recipient=recipient,
+        title=title,
+        message=message,
+        category=UserNotification.CATEGORY_SYSTEM,
+        level=UserNotification.LEVEL_WARNING,
+        action_href=action_href,
+        source_key=source_key,
+        created_by=request_user,
+        period=period,
+    )
+
+
+def notify_identifier_freeze_change(
+    *,
+    recipient,
+    identifier,
+    period,
+    action_label,
+    message,
+    request_user,
+    action_href='/ledgers',
+    source_key='',
+):
+    create_user_notification(
+        recipient=recipient,
+        title=f'Identifier {action_label}',
+        message=message,
+        category=UserNotification.CATEGORY_SYSTEM,
+        level=UserNotification.LEVEL_WARNING,
+        action_href=action_href,
+        source_key=source_key,
+        created_by=request_user,
+        period=period,
+    )
+
+
+def notify_user_account_change(
+    *,
+    recipient,
+    title,
+    message,
+    request_user,
+    action_href='/profile',
+    source_key='',
+):
+    create_user_notification(
+        recipient=recipient,
+        title=title,
+        message=message,
+        category=UserNotification.CATEGORY_SYSTEM,
+        level=UserNotification.LEVEL_IMPORTANT,
+        action_href=action_href,
+        source_key=source_key,
+        created_by=request_user,
+    )
 
 
 def _ticket_refund_summary(ticket):
@@ -376,6 +536,16 @@ class PeriodViewSet(viewsets.ModelViewSet):
                     helper_name=helper_name_from_request(request),
                     closing_user=request.user if getattr(request, 'user', None) and request.user.is_authenticated else None,
                 )
+                broadcast_user_notification(
+                    title='Period auto-closed',
+                    message=f"{period.name} was auto-closed by the system after reaching its end time.",
+                    category=UserNotification.CATEGORY_SYSTEM,
+                    level=UserNotification.LEVEL_WARNING,
+                    action_href='/periods',
+                    source_key=f'period:auto-closed:{period.id}:{serialize_audit_value(now)}',
+                    created_by=request.user if getattr(request, 'user', None) and request.user.is_authenticated else None,
+                    period=period,
+                )
                 closed_periods.append({
                     'id': period.id,
                     'name': period.name,
@@ -393,6 +563,12 @@ class PeriodViewSet(viewsets.ModelViewSet):
         period = serializer.save()
         for user in User.objects.all().order_by('id'):
             Ledger.get_capacity_reserve(period, user, create=True)
+        notify_period_change(
+            period=period,
+            action_label='created',
+            message=f"{period.name} has been created and opened for operations.",
+            request_user=self.request.user,
+        )
         record_audit_log(
             self.request,
             'period.created',
@@ -405,6 +581,12 @@ class PeriodViewSet(viewsets.ModelViewSet):
         before = snapshot_instance(self.get_object())
         period = serializer.save()
         period.sync_reserve_ledgers()
+        notify_period_change(
+            period=period,
+            action_label='updated',
+            message=f"{period.name} has been updated. Review the latest period schedule.",
+            request_user=self.request.user,
+        )
         record_audit_log(
             self.request,
             'period.updated',
@@ -422,6 +604,12 @@ class PeriodViewSet(viewsets.ModelViewSet):
 
         before = snapshot_instance(instance)
         period_name = instance.name
+        notify_period_change(
+            period=instance,
+            action_label='deleted',
+            message=f"{period_name} has been deleted by admin.",
+            request_user=self.request.user,
+        )
         instance.ledgers.all().delete()
         super().perform_destroy(instance)
         record_audit_log(
@@ -510,6 +698,16 @@ class PeriodViewSet(viewsets.ModelViewSet):
                 )
 
             before = snapshot_instance(lucky_draw)
+            broadcast_user_notification(
+                title='Lucky draw removed',
+                message=f"The lucky draw number for {period.name} has been removed by admin.",
+                category=UserNotification.CATEGORY_SYSTEM,
+                level=UserNotification.LEVEL_WARNING,
+                action_href='/periods',
+                source_key=f'lucky-draw-removed:{period.id}:{before.get("updated_at", before.get("id", ""))}',
+                created_by=request.user,
+                period=period,
+            )
             lucky_draw.delete()
             record_audit_log(
                 request,
@@ -531,6 +729,16 @@ class PeriodViewSet(viewsets.ModelViewSet):
             period=period,
             announced_by=request.user,
             announced_at=timezone.now(),
+        )
+        broadcast_user_notification(
+            title='Lucky draw announced',
+            message=f"{period.name} lucky draw number is now {lucky_draw.display_number(reveal_for_admin=True)}.",
+            category=UserNotification.CATEGORY_SYSTEM,
+            level=UserNotification.LEVEL_IMPORTANT,
+            action_href='/',
+            source_key=f'lucky-draw-announced:{period.id}:{lucky_draw.number}',
+            created_by=request.user,
+            period=period,
         )
         record_audit_log(
             request,
@@ -639,6 +847,12 @@ class PeriodViewSet(viewsets.ModelViewSet):
             helper_name=helper_name_from_request(request),
             closing_user=request.user if request.user.is_authenticated else None,
         )
+        notify_period_change(
+            period=period,
+            action_label='closed',
+            message=f"{period.name} has been closed.",
+            request_user=request.user,
+        )
         record_audit_log(
             request,
             'period.closed',
@@ -692,6 +906,12 @@ class PeriodViewSet(viewsets.ModelViewSet):
             message = exc.messages[0] if getattr(exc, 'messages', None) else str(exc)
             return Response({"detail": message}, status=status.HTTP_400_BAD_REQUEST)
 
+        notify_period_change(
+            period=period,
+            action_label='reopened',
+            message=f"{period.name} has been reopened with a new end date.",
+            request_user=request.user,
+        )
         record_audit_log(
             request,
             'period.reopened',
@@ -773,6 +993,12 @@ class LedgerViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         ledger = serializer.save(owner=self.request.user)
+        notify_ledger_change(
+            ledger=ledger,
+            action_label='created',
+            message=f"{ledger.name} has been created for {ledger.period.name if ledger.period else 'the current period'}.",
+            request_user=self.request.user,
+        )
         record_audit_log(
             self.request,
             'ledger.created',
@@ -784,6 +1010,12 @@ class LedgerViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         before = snapshot_instance(self.get_object())
         ledger = serializer.save()
+        notify_ledger_change(
+            ledger=ledger,
+            action_label='updated',
+            message=f"{ledger.name} has been updated.",
+            request_user=self.request.user,
+        )
         record_audit_log(
             self.request,
             'ledger.updated',
@@ -801,6 +1033,12 @@ class LedgerViewSet(viewsets.ModelViewSet):
 
         before = snapshot_instance(instance)
         ledger_name = instance.name
+        notify_ledger_change(
+            ledger=instance,
+            action_label='deleted',
+            message=f"{ledger_name} has been deleted.",
+            request_user=self.request.user,
+        )
         super().perform_destroy(instance)
         record_audit_log(
             self.request,
@@ -848,6 +1086,12 @@ class LedgerViewSet(viewsets.ModelViewSet):
             return Response({"detail": detail}, status=status.HTTP_400_BAD_REQUEST)
 
         ledger.close()
+        notify_ledger_change(
+            ledger=ledger,
+            action_label='closed',
+            message=f"{ledger.name} has been closed.",
+            request_user=request.user,
+        )
         record_audit_log(
             request,
             'ledger.closed',
@@ -907,6 +1151,12 @@ class LedgerViewSet(viewsets.ModelViewSet):
             detail = exc.message_dict if hasattr(exc, 'message_dict') else exc.messages[0]
             return Response({"detail": detail}, status=status.HTTP_400_BAD_REQUEST)
 
+        notify_ledger_change(
+            ledger=ledger,
+            action_label='reopened',
+            message=f"{ledger.name} has been reopened.",
+            request_user=request.user,
+        )
         record_audit_log(
             request,
             'ledger.reopened',
@@ -1544,6 +1794,15 @@ class IdentifierViewSet(viewsets.ModelViewSet):
                 details=f"Froze identifier '{identifier.number}' across all ledgers",
                 changes={'identifier_number': identifier.number, 'period': period.name, 'created': created},
             )
+            notify_identifier_freeze_change(
+                recipient=request.user,
+                identifier=identifier,
+                period=period,
+                action_label='frozen',
+                message=f"Identifier {identifier.number} was frozen across all active ledgers in {period.name}.",
+                request_user=request.user,
+                source_key=f'identifier:freeze:all:{period.id}:{request.user.id}:{identifier.id}:{timezone.now().isoformat()}',
+            )
             return Response(
                 {
                     'message': f"Identifier '{identifier.number}' frozen across all ledgers.",
@@ -1584,6 +1843,15 @@ class IdentifierViewSet(viewsets.ModelViewSet):
                 'created': created,
             },
         )
+        notify_identifier_freeze_change(
+            recipient=request.user,
+            identifier=identifier,
+            period=period,
+            action_label='frozen',
+            message=f"Identifier {identifier.number} was frozen in ledger {ledger.name}.",
+            request_user=request.user,
+            source_key=f'identifier:freeze:ledger:{period.id}:{request.user.id}:{identifier.id}:{ledger.id}:{timezone.now().isoformat()}',
+        )
         return Response(
             {
                 'message': f"Identifier '{identifier.number}' frozen in ledger '{ledger.name}'.",
@@ -1618,6 +1886,15 @@ class IdentifierViewSet(viewsets.ModelViewSet):
                 details=f"Removed all-ledger freeze for identifier '{identifier.number}'",
                 changes={'identifier_number': identifier.number, 'period': period.name, 'deleted': deleted},
             )
+            notify_identifier_freeze_change(
+                recipient=request.user,
+                identifier=identifier,
+                period=period,
+                action_label='unfrozen',
+                message=f"Identifier {identifier.number} was unfrozen across all active ledgers in {period.name}.",
+                request_user=request.user,
+                source_key=f'identifier:unfreeze:all:{period.id}:{request.user.id}:{identifier.id}:{timezone.now().isoformat()}',
+            )
             return Response(
                 {
                     'message': f"Identifier '{identifier.number}' unfrozen across all ledgers.",
@@ -1646,6 +1923,17 @@ class IdentifierViewSet(viewsets.ModelViewSet):
             target=identifier,
             details=f"Removed ledger freeze for identifier '{identifier.number}'",
             changes={'identifier_number': identifier.number, 'ledger_id': ledger_id, 'period': period.name, 'deleted': deleted},
+        )
+        ledger = Ledger.objects.filter(pk=ledger_id, owner=request.user, period=period).only('name').first()
+        ledger_name = ledger.name if ledger else f'#{ledger_id}'
+        notify_identifier_freeze_change(
+            recipient=request.user,
+            identifier=identifier,
+            period=period,
+            action_label='unfrozen',
+            message=f"Identifier {identifier.number} was unfrozen in ledger {ledger_name}.",
+            request_user=request.user,
+            source_key=f'identifier:unfreeze:ledger:{period.id}:{request.user.id}:{identifier.id}:{ledger_id}:{timezone.now().isoformat()}',
         )
         return Response(
             {
@@ -2284,6 +2572,18 @@ class OverflowViewSet(viewsets.ModelViewSet):
                     'overflow_id': overflow_id,
                 },
             )
+            if overflow.owner_id:
+                notify_refund_change(
+                    recipient=overflow.owner,
+                    title='Spill over refunded',
+                    message=(
+                        f"Spill over for identifier {overflow_identifier_number} on ticket {overflow_ticket_number or '-'} was refunded."
+                    ),
+                    request_user=request.user,
+                    action_href='/spill-over',
+                    source_key=f'refund:overflow:{overflow_id}:{timezone.now().isoformat()}',
+                    period=overflow.period,
+                )
             return Response({
                 "message": "Overflow refunded successfully",
                 "overflow": serializer_data,
@@ -2310,6 +2610,15 @@ class OverflowViewSet(viewsets.ModelViewSet):
                     'identifier_number': overflow.transaction.identifier.number,
                     'refund_amount': str(refund_amount),
                 },
+            )
+            notify_refund_change(
+                recipient=overflow.transaction.created_by,
+                title='Transaction refunded',
+                message=f"Transaction {overflow.transaction.order_number} on ticket {overflow.transaction.ticket.ticket_number if overflow.transaction.ticket_id else '-'} was refunded.",
+                request_user=request.user,
+                action_href='/tickets',
+                source_key=f'refund:transaction:{overflow.transaction.id}:{timezone.now().isoformat()}',
+                period=overflow.period,
             )
             return Response({
                 "message": f"Transaction '{overflow.transaction.order_number}' refunded successfully",
@@ -2340,6 +2649,15 @@ class OverflowViewSet(viewsets.ModelViewSet):
                     **refund_summary,
                 },
             )
+            notify_refund_change(
+                recipient=ticket.created_by,
+                title='Ticket refunded',
+                message=f"Ticket {ticket.ticket_number} was refunded.",
+                request_user=request.user,
+                action_href='/tickets',
+                source_key=f'refund:ticket:{ticket.id}:{timezone.now().isoformat()}',
+                period=ticket.transactions.first().allocations.first().ledger.period if ticket.transactions.exists() and ticket.transactions.first().allocations.exists() else None,
+            )
             return Response({
                 "message": f"Ticket '{ticket.ticket_number}' refunded successfully",
             }, status=status.HTTP_200_OK)
@@ -2357,6 +2675,73 @@ class OverflowNotificationViewSet(viewsets.ReadOnlyModelViewSet):
     )
     serializer_class = OverflowNotificationSerializer
     permission_classes = [IsAuthenticated]
+
+
+class UserNotificationViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = UserNotification.objects.select_related('created_by', 'period', 'recipient')
+    serializer_class = UserNotificationSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = super().get_queryset().filter(recipient=self.request.user)
+        category = (self.request.query_params.get('category') or '').strip().upper()
+        unread_only = (self.request.query_params.get('unread_only') or '').strip().lower()
+        limit = self.request.query_params.get('limit')
+
+        if category:
+            queryset = queryset.filter(category=category)
+        if unread_only in {'1', 'true', 'yes'}:
+            queryset = queryset.filter(read_at__isnull=True)
+        if limit:
+            try:
+                queryset = queryset[: max(1, int(limit))]
+            except ValueError:
+                pass
+        return queryset
+
+    @action(detail=False, methods=['get'], url_path='summary')
+    def summary(self, request):
+        queryset = super().get_queryset().filter(recipient=request.user)
+        recent = queryset[:4]
+        unread_count = queryset.filter(read_at__isnull=True).count()
+        return Response({
+            'unread_count': unread_count,
+            'recent': UserNotificationSerializer(recent, many=True).data,
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], url_path='mark-all-read')
+    def mark_all_read(self, request):
+        updated = self.get_queryset().filter(read_at__isnull=True).update(read_at=timezone.now())
+        return Response({'message': 'Notifications marked as read.', 'updated_count': updated}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='mark-read')
+    def mark_read(self, request, pk=None):
+        notification = self.get_object()
+        notification.mark_read()
+        return Response(UserNotificationSerializer(notification).data, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], url_path='broadcast', permission_classes=[IsAdminRole])
+    def broadcast(self, request):
+        serializer = NotificationBroadcastSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        created_count = broadcast_user_notification(
+            title=serializer.validated_data['title'],
+            message=serializer.validated_data['message'],
+            category=UserNotification.CATEGORY_ANNOUNCEMENT,
+            level=serializer.validated_data['level'],
+            action_href=serializer.validated_data.get('action_href', ''),
+            created_by=request.user,
+        )
+        record_audit_log(
+            request,
+            'notifications.broadcasted',
+            details=f"Broadcasted notification '{serializer.validated_data['title']}'",
+            changes={'recipient_count': created_count},
+        )
+        return Response(
+            {'message': 'Notification sent to all users.', 'recipient_count': created_count},
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
@@ -3832,6 +4217,13 @@ class UserManagementViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mi
             details=f"Changed role for '{target_user.username}'",
             changes={'before_role': previous_role, 'after_role': profile.role},
         )
+        notify_user_account_change(
+            recipient=target_user,
+            title='Account role updated',
+            message=f"Your account role changed from {previous_role} to {profile.role}.",
+            request_user=request.user,
+            source_key=f'user:role-changed:{target_user.id}:{profile.role}:{timezone.now().isoformat()}',
+        )
 
         return Response({
             'message': 'User role updated successfully.',
@@ -3875,6 +4267,13 @@ class UserManagementViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mi
             target=target_user,
             details=details,
             changes={'override_enabled': override_enabled},
+        )
+        notify_user_account_change(
+            recipient=target_user,
+            title='Override access updated',
+            message='Your admin override access was enabled.' if override_enabled else 'Your admin override access was removed.',
+            request_user=request.user,
+            source_key=f'user:override-updated:{target_user.id}:{override_enabled}:{timezone.now().isoformat()}',
         )
 
         return Response({
@@ -4220,6 +4619,15 @@ class TicketRefundView(APIView):
                     **refund_summary,
                 },
             )
+            notify_refund_change(
+                recipient=ticket.created_by,
+                title='Ticket refunded',
+                message=f"Ticket {ticket.ticket_number} was refunded.",
+                request_user=request.user,
+                action_href='/tickets',
+                source_key=f'ticket-refund:{ticket.id}:{timezone.now().isoformat()}',
+                period=ticket.transactions.first().overflows.first().period if ticket.transactions.exists() and ticket.transactions.first().overflows.exists() else None,
+            )
             return Response({
                 "message": f"Ticket '{ticket.ticket_number}' refunded successfully",
             }, status=status.HTTP_200_OK)
@@ -4256,6 +4664,15 @@ class TicketRefundView(APIView):
                 'identifier_number': transaction_obj.identifier.number,
                 'refund_amount': str(transaction_obj.total_amount),
             },
+        )
+        notify_refund_change(
+            recipient=ticket.created_by,
+            title='Transaction refunded',
+            message=f"Transaction {transaction_obj.order_number} on ticket {ticket.ticket_number} was refunded.",
+            request_user=request.user,
+            action_href='/tickets',
+            source_key=f'ticket-transaction-refund:{transaction_obj.id}:{timezone.now().isoformat()}',
+            period=transaction_obj.overflows.first().period if transaction_obj.overflows.exists() else None,
         )
         return Response({
             "message": f"Transaction '{transaction_obj.order_number}' refunded successfully",
