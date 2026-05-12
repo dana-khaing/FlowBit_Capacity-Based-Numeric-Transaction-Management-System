@@ -1,5 +1,6 @@
 import secrets
 import uuid
+from datetime import datetime, time
 
 from django.db import models, transaction
 from django.contrib.auth.models import User
@@ -125,6 +126,56 @@ class Period(models.Model):
 
         if LedgerAllocation.objects.filter(ledger__period=self).exists():
             raise ValidationError("This period cannot be deleted because it already has ticket activity.")
+
+    @property
+    def lucky_draw_reveal_at(self):
+        reveal_datetime = datetime.combine(self.end_date.date(), time(hour=15, minute=30))
+        return timezone.make_aware(reveal_datetime, timezone.get_current_timezone())
+
+
+class LuckyDraw(models.Model):
+    period = models.OneToOneField(
+        Period,
+        on_delete=models.CASCADE,
+        related_name='lucky_draw',
+    )
+    number = models.CharField(max_length=6)
+    announced_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        related_name='announced_lucky_draws',
+        null=True,
+        blank=True,
+    )
+    announced_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-period__start_date', '-updated_at']
+
+    def __str__(self):
+        return f"{self.period.name} Lucky Draw"
+
+    def clean(self):
+        if not self.number or not self.number.isdigit() or len(self.number) != 6:
+            raise ValidationError("Lucky draw number must be exactly 6 digits.")
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    @property
+    def winning_identifiers(self):
+        return [self.number[3:]]
+
+    def is_revealed(self):
+        return bool(self.announced_at)
+
+    def display_number(self, reveal_for_admin=False):
+        if self.is_revealed() or reveal_for_admin:
+            return f"{self.number[:3]}-{self.number[3:]}"
+        return "***-***"
 
 
 class Ledger(models.Model):

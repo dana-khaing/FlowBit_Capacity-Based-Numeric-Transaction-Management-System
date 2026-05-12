@@ -5,6 +5,7 @@ import Link from "next/link";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faArrowRight,
+  faCircleNotch,
   faClockRotateLeft,
   faExpand,
   faFileInvoice,
@@ -12,20 +13,25 @@ import {
   faPlus,
   faTicket,
   faTriangleExclamation,
+  faXmark,
 } from "@fortawesome/free-solid-svg-icons";
 import { AppSectionPage } from "@/components/app/app-section-page";
 import { TICKETS_UPDATED_EVENT } from "@/components/app/workspace-events";
 import { usePeriodState } from "@/components/period/use-period-state";
 import {
+  fetchDashboardAlmostFull,
+  fetchDashboardHotNumbers,
   fetchDashboardReport,
   fetchDashboardFullNumbers,
+  type FlowBitDashboardAlmostFullPage,
+  type FlowBitDashboardHotNumberPage,
   type FlowBitDashboardReport,
   type FlowBitDashboardFullNumberPage,
 } from "@/lib/dashboard-client";
-import { fetchLedgers, type FlowBitLedger } from "@/lib/ledger-client";
 import { fetchApprovedOverflowPage, fetchPendingOverflowPage, type FlowBitOverflow } from "@/lib/overflow-client";
-import { fetchPeriods } from "@/lib/period-client";
-import { fetchTickets, type FlowBitTicketListItem } from "@/lib/ticket-client";
+import { fetchPeriodLuckyDrawWinners, type FlowBitLuckyDrawWinners } from "@/lib/period-client";
+import { TicketReceiptCard } from "@/components/tickets/ticket-receipt-card";
+import { fetchTicketDetail, fetchTickets, type FlowBitTicketDetail, type FlowBitTicketListItem } from "@/lib/ticket-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -135,22 +141,27 @@ function barWidth(progress: number) {
   return `${Math.max(0, Math.min(progress, 100))}%`;
 }
 
+type DashboardDrilldownKind = "hot" | "almost" | "full";
+
 export default function Home() {
   const [report, setReport] = useState<FlowBitDashboardReport | null>(null);
-  const [activeLedgers, setActiveLedgers] = useState<FlowBitLedger[]>([]);
   const [pendingOverflows, setPendingOverflows] = useState<FlowBitOverflow[]>([]);
   const [approvedOverflows, setApprovedOverflows] = useState<FlowBitOverflow[]>([]);
   const [recentTickets, setRecentTickets] = useState<FlowBitTicketListItem[]>([]);
-  const [archivedPeriodCount, setArchivedPeriodCount] = useState(0);
-  const [closedPeriodNames, setClosedPeriodNames] = useState<string[]>([]);
   const [dashboardError, setDashboardError] = useState<string | null>(null);
   const [isDashboardLoading, setIsDashboardLoading] = useState(true);
-  const [isFullNumberModalOpen, setIsFullNumberModalOpen] = useState(false);
-  const [fullNumberSearch, setFullNumberSearch] = useState("");
-  const [fullNumberPage, setFullNumberPage] = useState(1);
+  const [dashboardDrilldownKind, setDashboardDrilldownKind] = useState<DashboardDrilldownKind | null>(null);
+  const [dashboardDrilldownSearch, setDashboardDrilldownSearch] = useState("");
+  const [dashboardDrilldownPage, setDashboardDrilldownPage] = useState(1);
   const [fullNumberModalData, setFullNumberModalData] = useState<FlowBitDashboardFullNumberPage | null>(null);
-  const [isFullNumberModalLoading, setIsFullNumberModalLoading] = useState(false);
-  const [fullNumberModalError, setFullNumberModalError] = useState<string | null>(null);
+  const [hotNumberModalData, setHotNumberModalData] = useState<FlowBitDashboardHotNumberPage | null>(null);
+  const [almostFullModalData, setAlmostFullModalData] = useState<FlowBitDashboardAlmostFullPage | null>(null);
+  const [isDashboardDrilldownLoading, setIsDashboardDrilldownLoading] = useState(false);
+  const [dashboardDrilldownError, setDashboardDrilldownError] = useState<string | null>(null);
+  const [luckyDrawWinners, setLuckyDrawWinners] = useState<FlowBitLuckyDrawWinners | null>(null);
+  const [selectedWinnerTicketNumber, setSelectedWinnerTicketNumber] = useState<string | null>(null);
+  const [selectedWinnerTicket, setSelectedWinnerTicket] = useState<FlowBitTicketDetail | null>(null);
+  const [isWinnerTicketLoading, setIsWinnerTicketLoading] = useState(false);
 
   const { activePeriod, hasActivePeriod, isLoading: isPeriodLoading, error: periodError } = usePeriodState();
 
@@ -161,12 +172,9 @@ export default function Home() {
 
     if (!hasActivePeriod || !activePeriod) {
       setReport(null);
-      setActiveLedgers([]);
       setPendingOverflows([]);
       setApprovedOverflows([]);
       setRecentTickets([]);
-      setArchivedPeriodCount(0);
-      setClosedPeriodNames([]);
       setIsDashboardLoading(false);
       return;
     }
@@ -177,25 +185,21 @@ export default function Home() {
     }
 
     try {
-      const [nextReport, nextLedgers, nextPending, nextApproved, nextRecentTickets, periods] = await Promise.all([
+      const [nextReport, nextPending, nextApproved, nextRecentTickets, nextLuckyDrawWinners] = await Promise.all([
         fetchDashboardReport(activePeriod.id),
-        fetchLedgers({ period_id: activePeriod.id }),
         fetchPendingOverflowPage({ periodId: activePeriod.id, page: 1, pageSize: 4 }),
         fetchApprovedOverflowPage({ periodId: activePeriod.id, page: 1, pageSize: 4 }),
         fetchTickets({ periodId: activePeriod.id, limit: 6 }),
-        fetchPeriods(),
+        fetchPeriodLuckyDrawWinners(activePeriod.id),
       ]);
       if (!isMounted) {
         return;
       }
       setReport(nextReport);
-      setActiveLedgers(nextLedgers.filter((ledger) => ledger.is_active && !ledger.is_capacity_reserve));
       setPendingOverflows(nextPending.results);
       setApprovedOverflows(nextApproved.results);
       setRecentTickets(nextRecentTickets);
-      const closedPeriods = periods.filter((period) => !period.is_open);
-      setArchivedPeriodCount(closedPeriods.length);
-      setClosedPeriodNames(closedPeriods.map((period) => period.name));
+      setLuckyDrawWinners(nextLuckyDrawWinners);
       setDashboardError(null);
     } catch (error) {
       if (!isMounted) {
@@ -257,7 +261,6 @@ export default function Home() {
     const allocatedTotal = Number(report.standard_total_allocated_amount || "0");
     const availableTotal = Number(report.standard_total_capacity || "0");
     const capacityPercent = availableTotal > 0 ? Math.round((allocatedTotal / availableTotal) * 100) : 0;
-    const activeLedgerNames = activeLedgers.map((ledger) => ledger.name).slice(0, 2);
 
     return [
       {
@@ -279,13 +282,13 @@ export default function Home() {
         href: "/spill-over",
       },
       {
-        label: "Active ledgers",
-        value: String(report.active_ledger_count),
-        meta: activeLedgerNames.length ? activeLedgerNames.join(" · ") : `${report.ledger_count} total ledgers`,
-        href: "/ledgers",
+        label: "Total tickets",
+        value: String(report.ticket_count),
+        meta: "Current period ticket count",
+        href: "/tickets",
       },
     ];
-  }, [activeLedgers, pendingOverflows.length, report]);
+  }, [pendingOverflows.length, report]);
 
   const hotNumbers = useMemo(() => {
     return report?.hot_numbers.map((row) => ({
@@ -346,44 +349,107 @@ export default function Home() {
     return `Draw in ${days}d ${hours}h`;
   }, [activePeriod?.end_date]);
 
-  const latestClosedPeriod = closedPeriodNames[0] ?? "-";
+  const isCloseToPeriodEndWithPendingOverflow = useMemo(() => {
+    if (!activePeriod?.end_date || !report?.pending_overflow_count) {
+      return false;
+    }
+    const diff = new Date(activePeriod.end_date).getTime() - Date.now();
+    return diff > 0 && diff <= 30 * 60 * 1000;
+  }, [activePeriod?.end_date, report?.pending_overflow_count]);
+
+  const luckyDrawDisplay = activePeriod?.lucky_draw_display || "***-***";
+  const winningIdentifier = luckyDrawWinners?.lucky_draw.winning_identifiers[0] ?? null;
+
+  async function openWinnerTicket(ticketNumber: string) {
+    setSelectedWinnerTicketNumber(ticketNumber);
+    setSelectedWinnerTicket(null);
+    setIsWinnerTicketLoading(true);
+    try {
+      const detail = await fetchTicketDetail(ticketNumber);
+      setSelectedWinnerTicket(detail);
+    } catch {
+      setSelectedWinnerTicket(null);
+    } finally {
+      setIsWinnerTicketLoading(false);
+    }
+  }
+
+  function closeWinnerTicket() {
+    if (isWinnerTicketLoading) {
+      return;
+    }
+    setSelectedWinnerTicketNumber(null);
+    setSelectedWinnerTicket(null);
+  }
+
+  function openDashboardDrilldown(kind: DashboardDrilldownKind) {
+    setDashboardDrilldownKind(kind);
+    setDashboardDrilldownPage(1);
+    setDashboardDrilldownSearch("");
+    setDashboardDrilldownError(null);
+  }
+
+  function closeDashboardDrilldown() {
+    setDashboardDrilldownKind(null);
+  }
 
   useEffect(() => {
-    if (!isFullNumberModalOpen || !activePeriod) {
+    if (!dashboardDrilldownKind || !activePeriod) {
       return;
     }
 
     let isMounted = true;
-    setIsFullNumberModalLoading(true);
+    setIsDashboardDrilldownLoading(true);
 
-    fetchDashboardFullNumbers({
-      periodId: activePeriod.id,
-      page: fullNumberPage,
-      identifier: fullNumberSearch,
-    })
+    const request =
+      dashboardDrilldownKind === "hot"
+        ? fetchDashboardHotNumbers({
+            periodId: activePeriod.id,
+            page: dashboardDrilldownPage,
+            identifier: dashboardDrilldownSearch,
+          })
+        : dashboardDrilldownKind === "almost"
+          ? fetchDashboardAlmostFull({
+              periodId: activePeriod.id,
+              page: dashboardDrilldownPage,
+              identifier: dashboardDrilldownSearch,
+            })
+          : fetchDashboardFullNumbers({
+              periodId: activePeriod.id,
+              page: dashboardDrilldownPage,
+              identifier: dashboardDrilldownSearch,
+            });
+
+    request
       .then((response) => {
         if (!isMounted) {
           return;
         }
-        setFullNumberModalData(response);
-        setFullNumberModalError(null);
+        if (dashboardDrilldownKind === "hot") {
+          setHotNumberModalData(response as FlowBitDashboardHotNumberPage);
+        } else if (dashboardDrilldownKind === "almost") {
+          setAlmostFullModalData(response as FlowBitDashboardAlmostFullPage);
+        } else {
+          setFullNumberModalData(response as FlowBitDashboardFullNumberPage);
+        }
+        setDashboardDrilldownError(null);
       })
       .catch((error) => {
         if (!isMounted) {
           return;
         }
-        setFullNumberModalError(error instanceof Error ? error.message : "Request failed.");
+        setDashboardDrilldownError(error instanceof Error ? error.message : "Request failed.");
       })
       .finally(() => {
         if (isMounted) {
-          setIsFullNumberModalLoading(false);
+          setIsDashboardDrilldownLoading(false);
         }
       });
 
     return () => {
       isMounted = false;
     };
-  }, [activePeriod, fullNumberPage, fullNumberSearch, isFullNumberModalOpen]);
+  }, [activePeriod, dashboardDrilldownKind, dashboardDrilldownPage, dashboardDrilldownSearch]);
 
   return (
     <AppSectionPage
@@ -413,26 +479,21 @@ export default function Home() {
       ) : (
         <div className="space-y-7">
           <section className="rounded-[28px] border border-stone-900/8 bg-white px-6 py-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:px-8">
-            <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+            <div className="flex flex-col items-center gap-3 text-center">
               <div>
                 <p className="text-[13px] font-medium uppercase tracking-[0.18em] text-stone-400">
                   Next draw
                 </p>
-                <div className="mt-3 flex items-center gap-4 text-[48px] font-light tracking-[0.16em] text-stone-950 sm:text-[64px]">
-                  <span>***</span>
-                  <span className="text-stone-400">—</span>
-                  <span>***</span>
+                <div className="mt-3 text-[48px] font-light tracking-[0.16em] text-stone-950 sm:text-[64px]">
+                  <span>{luckyDrawDisplay}</span>
                 </div>
                 <p className="mt-3 text-base text-stone-500 sm:text-lg">{periodEndLabel}</p>
               </div>
 
-              <div className="flex flex-col items-start gap-2 xl:items-end">
+              <div className="flex flex-col items-center gap-2">
                 <span className="rounded-full bg-amber-100 px-4 py-2 text-base font-medium text-amber-900 sm:text-lg">
                   {nextDrawCountdown}
                 </span>
-                <p className="text-base text-stone-400 sm:text-lg">
-                  Previous: {latestClosedPeriod} · Archived periods {archivedPeriodCount}
-                </p>
               </div>
             </div>
           </section>
@@ -453,14 +514,118 @@ export default function Home() {
             ))}
           </section>
 
+          {isCloseToPeriodEndWithPendingOverflow ? (
+            <Link
+              href="/spill-over"
+              className="flex items-center justify-between gap-4 rounded-[24px] border border-amber-300 bg-amber-50 px-5 py-4 text-amber-900 shadow-[0_4px_14px_rgba(180,83,9,0.08)] transition hover:border-amber-400 hover:bg-amber-100"
+            >
+              <div>
+                <p className="text-[12px] font-semibold uppercase tracking-[0.18em]">
+                  Period closing soon
+                </p>
+                <p className="mt-1 text-sm">
+                  {formatAmount(report?.pending_overflow_count ?? 0)} pending spill over still needs attention before close time.
+                </p>
+              </div>
+              <span className="rounded-full bg-white px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-amber-800">
+                Review queue
+              </span>
+            </Link>
+          ) : null}
+
+          {luckyDrawWinners?.lucky_draw.announced_at ? (
+            <section className="relative overflow-hidden rounded-[28px] border border-emerald-200 bg-[linear-gradient(135deg,rgba(236,253,245,1),rgba(255,255,255,1))] px-6 py-6 shadow-[0_8px_24px_rgba(16,185,129,0.10)] sm:px-8">
+              <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-emerald-200/50 blur-2xl" />
+              <div className="pointer-events-none absolute -bottom-10 -left-10 h-32 w-32 rounded-full bg-lime-200/40 blur-2xl" />
+              <div className="flex flex-col gap-4">
+                <div className="text-center">
+                  <p className="inline-flex self-center rounded-full bg-white/80 px-4 py-2 text-[12px] font-semibold uppercase tracking-[0.18em] text-emerald-700 shadow-[0_4px_12px_rgba(16,185,129,0.08)]">
+                    Congratulations
+                  </p>
+                  <h2 className="mt-3 text-2xl font-semibold text-stone-950 sm:text-3xl">Lucky winner</h2>
+                  <p className="mt-2 text-sm text-stone-600">
+                    Winning identifier {winningIdentifier ?? "---"} · Announced {activePeriod?.lucky_draw_announced_at ? formatDateTime(activePeriod.lucky_draw_announced_at) : "-"}
+                  </p>
+                </div>
+
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <div className="rounded-[22px] border border-stone-900/8 bg-white/80 px-4 py-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Winner tickets</p>
+                    <div className="thin-scrollbar mt-3 max-h-[320px] space-y-3 overflow-y-auto pr-1">
+                      {luckyDrawWinners.tickets.length ? luckyDrawWinners.tickets.map((ticket) => (
+                        <button
+                          key={ticket.ticket_number}
+                          type="button"
+                          onClick={() => {
+                            void openWinnerTicket(ticket.ticket_number);
+                          }}
+                          className="block w-full rounded-[18px] border border-stone-900/8 bg-stone-50 px-4 py-3 text-left transition hover:border-stone-300 hover:bg-white"
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-base font-semibold text-stone-950">{ticket.ticket_number}</span>
+                            <span className="text-sm text-stone-600">{formatAmount(ticket.total_amount)}</span>
+                          </div>
+                          <p className="mt-2 text-sm text-stone-500">
+                            Customer {getRecentTicketCustomerName(ticket.customer_name)} · {ticket.matched_identifiers.join(", ")}
+                          </p>
+                        </button>
+                      )) : (
+                        <p className="text-sm text-stone-500">No winning tickets yet.</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="rounded-[22px] border border-stone-900/8 bg-white/80 px-4 py-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Approved spill over</p>
+                    <div className="thin-scrollbar mt-3 max-h-[320px] space-y-3 overflow-y-auto pr-1">
+                      {luckyDrawWinners.approved_overflows.length ? luckyDrawWinners.approved_overflows.map((overflow) => (
+                        <button
+                          key={overflow.id}
+                          type="button"
+                          disabled={!overflow.ticket_number}
+                          onClick={() => {
+                            if (overflow.ticket_number) {
+                              void openWinnerTicket(overflow.ticket_number);
+                            }
+                          }}
+                          className="w-full rounded-[18px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-left disabled:cursor-default"
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-base font-semibold text-stone-950">{overflow.identifier_number}</span>
+                            <span className="text-sm text-stone-600">{formatAmount(overflow.amount)}</span>
+                          </div>
+                          <p className="mt-2 text-sm text-stone-500">
+                            {overflow.collaborator_names.length ? overflow.collaborator_names.join(", ") : "Approved"}
+                          </p>
+                        </button>
+                      )) : (
+                        <p className="text-sm text-stone-500">No approved spill over winners.</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+          ) : null}
+
           <section className="grid gap-5 xl:grid-cols-3">
             <article className="rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6">
-              <div className="flex items-center gap-3">
-                <span className="h-3 w-3 rounded-full bg-lime-600" />
-                <div>
-                  <h2 className="text-[17px] font-medium uppercase tracking-[0.08em] text-stone-600">Hot numbers</h2>
-                  <p className="mt-1 text-[15px] text-stone-400">Total entered · {activePeriod?.name ?? "Current period"}</p>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <span className="h-3 w-3 rounded-full bg-lime-600" />
+                  <div>
+                    <h2 className="text-[17px] font-medium uppercase tracking-[0.08em] text-stone-600">Hot numbers</h2>
+                    <p className="mt-1 text-[15px] text-stone-400">Total entered · {activePeriod?.name ?? "Current period"}</p>
+                  </div>
                 </div>
+                <Button
+                  variant="ghost"
+                  className="h-10 rounded-[16px] px-3 text-stone-500"
+                  onClick={() => openDashboardDrilldown("hot")}
+                >
+                  <FontAwesomeIcon icon={faExpand} className="h-4 w-4" />
+                  Open
+                </Button>
               </div>
 
               <div className="thin-scrollbar mt-6 max-h-[440px] space-y-5 overflow-y-auto pr-1 sm:max-h-[540px] xl:max-h-[620px]">
@@ -479,12 +644,22 @@ export default function Home() {
             </article>
 
             <article className="rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6">
-              <div className="flex items-center gap-3">
-                <span className="h-3 w-3 rounded-full bg-red-700" />
-                <div>
-                  <h2 className="text-[17px] font-medium uppercase tracking-[0.08em] text-stone-600">Almost Full</h2>
-                  <p className="mt-1 text-[15px] text-stone-400">Least remaining capacity · action needed</p>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <span className="h-3 w-3 rounded-full bg-red-700" />
+                  <div>
+                    <h2 className="text-[17px] font-medium uppercase tracking-[0.08em] text-stone-600">Almost Full</h2>
+                    <p className="mt-1 text-[15px] text-stone-400">Least remaining capacity · action needed</p>
+                  </div>
                 </div>
+                <Button
+                  variant="ghost"
+                  className="h-10 rounded-[16px] px-3 text-stone-500"
+                  onClick={() => openDashboardDrilldown("almost")}
+                >
+                  <FontAwesomeIcon icon={faExpand} className="h-4 w-4" />
+                  Open
+                </Button>
               </div>
 
               <div className="thin-scrollbar mt-6 max-h-[440px] space-y-4 overflow-y-auto pr-1 sm:max-h-[540px] xl:max-h-[620px]">
@@ -512,7 +687,7 @@ export default function Home() {
                 <div className="flex items-center gap-3">
                   <span className="h-3 w-3 rounded-full bg-amber-700" />
                   <div>
-                    <h2 className="text-[17px] font-medium uppercase tracking-[0.08em] text-stone-600">Full Number</h2>
+                  <h2 className="text-[17px] font-medium uppercase tracking-[0.08em] text-stone-600">Full Number</h2>
                     <p className="mt-1 text-[15px] text-stone-400">Numbers already at full standard capacity</p>
                   </div>
                 </div>
@@ -520,9 +695,7 @@ export default function Home() {
                   variant="ghost"
                   className="h-10 rounded-[16px] px-3 text-stone-500"
                   onClick={() => {
-                    setFullNumberPage(1);
-                    setFullNumberSearch("");
-                    setIsFullNumberModalOpen(true);
+                    openDashboardDrilldown("full");
                   }}
                 >
                   <FontAwesomeIcon icon={faExpand} className="h-4 w-4" />
@@ -646,10 +819,63 @@ export default function Home() {
         </div>
       )}
 
-      {isFullNumberModalOpen ? (
+      {selectedWinnerTicketNumber ? (
+        <div
+          className="fixed inset-0 z-50 bg-stone-950/55 px-4 py-8 backdrop-blur-sm"
+          onClick={closeWinnerTicket}
+        >
+          <div
+            className="mx-auto max-h-[90vh] w-full max-w-[760px] overflow-y-auto rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_20px_60px_rgba(28,24,20,0.24)] sm:p-6"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">
+                  Lucky winner ticket
+                </p>
+                <p className="mt-2 text-lg font-semibold text-stone-950">
+                  {selectedWinnerTicketNumber}
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                className="h-11 w-11 rounded-[16px] p-0"
+                onClick={closeWinnerTicket}
+                aria-label="Close winner ticket"
+              >
+                <FontAwesomeIcon icon={faXmark} className="h-4 w-4" />
+              </Button>
+            </div>
+
+            {isWinnerTicketLoading ? (
+              <div className="mt-6 inline-flex items-center gap-3 rounded-full border border-stone-900/8 bg-stone-50 px-4 py-3 text-sm text-stone-600">
+                <FontAwesomeIcon
+                  icon={faCircleNotch}
+                  className="h-4 w-4 animate-spin text-stone-400"
+                />
+                Loading winner ticket.
+              </div>
+            ) : selectedWinnerTicket ? (
+              <div className="mt-6">
+                <TicketReceiptCard
+                  ticket={selectedWinnerTicket}
+                  periodName={activePeriod?.name}
+                  className="mx-auto max-w-[440px] rounded-[28px] border border-dashed border-stone-300 bg-stone-50 p-5 text-stone-900"
+                />
+              </div>
+            ) : (
+              <div className="mt-6 rounded-[22px] border border-dashed border-stone-300 bg-stone-50 px-4 py-4 text-sm text-stone-500">
+                Ticket view is not available right now.
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
+
+      {dashboardDrilldownKind ? (
         <div
           className="fixed inset-0 z-50 bg-stone-950/40 px-4 py-6 backdrop-blur-sm"
-          onClick={() => setIsFullNumberModalOpen(false)}
+          onClick={closeDashboardDrilldown}
         >
           <div
             className="mx-auto flex max-h-[92vh] w-full max-w-3xl flex-col rounded-[28px] border border-stone-900/10 bg-white p-5 shadow-[0_24px_80px_rgba(28,24,20,0.24)] sm:p-6"
@@ -658,33 +884,68 @@ export default function Home() {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">
-                  Full number
+                  {dashboardDrilldownKind === "hot"
+                    ? "Hot numbers"
+                    : dashboardDrilldownKind === "almost"
+                      ? "Almost full"
+                      : "Full number"}
                 </p>
-                <h2 className="mt-2 text-2xl font-semibold text-stone-950">Full number list</h2>
+                <h2 className="mt-2 text-2xl font-semibold text-stone-950">
+                  {dashboardDrilldownKind === "hot"
+                    ? "Hot number list"
+                    : dashboardDrilldownKind === "almost"
+                      ? "Almost full list"
+                      : "Full number list"}
+                </h2>
                 <p className="mt-2 text-sm text-stone-500">Search by identifier and browse 20 rows per page.</p>
               </div>
-              <Button variant="ghost" className="h-10 rounded-[16px] px-3" onClick={() => setIsFullNumberModalOpen(false)}>
+              <Button variant="ghost" className="h-10 rounded-[16px] px-3" onClick={closeDashboardDrilldown}>
                 Close
               </Button>
             </div>
 
             <div className="mt-5">
               <Input
-                value={fullNumberSearch}
+                value={dashboardDrilldownSearch}
                 onChange={(event) => {
-                  setFullNumberSearch(event.target.value.replace(/\D/g, "").slice(0, 3));
-                  setFullNumberPage(1);
+                  setDashboardDrilldownSearch(event.target.value.replace(/\D/g, "").slice(0, 3));
+                  setDashboardDrilldownPage(1);
                 }}
                 placeholder="Search identifier"
               />
             </div>
 
             <div className="thin-scrollbar mt-5 flex-1 space-y-4 overflow-y-auto pr-1">
-              {isFullNumberModalLoading ? (
-                <p className="text-sm text-stone-500">Loading full numbers.</p>
-              ) : fullNumberModalError ? (
-                <p className="text-sm text-rose-700">{fullNumberModalError}</p>
-              ) : fullNumberModalData?.results.length ? (
+              {isDashboardDrilldownLoading ? (
+                <p className="text-sm text-stone-500">Loading dashboard list.</p>
+              ) : dashboardDrilldownError ? (
+                <p className="text-sm text-rose-700">{dashboardDrilldownError}</p>
+              ) : dashboardDrilldownKind === "hot" && hotNumberModalData?.results.length ? (
+                hotNumberModalData.results.map((item) => (
+                  <div key={`${item.identifier}-${item.amount}`} className="grid items-center gap-3 sm:grid-cols-[64px_minmax(0,1.2fr)_104px]">
+                    <div className="text-[24px] font-medium text-stone-950">{item.identifier}</div>
+                    <div className="h-3 rounded-full bg-stone-100">
+                      <div className="h-full rounded-full bg-lime-600" style={{ width: barWidth(item.progress) }} />
+                    </div>
+                    <div className="text-right text-[15px] text-stone-400">{formatAmount(item.amount)}</div>
+                  </div>
+                ))
+              ) : dashboardDrilldownKind === "almost" && almostFullModalData?.results.length ? (
+                almostFullModalData.results.map((item) => (
+                  <div key={`${item.identifier}-${item.remaining}`} className="grid items-center gap-3 sm:grid-cols-[64px_minmax(0,1.2fr)_104px]">
+                    <div className="text-[24px] font-medium text-stone-950">{item.identifier}</div>
+                    <div className={`h-3 rounded-full ${item.tone === "critical" ? "bg-red-100" : "bg-amber-100"}`}>
+                      <div
+                        className={`h-full rounded-full ${item.tone === "critical" ? "bg-red-700" : "bg-amber-700"}`}
+                        style={{ width: barWidth(item.progress) }}
+                      />
+                    </div>
+                    <div className={`text-right text-[15px] ${item.tone === "critical" ? "text-red-700" : "text-amber-700"}`}>
+                      {formatAmount(item.remaining)}
+                    </div>
+                  </div>
+                ))
+              ) : dashboardDrilldownKind === "full" && fullNumberModalData?.results.length ? (
                 fullNumberModalData.results.map((item) => (
                   <div key={`${item.identifier}-${item.amount}`} className="grid items-center gap-3 sm:grid-cols-[64px_minmax(0,1.2fr)_104px]">
                     <div className="text-[24px] font-medium text-stone-950">{item.identifier}</div>
@@ -695,33 +956,73 @@ export default function Home() {
                   </div>
                 ))
               ) : (
-                <p className="text-sm text-stone-500">No full numbers match this search.</p>
+                <p className="text-sm text-stone-500">No numbers match this search.</p>
               )}
             </div>
 
             <div className="mt-5 flex items-center justify-between gap-3 border-t border-stone-900/8 pt-4">
               <p className="text-sm text-stone-500">
-                {fullNumberModalData ? `${fullNumberModalData.count} total` : "0 total"}
+                {dashboardDrilldownKind === "hot"
+                  ? hotNumberModalData
+                    ? `${hotNumberModalData.count} total`
+                    : "0 total"
+                  : dashboardDrilldownKind === "almost"
+                    ? almostFullModalData
+                      ? `${almostFullModalData.count} total`
+                      : "0 total"
+                    : fullNumberModalData
+                      ? `${fullNumberModalData.count} total`
+                      : "0 total"}
               </p>
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
                   className="rounded-[16px]"
-                  disabled={!fullNumberModalData || fullNumberModalData.page <= 1}
-                  onClick={() => setFullNumberPage((current) => Math.max(1, current - 1))}
+                  disabled={
+                    dashboardDrilldownKind === "hot"
+                      ? !hotNumberModalData || hotNumberModalData.page <= 1
+                      : dashboardDrilldownKind === "almost"
+                        ? !almostFullModalData || almostFullModalData.page <= 1
+                        : !fullNumberModalData || fullNumberModalData.page <= 1
+                  }
+                  onClick={() => setDashboardDrilldownPage((current) => Math.max(1, current - 1))}
                 >
                   Previous
                 </Button>
                 <span className="min-w-[76px] text-center text-sm text-stone-500">
-                  Page {fullNumberModalData?.page ?? 1} / {fullNumberModalData?.total_pages ?? 1}
+                  Page {dashboardDrilldownKind === "hot"
+                    ? hotNumberModalData?.page ?? 1
+                    : dashboardDrilldownKind === "almost"
+                      ? almostFullModalData?.page ?? 1
+                      : fullNumberModalData?.page ?? 1} / {dashboardDrilldownKind === "hot"
+                    ? hotNumberModalData?.total_pages ?? 1
+                    : dashboardDrilldownKind === "almost"
+                      ? almostFullModalData?.total_pages ?? 1
+                      : fullNumberModalData?.total_pages ?? 1}
                 </span>
                 <Button
                   variant="outline"
                   className="rounded-[16px]"
-                  disabled={!fullNumberModalData || fullNumberModalData.page >= fullNumberModalData.total_pages}
+                  disabled={
+                    dashboardDrilldownKind === "hot"
+                      ? !hotNumberModalData || hotNumberModalData.page >= hotNumberModalData.total_pages
+                      : dashboardDrilldownKind === "almost"
+                        ? !almostFullModalData || almostFullModalData.page >= almostFullModalData.total_pages
+                        : !fullNumberModalData || fullNumberModalData.page >= fullNumberModalData.total_pages
+                  }
                   onClick={() =>
-                    setFullNumberPage((current) =>
-                      fullNumberModalData ? Math.min(fullNumberModalData.total_pages, current + 1) : current,
+                    setDashboardDrilldownPage((current) =>
+                      dashboardDrilldownKind === "hot"
+                        ? hotNumberModalData
+                          ? Math.min(hotNumberModalData.total_pages, current + 1)
+                          : current
+                        : dashboardDrilldownKind === "almost"
+                          ? almostFullModalData
+                            ? Math.min(almostFullModalData.total_pages, current + 1)
+                            : current
+                          : fullNumberModalData
+                            ? Math.min(fullNumberModalData.total_pages, current + 1)
+                            : current,
                     )
                   }
                 >
@@ -732,6 +1033,7 @@ export default function Home() {
           </div>
         </div>
       ) : null}
+
     </AppSectionPage>
   );
 }

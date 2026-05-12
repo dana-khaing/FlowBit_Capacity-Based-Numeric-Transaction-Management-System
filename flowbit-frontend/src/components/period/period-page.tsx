@@ -10,7 +10,19 @@ import { AdminActionToast } from "@/components/admin/admin-action-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { fetchCurrentUser, getStoredUser, type AuthUser } from "@/lib/auth-client";
-import { closePeriod, createPeriod, deletePeriod, fetchPeriods, reopenPeriod, type FlowBitPeriod, updatePeriod } from "@/lib/period-client";
+import {
+  closePeriod,
+  createPeriod,
+  deletePeriod,
+  deletePeriodLuckyDraw,
+  fetchPeriodLuckyDraw,
+  fetchPeriods,
+  reopenPeriod,
+  savePeriodLuckyDraw,
+  type FlowBitPeriod,
+  type FlowBitLuckyDraw,
+  updatePeriod,
+} from "@/lib/period-client";
 import { notifyPeriodsUpdated } from "@/components/period/use-period-state";
 
 type ToastState = {
@@ -25,14 +37,34 @@ type PeriodFormState = {
   close_time: string;
 };
 
-const defaultFormState: PeriodFormState = {
-  name: "",
-  start_date: "",
-  end_date: "",
-  close_time: "15:00",
-};
-
 type PeriodAction = "create" | "update" | "close" | "reopen" | "delete" | null;
+
+function formatDateFieldValue(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function buildDefaultPeriodFormState(): PeriodFormState {
+  const today = new Date();
+  const endDate = new Date(today);
+
+  if (today.getDate() <= 1) {
+    endDate.setDate(1);
+  } else if (today.getDate() <= 16) {
+    endDate.setDate(16);
+  } else {
+    endDate.setMonth(endDate.getMonth() + 1, 1);
+  }
+
+  return {
+    name: "",
+    start_date: formatDateFieldValue(today),
+    end_date: formatDateFieldValue(endDate),
+    close_time: "23:00",
+  };
+}
 
 function formatPeriodDate(value: string) {
   const parsed = new Date(value);
@@ -53,7 +85,7 @@ function formatPeriodRange(period: FlowBitPeriod) {
 function formatTimeValue(value: string) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
-    return "15:00";
+    return "23:00";
   }
   return `${String(parsed.getHours()).padStart(2, "0")}:${String(parsed.getMinutes()).padStart(2, "0")}`;
 }
@@ -76,12 +108,15 @@ export function PeriodPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [toast, setToast] = useState<ToastState>(null);
-  const [form, setForm] = useState<PeriodFormState>(defaultFormState);
-  const [activePeriodForm, setActivePeriodForm] = useState({ end_date: "", close_time: "15:00" });
-  const [reopenForm, setReopenForm] = useState({ end_date: "", close_time: "15:00" });
+  const [form, setForm] = useState<PeriodFormState>(buildDefaultPeriodFormState);
+  const [activePeriodForm, setActivePeriodForm] = useState({ end_date: "", close_time: "23:00" });
+  const [reopenForm, setReopenForm] = useState({ end_date: "", close_time: "23:00" });
   const [showActionConfirm, setShowActionConfirm] = useState(false);
   const [pendingAction, setPendingAction] = useState<PeriodAction>(null);
   const [overrideCode, setOverrideCode] = useState("");
+  const [luckyDraw, setLuckyDraw] = useState<FlowBitLuckyDraw | null>(null);
+  const [luckyDrawNumber, setLuckyDrawNumber] = useState("");
+  const [isLuckyDrawModalOpen, setIsLuckyDrawModalOpen] = useState(false);
 
   const activePeriod = useMemo(
     () => periods.find((period) => period.is_open) ?? null,
@@ -95,6 +130,13 @@ export function PeriodPage() {
   const latestClosedPeriod = archivedPeriods[0] ?? null;
 
   const canManagePeriods = user?.role === "admin";
+  const canEditLuckyDraw = Boolean(
+    canManagePeriods &&
+    activePeriod &&
+    activePeriod.is_open &&
+    new Date(activePeriod.end_date).getTime() > Date.now(),
+  );
+
   async function loadPageData() {
     setIsLoading(true);
     try {
@@ -117,7 +159,9 @@ export function PeriodPage() {
 
   useEffect(() => {
     if (!activePeriod) {
-      setActivePeriodForm({ end_date: "", close_time: "15:00" });
+      setActivePeriodForm({ end_date: "", close_time: "23:00" });
+      setLuckyDraw(null);
+      setLuckyDrawNumber("");
       return;
     }
 
@@ -128,8 +172,37 @@ export function PeriodPage() {
   }, [activePeriod]);
 
   useEffect(() => {
+    if (!canManagePeriods || !activePeriod) {
+      setLuckyDraw(null);
+      setLuckyDrawNumber("");
+      return;
+    }
+
+    let isMounted = true;
+    fetchPeriodLuckyDraw(activePeriod.id)
+      .then((nextLuckyDraw) => {
+        if (!isMounted) {
+          return;
+        }
+        setLuckyDraw(nextLuckyDraw);
+        setLuckyDrawNumber(nextLuckyDraw.number ?? "");
+      })
+      .catch(() => {
+        if (!isMounted) {
+          return;
+        }
+        setLuckyDraw(null);
+        setLuckyDrawNumber("");
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activePeriod, canManagePeriods]);
+
+  useEffect(() => {
     if (!latestClosedPeriod) {
-      setReopenForm({ end_date: "", close_time: "15:00" });
+      setReopenForm({ end_date: "", close_time: "23:00" });
       return;
     }
 
@@ -154,10 +227,10 @@ export function PeriodPage() {
         name: form.name.trim(),
         start_date: form.start_date,
         end_date: form.end_date,
-        close_time: form.close_time || "15:00",
+        close_time: form.close_time || "23:00",
         is_open: true,
       });
-      setForm(defaultFormState);
+      setForm(buildDefaultPeriodFormState());
       setToast({ type: "success", message: "Period created successfully." });
       await loadPageData();
       notifyPeriodsUpdated();
@@ -206,7 +279,7 @@ export function PeriodPage() {
       if (pendingAction === "update" && activePeriod) {
         await updatePeriod(activePeriod.id, {
           end_date: activePeriodForm.end_date,
-          close_time: activePeriodForm.close_time || "15:00",
+          close_time: activePeriodForm.close_time || "23:00",
         });
         setToast({ type: "success", message: "Period updated successfully." });
       } else if (pendingAction === "close" && activePeriod) {
@@ -215,7 +288,7 @@ export function PeriodPage() {
       } else if (pendingAction === "reopen" && latestClosedPeriod) {
         await reopenPeriod(latestClosedPeriod.id, {
           end_date: reopenForm.end_date,
-          close_time: reopenForm.close_time || "15:00",
+          close_time: reopenForm.close_time || "23:00",
         });
         setToast({ type: "success", message: "Period reopened successfully." });
       } else if (pendingAction === "delete" && latestClosedPeriod) {
@@ -239,6 +312,65 @@ export function PeriodPage() {
     }
   }
 
+  async function handleSaveLuckyDraw(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!activePeriod || !canEditLuckyDraw) {
+      return;
+    }
+
+    const normalizedNumber = luckyDrawNumber.replace(/\D/g, "");
+    if (normalizedNumber.length !== 6) {
+      setToast({ type: "error", message: "Lucky draw number must be 6 digits." });
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const savedLuckyDraw = await savePeriodLuckyDraw(activePeriod.id, normalizedNumber);
+      setLuckyDraw(savedLuckyDraw);
+      setLuckyDrawNumber(savedLuckyDraw.number ?? normalizedNumber);
+      setIsLuckyDrawModalOpen(false);
+      setToast({
+        type: "success",
+        message: luckyDraw?.id ? "Lucky draw updated successfully." : "Lucky draw added successfully.",
+      });
+      await loadPageData();
+      notifyPeriodsUpdated();
+    } catch (error) {
+      setToast({
+        type: "error",
+        message: error instanceof Error ? error.message : "Request failed.",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function handleDeleteLuckyDraw() {
+    if (!activePeriod || !canEditLuckyDraw || !luckyDraw?.id) {
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await deletePeriodLuckyDraw(activePeriod.id);
+      setLuckyDraw(null);
+      setLuckyDrawNumber("");
+      setIsLuckyDrawModalOpen(false);
+      setToast({ type: "success", message: "Lucky draw removed successfully." });
+      await loadPageData();
+      notifyPeriodsUpdated();
+    } catch (error) {
+      setToast({
+        type: "error",
+        message: error instanceof Error ? error.message : "Request failed.",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   return (
     <WorkspaceShell>
       {toast ? <AdminActionToast message={toast.message} type={toast.type} onClose={() => setToast(null)} /> : null}
@@ -246,6 +378,11 @@ export function PeriodPage() {
         open={isSaving && pendingAction === "create"}
         title="Creating period"
         description="FlowBit is saving the new period and opening the reserve helper for your account before showing success."
+      />
+      <ActionLoadingModal
+        open={isSaving && isLuckyDrawModalOpen}
+        title={luckyDraw?.id ? "Updating lucky draw" : "Creating lucky draw"}
+        description="FlowBit is saving the period lucky draw number and updating the shared reveal state."
       />
       <AdminConfirmModal
         open={showActionConfirm}
@@ -361,6 +498,44 @@ export function PeriodPage() {
                 </div>
               )}
             </div>
+
+            {canManagePeriods && activePeriod ? (
+              <div className="mt-5 rounded-[24px] border border-stone-900/8 bg-white px-5 py-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)]">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Lucky draw</p>
+                    <h3 className="mt-2 text-xl font-semibold text-stone-950">Shared period number</h3>
+                    <p className="mt-3 text-sm leading-6 text-stone-500">
+                      Only admin users can add or edit the 6-digit lucky draw number, and it locks automatically after the period ends.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="text-sm text-stone-500">
+                    {luckyDraw?.announced_at
+                      ? `Last updated ${new Date(luckyDraw.announced_at).toLocaleString("en-GB")}`
+                      : "No lucky draw number added yet."}
+                  </div>
+                  {canEditLuckyDraw ? (
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setLuckyDrawNumber(luckyDraw?.number ?? "");
+                        setIsLuckyDrawModalOpen(true);
+                      }}
+                      disabled={isSaving}
+                    >
+                      {luckyDraw?.id ? "Edit lucky number" : "Add lucky number"}
+                    </Button>
+                  ) : (
+                    <span className="text-sm font-medium text-stone-400">
+                      Lucky draw is locked after period end.
+                    </span>
+                  )}
+                </div>
+              </div>
+            ) : null}
 
             <div className="mt-6">
               <div className="flex items-center justify-between gap-4">
@@ -518,9 +693,76 @@ export function PeriodPage() {
                 </div>
               </div>
             ) : null}
+
           </aside>
         </section>
       </div>
+
+      {isLuckyDrawModalOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/40 px-4 py-6"
+          onClick={() => {
+            if (!isSaving) {
+              setIsLuckyDrawModalOpen(false);
+            }
+          }}
+        >
+          <div
+            className="w-full max-w-md rounded-[28px] border border-stone-900/8 bg-white p-6 shadow-[0_18px_60px_rgba(28,24,20,0.24)]"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Lucky draw</p>
+            <h3 className="mt-2 text-2xl font-semibold text-stone-950">
+              {luckyDraw?.id ? "Edit lucky number" : "Add lucky number"}
+            </h3>
+            <p className="mt-3 text-sm leading-6 text-stone-500">
+              This number is shared across all users for the active period and becomes read-only after the period ends.
+            </p>
+
+            <form className="mt-6 space-y-4" onSubmit={handleSaveLuckyDraw}>
+              <label className="block space-y-2">
+                <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Lucky draw number</span>
+                <Input
+                  inputMode="numeric"
+                  maxLength={6}
+                  value={luckyDrawNumber}
+                  onChange={(event) =>
+                    setLuckyDrawNumber(event.target.value.replace(/\D/g, "").slice(0, 6))
+                  }
+                  placeholder="123456"
+                  disabled={isSaving}
+                />
+              </label>
+
+              <div className="flex gap-3">
+                {luckyDraw?.id ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="flex-1"
+                    onClick={handleDeleteLuckyDraw}
+                    disabled={isSaving}
+                  >
+                    Remove
+                  </Button>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setIsLuckyDrawModalOpen(false)}
+                  disabled={isSaving}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" className="flex-1" disabled={isSaving}>
+                  {luckyDraw?.id ? "Save" : "Add"}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </WorkspaceShell>
   );
 }

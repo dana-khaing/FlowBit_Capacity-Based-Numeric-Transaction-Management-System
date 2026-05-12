@@ -32,6 +32,7 @@ from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from .models import (
     DEFAULT_HELPER_NAME,
     Period,
+    LuckyDraw,
     Ledger,
     Identifier,
     Transaction,
@@ -64,6 +65,7 @@ from .permissions import (
 from .serializers import (
     FlexibleDateTimeField,
     PeriodSerializer,
+    LuckyDrawSerializer,
     LedgerSerializer,
     IdentifierSerializer,
     TransactionSerializer,
@@ -461,6 +463,165 @@ class PeriodViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(period)
         return Response(serializer.data)
+
+    @action(detail=True, methods=['get', 'post', 'patch', 'delete'], url_path='lucky-draw')
+    def lucky_draw(self, request, pk=None):
+        period = self.get_object()
+        lucky_draw = getattr(period, 'lucky_draw', None)
+
+        if request.method == 'GET':
+            if lucky_draw is None:
+                return Response({
+                    'period': period.id,
+                    'period_name': period.name,
+                    'number': None,
+                    'display_number': "***-***",
+                    'winning_identifiers': [],
+                    'announced_by': None,
+                    'announced_by_username': None,
+                    'announced_at': None,
+                    'created_at': None,
+                    'updated_at': None,
+                }, status=status.HTTP_200_OK)
+
+            serializer = LuckyDrawSerializer(lucky_draw, context={'request': request})
+            data = serializer.data
+            if not is_admin_user(request.user):
+                data['number'] = None
+            return Response(data)
+
+        if not is_admin_user(request.user):
+            return Response(
+                {'detail': 'Only admin users can update the lucky draw number.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if (not period.is_open) or timezone.now() >= period.end_date:
+            return Response(
+                {'detail': 'Lucky draw number cannot be changed after the period ends.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if request.method == 'DELETE':
+            if lucky_draw is None:
+                return Response(
+                    {'detail': 'Lucky draw number does not exist for this period.'},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            before = snapshot_instance(lucky_draw)
+            lucky_draw.delete()
+            record_audit_log(
+                request,
+                'period.lucky_draw_deleted',
+                details=f"Deleted lucky draw for period '{period.name}'",
+                changes={'before': before},
+            )
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        serializer = LuckyDrawSerializer(
+            lucky_draw,
+            data=request.data,
+            partial=request.method == 'PATCH',
+            context={'request': request},
+        )
+        serializer.is_valid(raise_exception=True)
+        before = snapshot_instance(lucky_draw) if lucky_draw is not None else None
+        lucky_draw = serializer.save(
+            period=period,
+            announced_by=request.user,
+            announced_at=timezone.now(),
+        )
+        record_audit_log(
+            request,
+            'period.lucky_draw_updated' if before else 'period.lucky_draw_created',
+            target=lucky_draw,
+            details=f"{'Updated' if before else 'Created'} lucky draw for period '{period.name}'",
+            changes={
+                'before': before,
+                'after': snapshot_instance(lucky_draw),
+            },
+        )
+        return Response(
+            LuckyDrawSerializer(lucky_draw, context={'request': request}).data,
+            status=status.HTTP_200_OK if before else status.HTTP_201_CREATED,
+        )
+
+    @action(detail=True, methods=['get'], url_path='lucky-draw-winners')
+    def lucky_draw_winners(self, request, pk=None):
+        period = self.get_object()
+        lucky_draw = getattr(period, 'lucky_draw', None)
+        serialized_draw = (
+            LuckyDrawSerializer(lucky_draw, context={'request': request}).data
+            if lucky_draw is not None
+            else {
+                'period': period.id,
+                'period_name': period.name,
+                'number': None,
+                'display_number': "***-***",
+                'winning_identifiers': [],
+                'announced_by': None,
+                'announced_by_username': None,
+                'announced_at': None,
+                'created_at': None,
+                'updated_at': None,
+            }
+        )
+        if lucky_draw is None:
+            return Response({
+                'lucky_draw': serialized_draw,
+                'tickets': [],
+                'approved_overflows': [],
+            }, status=status.HTTP_200_OK)
+
+        serialized_draw['display_number'] = f"{lucky_draw.number[:3]}-{lucky_draw.number[3:]}"
+
+        winning_identifiers = lucky_draw.winning_identifiers
+        ticket_queryset = Ticket.objects.filter(
+            created_by=request.user,
+            transactions__identifier__number__in=winning_identifiers,
+        ).distinct().prefetch_related('transactions__identifier')
+        tickets = []
+        for ticket in ticket_queryset.order_by('-created_at'):
+            matched_identifiers = sorted({
+                transaction.identifier.number
+                for transaction in ticket.transactions.all()
+                if transaction.identifier.number in winning_identifiers and not transaction.is_refunded
+            })
+            if not matched_identifiers:
+                continue
+            visible_transactions = [transaction for transaction in ticket.transactions.all() if not transaction.is_refunded]
+            total_amount = sum((transaction.total_amount for transaction in visible_transactions), Decimal('0.00'))
+            tickets.append({
+                'ticket_number': ticket.ticket_number,
+                'customer_name': ticket.customer_name,
+                'created_at': ticket.created_at,
+                'matched_identifiers': matched_identifiers,
+                'transaction_count': len(visible_transactions),
+                'total_amount': str(total_amount),
+            })
+
+        approved_overflow_rows = []
+        for overflow in Overflow.objects.filter(
+            owner=request.user,
+            period=period,
+            status=Overflow.STATUS_CSO,
+            identifier__number__in=winning_identifiers,
+        ).select_related('identifier', 'transaction__ticket').prefetch_related('collaborators').order_by('-approved_at', '-id'):
+            approved_overflow_rows.append({
+                'id': overflow.id,
+                'identifier_number': overflow.identifier.number if overflow.identifier_id else '',
+                'ticket_number': overflow.transaction.ticket.ticket_number if overflow.transaction_id and overflow.transaction.ticket_id else None,
+                'amount': str(overflow.amount_to_approve or overflow.excess_amount or Decimal('0.00')),
+                'approved_at': overflow.approved_at,
+                'collaborator_names': [collaborator.full_name for collaborator in overflow.collaborators.all()],
+            })
+
+        return Response({
+            'lucky_draw': serialized_draw,
+            'tickets': tickets,
+            'approved_overflows': approved_overflow_rows,
+        }, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='close')
     def close_period(self, request, pk=None):
@@ -2815,6 +2976,205 @@ class DashboardReportView(APIView):
             'full_numbers': full_number_rows[:20],
         }
         return Response(data, status=status.HTTP_200_OK)
+
+
+class DashboardHotNumberReportView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        period = selected_period_from_request(request)
+        ledger_queryset = Ledger.objects.filter(owner=request.user, is_capacity_reserve=False)
+        adjustment_queryset = IdentifierCapacityAdjustment.objects.filter(owner=request.user)
+        allocation_queryset = LedgerAllocation.objects.filter(transaction__created_by=request.user)
+        overflow_rows = period_overflow_rows(period, user=request.user)
+
+        if period is not None:
+            ledger_queryset = ledger_queryset.filter(period=period)
+            adjustment_queryset = adjustment_queryset.filter(period=period)
+            allocation_queryset = allocation_queryset.filter(ledger__period=period)
+
+        standard_capacity_per_identifier = ledger_queryset.aggregate(
+            total=Sum('limit_per_identifier')
+        )['total'] or Decimal('0.00')
+        normal_usage_rows = {
+            row['transaction__identifier']: row['total'] or Decimal('0.00')
+            for row in allocation_queryset.filter(ledger__is_capacity_reserve=False)
+            .values('transaction__identifier')
+            .annotate(total=Sum('amount'))
+        }
+        approved_overflow_rows_by_identifier = {}
+        for row in overflow_rows:
+            if row.status != Overflow.STATUS_CSO or row.identifier_id is None:
+                continue
+            approved_overflow_rows_by_identifier[row.identifier_id] = (
+                approved_overflow_rows_by_identifier.get(row.identifier_id, Decimal('0.00'))
+                + (row.excess_amount or Decimal('0.00'))
+            )
+
+        identifier_filter = (request.query_params.get('identifier') or '').strip()
+        dashboard_identifier_ids = set(normal_usage_rows) | set(approved_overflow_rows_by_identifier)
+        identifier_queryset = Identifier.objects.filter(id__in=dashboard_identifier_ids)
+        if identifier_filter:
+            identifier_queryset = identifier_queryset.filter(number__icontains=identifier_filter)
+        dashboard_identifiers = {
+            identifier.id: identifier.number
+            for identifier in identifier_queryset
+        }
+
+        rows = []
+        for identifier_id, identifier_number in dashboard_identifiers.items():
+            hot_number_amount = (
+                normal_usage_rows.get(identifier_id, Decimal('0.00'))
+                + approved_overflow_rows_by_identifier.get(identifier_id, Decimal('0.00'))
+            )
+            if hot_number_amount <= 0:
+                continue
+            progress = (
+                hot_number_amount / standard_capacity_per_identifier * Decimal('100.00')
+                if standard_capacity_per_identifier > 0
+                else Decimal('0.00')
+            )
+            rows.append({
+                'identifier': identifier_number,
+                'amount': str(hot_number_amount),
+                'progress': float(max(Decimal('0.00'), min(progress, Decimal('100.00')))),
+            })
+
+        rows.sort(key=lambda row: Decimal(row['amount']), reverse=True)
+
+        page_size = 20
+        page = max(1, int(request.query_params.get('page', 1) or 1))
+        total_count = len(rows)
+        total_pages = max(1, (total_count + page_size - 1) // page_size)
+        if page > total_pages:
+            page = total_pages
+        start = (page - 1) * page_size
+        end = start + page_size
+
+        return Response({
+            'count': total_count,
+            'page': page,
+            'page_size': page_size,
+            'total_pages': total_pages,
+            'results': rows[start:end],
+        }, status=status.HTTP_200_OK)
+
+
+class DashboardAlmostFullReportView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        period = selected_period_from_request(request)
+        ledger_queryset = Ledger.objects.filter(
+            owner=request.user,
+            is_capacity_reserve=False,
+        )
+        allocation_queryset = LedgerAllocation.objects.filter(transaction__created_by=request.user)
+        overflow_rows = period_overflow_rows(period, user=request.user)
+
+        if period is not None:
+            ledger_queryset = ledger_queryset.filter(period=period)
+            allocation_queryset = allocation_queryset.filter(ledger__period=period)
+
+        active_standard_ledger_ids = set(
+            ledger_queryset.filter(is_active=True).values_list('id', flat=True)
+        )
+        freeze_rows = IdentifierLedgerFreeze.objects.filter(
+            owner=request.user,
+            period=period,
+        ).filter(
+            Q(applies_to_all=True) | Q(ledger_id__in=active_standard_ledger_ids)
+        ).values('identifier_id', 'applies_to_all', 'ledger_id')
+        freeze_state_by_identifier = {}
+        for row in freeze_rows:
+            state = freeze_state_by_identifier.setdefault(
+                row['identifier_id'],
+                {'all_ledgers': False, 'ledger_ids': set()},
+            )
+            if row['applies_to_all']:
+                state['all_ledgers'] = True
+            elif row['ledger_id']:
+                state['ledger_ids'].add(row['ledger_id'])
+
+        standard_capacity_per_identifier = ledger_queryset.aggregate(
+            total=Sum('limit_per_identifier')
+        )['total'] or Decimal('0.00')
+        normal_usage_rows = {
+            row['transaction__identifier']: row['total'] or Decimal('0.00')
+            for row in allocation_queryset.filter(ledger__is_capacity_reserve=False)
+            .values('transaction__identifier')
+            .annotate(total=Sum('amount'))
+        }
+        approved_overflow_rows_by_identifier = {}
+        for row in overflow_rows:
+            if row.status != Overflow.STATUS_CSO or row.identifier_id is None:
+                continue
+            approved_overflow_rows_by_identifier[row.identifier_id] = (
+                approved_overflow_rows_by_identifier.get(row.identifier_id, Decimal('0.00'))
+                + (row.excess_amount or Decimal('0.00'))
+            )
+
+        identifier_filter = (request.query_params.get('identifier') or '').strip()
+        dashboard_identifier_ids = (
+            set(normal_usage_rows)
+            | set(approved_overflow_rows_by_identifier)
+            | set(freeze_state_by_identifier)
+        )
+        identifier_queryset = Identifier.objects.filter(id__in=dashboard_identifier_ids)
+        if identifier_filter:
+            identifier_queryset = identifier_queryset.filter(number__icontains=identifier_filter)
+        dashboard_identifiers = {
+            identifier.id: identifier.number
+            for identifier in identifier_queryset
+        }
+
+        rows = []
+        for identifier_id, identifier_number in dashboard_identifiers.items():
+            hot_number_amount = (
+                normal_usage_rows.get(identifier_id, Decimal('0.00'))
+                + approved_overflow_rows_by_identifier.get(identifier_id, Decimal('0.00'))
+            )
+            freeze_state = freeze_state_by_identifier.get(
+                identifier_id,
+                {'all_ledgers': False, 'ledger_ids': set()},
+            )
+            all_standard_ledgers_frozen = freeze_state['all_ledgers'] or (
+                bool(active_standard_ledger_ids)
+                and active_standard_ledger_ids.issubset(freeze_state['ledger_ids'])
+            )
+            standard_remaining_capacity = standard_capacity_per_identifier - hot_number_amount
+            if all_standard_ledgers_frozen or hot_number_amount <= 0 or standard_remaining_capacity <= 0:
+                continue
+            progress = (
+                hot_number_amount / standard_capacity_per_identifier * Decimal('100.00')
+                if standard_capacity_per_identifier > 0
+                else Decimal('0.00')
+            )
+            rows.append({
+                'identifier': identifier_number,
+                'remaining': str(standard_remaining_capacity),
+                'progress': float(max(Decimal('0.00'), min(progress, Decimal('100.00')))),
+                'tone': 'critical' if standard_remaining_capacity <= Decimal('100.00') else 'warning',
+            })
+
+        rows.sort(key=lambda row: Decimal(row['remaining']))
+
+        page_size = 20
+        page = max(1, int(request.query_params.get('page', 1) or 1))
+        total_count = len(rows)
+        total_pages = max(1, (total_count + page_size - 1) // page_size)
+        if page > total_pages:
+            page = total_pages
+        start = (page - 1) * page_size
+        end = start + page_size
+
+        return Response({
+            'count': total_count,
+            'page': page,
+            'page_size': page_size,
+            'total_pages': total_pages,
+            'results': rows[start:end],
+        }, status=status.HTTP_200_OK)
 
 
 class DashboardFullNumberReportView(APIView):
