@@ -22,9 +22,8 @@ import {
   type FlowBitDashboardReport,
   type FlowBitDashboardFullNumberPage,
 } from "@/lib/dashboard-client";
-import { fetchLedgers, type FlowBitLedger } from "@/lib/ledger-client";
 import { fetchApprovedOverflowPage, fetchPendingOverflowPage, type FlowBitOverflow } from "@/lib/overflow-client";
-import { fetchPeriods, fetchPeriodLuckyDrawWinners, type FlowBitLuckyDrawWinners } from "@/lib/period-client";
+import { fetchPeriodLuckyDrawWinners, type FlowBitLuckyDrawWinners } from "@/lib/period-client";
 import { fetchTickets, type FlowBitTicketListItem } from "@/lib/ticket-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -137,12 +136,9 @@ function barWidth(progress: number) {
 
 export default function Home() {
   const [report, setReport] = useState<FlowBitDashboardReport | null>(null);
-  const [activeLedgers, setActiveLedgers] = useState<FlowBitLedger[]>([]);
   const [pendingOverflows, setPendingOverflows] = useState<FlowBitOverflow[]>([]);
   const [approvedOverflows, setApprovedOverflows] = useState<FlowBitOverflow[]>([]);
   const [recentTickets, setRecentTickets] = useState<FlowBitTicketListItem[]>([]);
-  const [archivedPeriodCount, setArchivedPeriodCount] = useState(0);
-  const [closedPeriodNames, setClosedPeriodNames] = useState<string[]>([]);
   const [dashboardError, setDashboardError] = useState<string | null>(null);
   const [isDashboardLoading, setIsDashboardLoading] = useState(true);
   const [isFullNumberModalOpen, setIsFullNumberModalOpen] = useState(false);
@@ -162,12 +158,9 @@ export default function Home() {
 
     if (!hasActivePeriod || !activePeriod) {
       setReport(null);
-      setActiveLedgers([]);
       setPendingOverflows([]);
       setApprovedOverflows([]);
       setRecentTickets([]);
-      setArchivedPeriodCount(0);
-      setClosedPeriodNames([]);
       setIsDashboardLoading(false);
       return;
     }
@@ -178,27 +171,21 @@ export default function Home() {
     }
 
     try {
-      const [nextReport, nextLedgers, nextPending, nextApproved, nextRecentTickets, nextLuckyDrawWinners, periods] = await Promise.all([
+      const [nextReport, nextPending, nextApproved, nextRecentTickets, nextLuckyDrawWinners] = await Promise.all([
         fetchDashboardReport(activePeriod.id),
-        fetchLedgers({ period_id: activePeriod.id }),
         fetchPendingOverflowPage({ periodId: activePeriod.id, page: 1, pageSize: 4 }),
         fetchApprovedOverflowPage({ periodId: activePeriod.id, page: 1, pageSize: 4 }),
         fetchTickets({ periodId: activePeriod.id, limit: 6 }),
         fetchPeriodLuckyDrawWinners(activePeriod.id),
-        fetchPeriods(),
       ]);
       if (!isMounted) {
         return;
       }
       setReport(nextReport);
-      setActiveLedgers(nextLedgers.filter((ledger) => ledger.is_active && !ledger.is_capacity_reserve));
       setPendingOverflows(nextPending.results);
       setApprovedOverflows(nextApproved.results);
       setRecentTickets(nextRecentTickets);
       setLuckyDrawWinners(nextLuckyDrawWinners);
-      const closedPeriods = periods.filter((period) => !period.is_open);
-      setArchivedPeriodCount(closedPeriods.length);
-      setClosedPeriodNames(closedPeriods.map((period) => period.name));
       setDashboardError(null);
     } catch (error) {
       if (!isMounted) {
@@ -260,7 +247,6 @@ export default function Home() {
     const allocatedTotal = Number(report.standard_total_allocated_amount || "0");
     const availableTotal = Number(report.standard_total_capacity || "0");
     const capacityPercent = availableTotal > 0 ? Math.round((allocatedTotal / availableTotal) * 100) : 0;
-    const activeLedgerNames = activeLedgers.map((ledger) => ledger.name).slice(0, 2);
 
     return [
       {
@@ -282,13 +268,13 @@ export default function Home() {
         href: "/spill-over",
       },
       {
-        label: "Active ledgers",
-        value: String(report.active_ledger_count),
-        meta: activeLedgerNames.length ? activeLedgerNames.join(" · ") : `${report.ledger_count} total ledgers`,
-        href: "/ledgers",
+        label: "Total tickets",
+        value: String(report.ticket_count),
+        meta: "Current period ticket count",
+        href: "/tickets",
       },
     ];
-  }, [activeLedgers, pendingOverflows.length, report]);
+  }, [pendingOverflows.length, report]);
 
   const hotNumbers = useMemo(() => {
     return report?.hot_numbers.map((row) => ({
@@ -349,7 +335,6 @@ export default function Home() {
     return `Draw in ${days}d ${hours}h`;
   }, [activePeriod?.end_date]);
 
-  const latestClosedPeriod = closedPeriodNames[0] ?? "-";
   const luckyDrawDisplay = activePeriod?.lucky_draw_display || "***-***";
   const winningIdentifier = luckyDrawWinners?.lucky_draw.winning_identifiers[0] ?? null;
 
@@ -433,9 +418,6 @@ export default function Home() {
                 <span className="rounded-full bg-amber-100 px-4 py-2 text-base font-medium text-amber-900 sm:text-lg">
                   {nextDrawCountdown}
                 </span>
-                <p className="text-base text-stone-400 sm:text-lg">
-                  Previous: {latestClosedPeriod} · Archived periods {archivedPeriodCount}
-                </p>
               </div>
             </div>
           </section>
