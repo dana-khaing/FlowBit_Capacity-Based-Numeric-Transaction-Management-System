@@ -167,6 +167,13 @@ export async function savePeriodLuckyDraw(periodId: number, number: string) {
   });
 }
 
+export async function deletePeriodLuckyDraw(periodId: number) {
+  return apiRequest<void>(`/periods/${periodId}/lucky-draw/`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+}
+
 export async function fetchPeriodLuckyDrawWinners(periodId: number) {
   return apiRequest<FlowBitLuckyDrawWinners>(`/periods/${periodId}/lucky-draw-winners/`, {
     method: "GET",

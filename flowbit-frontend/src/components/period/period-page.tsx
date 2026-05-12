@@ -14,6 +14,7 @@ import {
   closePeriod,
   createPeriod,
   deletePeriod,
+  deletePeriodLuckyDraw,
   fetchPeriodLuckyDraw,
   fetchPeriods,
   reopenPeriod,
@@ -346,6 +347,30 @@ export function PeriodPage() {
     }
   }
 
+  async function handleDeleteLuckyDraw() {
+    if (!activePeriod || !canEditLuckyDraw || !luckyDraw?.id) {
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await deletePeriodLuckyDraw(activePeriod.id);
+      setLuckyDraw(null);
+      setLuckyDrawNumber("");
+      setIsLuckyDrawModalOpen(false);
+      setToast({ type: "success", message: "Lucky draw removed successfully." });
+      await loadPageData();
+      notifyPeriodsUpdated();
+    } catch (error) {
+      setToast({
+        type: "error",
+        message: error instanceof Error ? error.message : "Request failed.",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   return (
     <WorkspaceShell>
       {toast ? <AdminActionToast message={toast.message} type={toast.type} onClose={() => setToast(null)} /> : null}
@@ -485,7 +510,7 @@ export function PeriodPage() {
                     </p>
                   </div>
                   <span className="rounded-full bg-stone-100 px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-stone-600">
-                    {activePeriod.lucky_draw_display || "***-***"}
+                    {luckyDraw?.number ? `${luckyDraw.number.slice(0, 3)}-${luckyDraw.number.slice(3)}` : "Not added"}
                   </span>
                 </div>
 
@@ -713,6 +738,17 @@ export function PeriodPage() {
               </label>
 
               <div className="flex gap-3">
+                {luckyDraw?.id ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="flex-1"
+                    onClick={handleDeleteLuckyDraw}
+                    disabled={isSaving}
+                  >
+                    Remove
+                  </Button>
+                ) : null}
                 <Button
                   type="button"
                   variant="outline"
