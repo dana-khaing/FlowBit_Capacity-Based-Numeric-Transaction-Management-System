@@ -496,6 +496,12 @@ class PeriodViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
+        if (not period.is_open) or timezone.now() >= period.end_date:
+            return Response(
+                {'detail': 'Lucky draw number cannot be changed after the period ends.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         serializer = LuckyDrawSerializer(
             lucky_draw,
             data=request.data,
