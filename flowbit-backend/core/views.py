@@ -464,7 +464,7 @@ class PeriodViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(period)
         return Response(serializer.data)
 
-    @action(detail=True, methods=['get', 'post', 'patch'], url_path='lucky-draw')
+    @action(detail=True, methods=['get', 'post', 'patch', 'delete'], url_path='lucky-draw')
     def lucky_draw(self, request, pk=None):
         period = self.get_object()
         lucky_draw = getattr(period, 'lucky_draw', None)
@@ -486,7 +486,7 @@ class PeriodViewSet(viewsets.ModelViewSet):
 
             serializer = LuckyDrawSerializer(lucky_draw, context={'request': request})
             data = serializer.data
-            if not is_admin_user(request.user) and not lucky_draw.is_revealed():
+            if not is_admin_user(request.user):
                 data['number'] = None
             return Response(data)
 
@@ -501,6 +501,23 @@ class PeriodViewSet(viewsets.ModelViewSet):
                 {'detail': 'Lucky draw number cannot be changed after the period ends.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        if request.method == 'DELETE':
+            if lucky_draw is None:
+                return Response(
+                    {'detail': 'Lucky draw number does not exist for this period.'},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            before = snapshot_instance(lucky_draw)
+            lucky_draw.delete()
+            record_audit_log(
+                request,
+                'period.lucky_draw_deleted',
+                details=f"Deleted lucky draw for period '{period.name}'",
+                changes={'before': before},
+            )
+            return Response(status=status.HTTP_204_NO_CONTENT)
 
         serializer = LuckyDrawSerializer(
             lucky_draw,
