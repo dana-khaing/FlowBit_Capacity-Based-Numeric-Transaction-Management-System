@@ -76,6 +76,31 @@ export type FlowBitDashboardFullNumberPage = {
   }>;
 };
 
+export type FlowBitDashboardHotNumberPage = {
+  count: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+  results: Array<{
+    identifier: string;
+    amount: string;
+    progress: number;
+  }>;
+};
+
+export type FlowBitDashboardAlmostFullPage = {
+  count: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+  results: Array<{
+    identifier: string;
+    remaining: string;
+    progress: number;
+    tone: "critical" | "warning";
+  }>;
+};
+
 function authHeaders() {
   const token = getStoredToken();
   if (!token) {
@@ -125,6 +150,50 @@ export async function fetchDashboardFullNumbers(filters?: {
   }
   const suffix = query.toString() ? `?${query.toString()}` : "";
   return apiRequest<FlowBitDashboardFullNumberPage>(`/reports/dashboard/full-numbers/${suffix}`, {
+    method: "GET",
+    headers: authHeaders(),
+  });
+}
+
+export async function fetchDashboardHotNumbers(filters?: {
+  periodId?: number;
+  page?: number;
+  identifier?: string;
+}) {
+  const query = new URLSearchParams();
+  if (filters?.periodId) {
+    query.set("period_id", String(filters.periodId));
+  }
+  if (filters?.page) {
+    query.set("page", String(filters.page));
+  }
+  if (filters?.identifier?.trim()) {
+    query.set("identifier", filters.identifier.trim());
+  }
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return apiRequest<FlowBitDashboardHotNumberPage>(`/reports/dashboard/hot-numbers/${suffix}`, {
+    method: "GET",
+    headers: authHeaders(),
+  });
+}
+
+export async function fetchDashboardAlmostFull(filters?: {
+  periodId?: number;
+  page?: number;
+  identifier?: string;
+}) {
+  const query = new URLSearchParams();
+  if (filters?.periodId) {
+    query.set("period_id", String(filters.periodId));
+  }
+  if (filters?.page) {
+    query.set("page", String(filters.page));
+  }
+  if (filters?.identifier?.trim()) {
+    query.set("identifier", filters.identifier.trim());
+  }
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return apiRequest<FlowBitDashboardAlmostFullPage>(`/reports/dashboard/almost-full/${suffix}`, {
     method: "GET",
     headers: authHeaders(),
   });
