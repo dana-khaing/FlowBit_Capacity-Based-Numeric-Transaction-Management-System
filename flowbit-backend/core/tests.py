@@ -857,6 +857,12 @@ class RolePermissionTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.regular_user.refresh_from_db()
         self.assertEqual(self.regular_user.profile.role, 'admin')
+        self.assertTrue(
+            UserNotification.objects.filter(
+                recipient=self.regular_user,
+                title='Account role updated',
+            ).exists()
+        )
 
     def test_admin_cannot_downgrade_own_account(self):
         self.client.force_authenticate(user=self.admin_user)
@@ -883,6 +889,12 @@ class RolePermissionTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.admin_user.refresh_from_db()
         self.assertTrue(self.admin_user.profile.check_master_override_password('override-999'))
+        self.assertTrue(
+            UserNotification.objects.filter(
+                recipient=self.admin_user,
+                title='Override access updated',
+            ).exists()
+        )
 
     def test_admin_can_set_initial_master_override_password_without_existing_override(self):
         self.client.force_authenticate(user=self.admin_user)
@@ -1804,6 +1816,23 @@ class PrivateWorkspaceTests(APITestCase):
         )
         self.assertTrue(
             UserNotification.objects.filter(title='Ledger created', period=self.period).exists()
+        )
+
+    def test_auto_closed_period_creates_system_notifications(self):
+        self.period.start_date = timezone.now() - timezone.timedelta(days=2)
+        self.period.end_date = timezone.now() - timezone.timedelta(minutes=1)
+        self.period.save(update_fields=['start_date', 'end_date'])
+
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.get('/api/periods/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            UserNotification.objects.filter(
+                title='Period auto-closed',
+                period=self.period,
+            ).count(),
+            User.objects.filter(is_active=True).count(),
         )
 
     def test_period_lucky_draw_cannot_change_after_period_end(self):
@@ -3898,6 +3927,28 @@ class PrivateWorkflowAPITests(APITestCase):
                 identifier=self.identifier,
                 period=self.active_period,
                 owner=self.approver,
+            ).exists()
+        )
+        self.assertTrue(
+            UserNotification.objects.filter(
+                recipient=self.approver,
+                title='Identifier unfrozen',
+            ).exists()
+        )
+
+    def test_freeze_all_creates_identifier_notification(self):
+        response = self.client.post(
+            f'/api/identifiers/{self.identifier.id}/freeze/',
+            {'scope': 'all'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(
+            UserNotification.objects.filter(
+                recipient=self.approver,
+                title='Identifier frozen',
+                period=self.active_period,
             ).exists()
         )
 

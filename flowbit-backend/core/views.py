@@ -333,6 +333,51 @@ def notify_refund_change(*, recipient, title, message, request_user, action_href
     )
 
 
+def notify_identifier_freeze_change(
+    *,
+    recipient,
+    identifier,
+    period,
+    action_label,
+    message,
+    request_user,
+    action_href='/ledgers',
+    source_key='',
+):
+    create_user_notification(
+        recipient=recipient,
+        title=f'Identifier {action_label}',
+        message=message,
+        category=UserNotification.CATEGORY_SYSTEM,
+        level=UserNotification.LEVEL_WARNING,
+        action_href=action_href,
+        source_key=source_key,
+        created_by=request_user,
+        period=period,
+    )
+
+
+def notify_user_account_change(
+    *,
+    recipient,
+    title,
+    message,
+    request_user,
+    action_href='/profile',
+    source_key='',
+):
+    create_user_notification(
+        recipient=recipient,
+        title=title,
+        message=message,
+        category=UserNotification.CATEGORY_SYSTEM,
+        level=UserNotification.LEVEL_IMPORTANT,
+        action_href=action_href,
+        source_key=source_key,
+        created_by=request_user,
+    )
+
+
 def _ticket_refund_summary(ticket):
     transactions = list(ticket.transactions.all())
     visible_transactions = [transaction for transaction in transactions if not transaction.is_refunded]
@@ -490,6 +535,16 @@ class PeriodViewSet(viewsets.ModelViewSet):
                     closed_at=now,
                     helper_name=helper_name_from_request(request),
                     closing_user=request.user if getattr(request, 'user', None) and request.user.is_authenticated else None,
+                )
+                broadcast_user_notification(
+                    title='Period auto-closed',
+                    message=f"{period.name} was auto-closed by the system after reaching its end time.",
+                    category=UserNotification.CATEGORY_SYSTEM,
+                    level=UserNotification.LEVEL_WARNING,
+                    action_href='/periods',
+                    source_key=f'period:auto-closed:{period.id}:{serialize_audit_value(now)}',
+                    created_by=request.user if getattr(request, 'user', None) and request.user.is_authenticated else None,
+                    period=period,
                 )
                 closed_periods.append({
                     'id': period.id,
@@ -1739,6 +1794,15 @@ class IdentifierViewSet(viewsets.ModelViewSet):
                 details=f"Froze identifier '{identifier.number}' across all ledgers",
                 changes={'identifier_number': identifier.number, 'period': period.name, 'created': created},
             )
+            notify_identifier_freeze_change(
+                recipient=request.user,
+                identifier=identifier,
+                period=period,
+                action_label='frozen',
+                message=f"Identifier {identifier.number} was frozen across all active ledgers in {period.name}.",
+                request_user=request.user,
+                source_key=f'identifier:freeze:all:{period.id}:{request.user.id}:{identifier.id}:{timezone.now().isoformat()}',
+            )
             return Response(
                 {
                     'message': f"Identifier '{identifier.number}' frozen across all ledgers.",
@@ -1779,6 +1843,15 @@ class IdentifierViewSet(viewsets.ModelViewSet):
                 'created': created,
             },
         )
+        notify_identifier_freeze_change(
+            recipient=request.user,
+            identifier=identifier,
+            period=period,
+            action_label='frozen',
+            message=f"Identifier {identifier.number} was frozen in ledger {ledger.name}.",
+            request_user=request.user,
+            source_key=f'identifier:freeze:ledger:{period.id}:{request.user.id}:{identifier.id}:{ledger.id}:{timezone.now().isoformat()}',
+        )
         return Response(
             {
                 'message': f"Identifier '{identifier.number}' frozen in ledger '{ledger.name}'.",
@@ -1813,6 +1886,15 @@ class IdentifierViewSet(viewsets.ModelViewSet):
                 details=f"Removed all-ledger freeze for identifier '{identifier.number}'",
                 changes={'identifier_number': identifier.number, 'period': period.name, 'deleted': deleted},
             )
+            notify_identifier_freeze_change(
+                recipient=request.user,
+                identifier=identifier,
+                period=period,
+                action_label='unfrozen',
+                message=f"Identifier {identifier.number} was unfrozen across all active ledgers in {period.name}.",
+                request_user=request.user,
+                source_key=f'identifier:unfreeze:all:{period.id}:{request.user.id}:{identifier.id}:{timezone.now().isoformat()}',
+            )
             return Response(
                 {
                     'message': f"Identifier '{identifier.number}' unfrozen across all ledgers.",
@@ -1841,6 +1923,17 @@ class IdentifierViewSet(viewsets.ModelViewSet):
             target=identifier,
             details=f"Removed ledger freeze for identifier '{identifier.number}'",
             changes={'identifier_number': identifier.number, 'ledger_id': ledger_id, 'period': period.name, 'deleted': deleted},
+        )
+        ledger = Ledger.objects.filter(pk=ledger_id, owner=request.user, period=period).only('name').first()
+        ledger_name = ledger.name if ledger else f'#{ledger_id}'
+        notify_identifier_freeze_change(
+            recipient=request.user,
+            identifier=identifier,
+            period=period,
+            action_label='unfrozen',
+            message=f"Identifier {identifier.number} was unfrozen in ledger {ledger_name}.",
+            request_user=request.user,
+            source_key=f'identifier:unfreeze:ledger:{period.id}:{request.user.id}:{identifier.id}:{ledger_id}:{timezone.now().isoformat()}',
         )
         return Response(
             {
@@ -4124,6 +4217,13 @@ class UserManagementViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mi
             details=f"Changed role for '{target_user.username}'",
             changes={'before_role': previous_role, 'after_role': profile.role},
         )
+        notify_user_account_change(
+            recipient=target_user,
+            title='Account role updated',
+            message=f"Your account role changed from {previous_role} to {profile.role}.",
+            request_user=request.user,
+            source_key=f'user:role-changed:{target_user.id}:{profile.role}:{timezone.now().isoformat()}',
+        )
 
         return Response({
             'message': 'User role updated successfully.',
@@ -4167,6 +4267,13 @@ class UserManagementViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mi
             target=target_user,
             details=details,
             changes={'override_enabled': override_enabled},
+        )
+        notify_user_account_change(
+            recipient=target_user,
+            title='Override access updated',
+            message='Your admin override access was enabled.' if override_enabled else 'Your admin override access was removed.',
+            request_user=request.user,
+            source_key=f'user:override-updated:{target_user.id}:{override_enabled}:{timezone.now().isoformat()}',
         )
 
         return Response({
