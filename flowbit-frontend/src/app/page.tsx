@@ -5,6 +5,7 @@ import Link from "next/link";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faArrowRight,
+  faCircleNotch,
   faClockRotateLeft,
   faExpand,
   faFileInvoice,
@@ -12,6 +13,7 @@ import {
   faPlus,
   faTicket,
   faTriangleExclamation,
+  faXmark,
 } from "@fortawesome/free-solid-svg-icons";
 import { AppSectionPage } from "@/components/app/app-section-page";
 import { TICKETS_UPDATED_EVENT } from "@/components/app/workspace-events";
@@ -24,7 +26,8 @@ import {
 } from "@/lib/dashboard-client";
 import { fetchApprovedOverflowPage, fetchPendingOverflowPage, type FlowBitOverflow } from "@/lib/overflow-client";
 import { fetchPeriodLuckyDrawWinners, type FlowBitLuckyDrawWinners } from "@/lib/period-client";
-import { fetchTickets, type FlowBitTicketListItem } from "@/lib/ticket-client";
+import { TicketReceiptCard } from "@/components/tickets/ticket-receipt-card";
+import { fetchTicketDetail, fetchTickets, type FlowBitTicketDetail, type FlowBitTicketListItem } from "@/lib/ticket-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -148,6 +151,9 @@ export default function Home() {
   const [isFullNumberModalLoading, setIsFullNumberModalLoading] = useState(false);
   const [fullNumberModalError, setFullNumberModalError] = useState<string | null>(null);
   const [luckyDrawWinners, setLuckyDrawWinners] = useState<FlowBitLuckyDrawWinners | null>(null);
+  const [selectedWinnerTicketNumber, setSelectedWinnerTicketNumber] = useState<string | null>(null);
+  const [selectedWinnerTicket, setSelectedWinnerTicket] = useState<FlowBitTicketDetail | null>(null);
+  const [isWinnerTicketLoading, setIsWinnerTicketLoading] = useState(false);
 
   const { activePeriod, hasActivePeriod, isLoading: isPeriodLoading, error: periodError } = usePeriodState();
 
@@ -338,6 +344,28 @@ export default function Home() {
   const luckyDrawDisplay = activePeriod?.lucky_draw_display || "***-***";
   const winningIdentifier = luckyDrawWinners?.lucky_draw.winning_identifiers[0] ?? null;
 
+  async function openWinnerTicket(ticketNumber: string) {
+    setSelectedWinnerTicketNumber(ticketNumber);
+    setSelectedWinnerTicket(null);
+    setIsWinnerTicketLoading(true);
+    try {
+      const detail = await fetchTicketDetail(ticketNumber);
+      setSelectedWinnerTicket(detail);
+    } catch {
+      setSelectedWinnerTicket(null);
+    } finally {
+      setIsWinnerTicketLoading(false);
+    }
+  }
+
+  function closeWinnerTicket() {
+    if (isWinnerTicketLoading) {
+      return;
+    }
+    setSelectedWinnerTicketNumber(null);
+    setSelectedWinnerTicket(null);
+  }
+
   useEffect(() => {
     if (!isFullNumberModalOpen || !activePeriod) {
       return;
@@ -454,12 +482,15 @@ export default function Home() {
                 <div className="grid gap-4 lg:grid-cols-2">
                   <div className="rounded-[22px] border border-stone-900/8 bg-white/80 px-4 py-4">
                     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Winner tickets</p>
-                    <div className="mt-3 space-y-3">
+                    <div className="thin-scrollbar mt-3 max-h-[320px] space-y-3 overflow-y-auto pr-1">
                       {luckyDrawWinners.tickets.length ? luckyDrawWinners.tickets.map((ticket) => (
-                        <Link
+                        <button
                           key={ticket.ticket_number}
-                          href="/tickets"
-                          className="block rounded-[18px] border border-stone-900/8 bg-stone-50 px-4 py-3 transition hover:border-stone-300 hover:bg-white"
+                          type="button"
+                          onClick={() => {
+                            void openWinnerTicket(ticket.ticket_number);
+                          }}
+                          className="block w-full rounded-[18px] border border-stone-900/8 bg-stone-50 px-4 py-3 text-left transition hover:border-stone-300 hover:bg-white"
                         >
                           <div className="flex items-center justify-between gap-3">
                             <span className="text-base font-semibold text-stone-950">{ticket.ticket_number}</span>
@@ -468,7 +499,7 @@ export default function Home() {
                           <p className="mt-2 text-sm text-stone-500">
                             Customer {getRecentTicketCustomerName(ticket.customer_name)} · {ticket.matched_identifiers.join(", ")}
                           </p>
-                        </Link>
+                        </button>
                       )) : (
                         <p className="text-sm text-stone-500">No winning tickets yet.</p>
                       )}
@@ -477,9 +508,19 @@ export default function Home() {
 
                   <div className="rounded-[22px] border border-stone-900/8 bg-white/80 px-4 py-4">
                     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Approved spill over</p>
-                    <div className="mt-3 space-y-3">
+                    <div className="thin-scrollbar mt-3 max-h-[320px] space-y-3 overflow-y-auto pr-1">
                       {luckyDrawWinners.approved_overflows.length ? luckyDrawWinners.approved_overflows.map((overflow) => (
-                        <div key={overflow.id} className="rounded-[18px] border border-emerald-200 bg-emerald-50 px-4 py-3">
+                        <button
+                          key={overflow.id}
+                          type="button"
+                          disabled={!overflow.ticket_number}
+                          onClick={() => {
+                            if (overflow.ticket_number) {
+                              void openWinnerTicket(overflow.ticket_number);
+                            }
+                          }}
+                          className="w-full rounded-[18px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-left disabled:cursor-default"
+                        >
                           <div className="flex items-center justify-between gap-3">
                             <span className="text-base font-semibold text-stone-950">{overflow.identifier_number}</span>
                             <span className="text-sm text-stone-600">{formatAmount(overflow.amount)}</span>
@@ -487,7 +528,7 @@ export default function Home() {
                           <p className="mt-2 text-sm text-stone-500">
                             {overflow.collaborator_names.length ? overflow.collaborator_names.join(", ") : "Approved"}
                           </p>
-                        </div>
+                        </button>
                       )) : (
                         <p className="text-sm text-stone-500">No approved spill over winners.</p>
                       )}
@@ -690,6 +731,59 @@ export default function Home() {
           </section>
         </div>
       )}
+
+      {selectedWinnerTicketNumber ? (
+        <div
+          className="fixed inset-0 z-50 bg-stone-950/55 px-4 py-8 backdrop-blur-sm"
+          onClick={closeWinnerTicket}
+        >
+          <div
+            className="mx-auto max-h-[90vh] w-full max-w-[760px] overflow-y-auto rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_20px_60px_rgba(28,24,20,0.24)] sm:p-6"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">
+                  Lucky winner ticket
+                </p>
+                <p className="mt-2 text-lg font-semibold text-stone-950">
+                  {selectedWinnerTicketNumber}
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                className="h-11 w-11 rounded-[16px] p-0"
+                onClick={closeWinnerTicket}
+                aria-label="Close winner ticket"
+              >
+                <FontAwesomeIcon icon={faXmark} className="h-4 w-4" />
+              </Button>
+            </div>
+
+            {isWinnerTicketLoading ? (
+              <div className="mt-6 inline-flex items-center gap-3 rounded-full border border-stone-900/8 bg-stone-50 px-4 py-3 text-sm text-stone-600">
+                <FontAwesomeIcon
+                  icon={faCircleNotch}
+                  className="h-4 w-4 animate-spin text-stone-400"
+                />
+                Loading winner ticket.
+              </div>
+            ) : selectedWinnerTicket ? (
+              <div className="mt-6">
+                <TicketReceiptCard
+                  ticket={selectedWinnerTicket}
+                  periodName={activePeriod?.name}
+                  className="mx-auto max-w-[440px] rounded-[28px] border border-dashed border-stone-300 bg-stone-50 p-5 text-stone-900"
+                />
+              </div>
+            ) : (
+              <div className="mt-6 rounded-[22px] border border-dashed border-stone-300 bg-stone-50 px-4 py-4 text-sm text-stone-500">
+                Ticket view is not available right now.
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
 
       {isFullNumberModalOpen ? (
         <div
