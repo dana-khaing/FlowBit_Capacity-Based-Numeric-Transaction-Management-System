@@ -474,6 +474,47 @@ export function PeriodPage() {
               )}
             </div>
 
+            {canManagePeriods && activePeriod ? (
+              <div className="mt-5 rounded-[24px] border border-stone-900/8 bg-white px-5 py-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)]">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Lucky draw</p>
+                    <h3 className="mt-2 text-xl font-semibold text-stone-950">Shared period number</h3>
+                    <p className="mt-3 text-sm leading-6 text-stone-500">
+                      Only admin users can add or edit the 6-digit lucky draw number, and it locks automatically after the period ends.
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-stone-100 px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-stone-600">
+                    {activePeriod.lucky_draw_display || "***-***"}
+                  </span>
+                </div>
+
+                <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="text-sm text-stone-500">
+                    {luckyDraw?.announced_at
+                      ? `Last updated ${new Date(luckyDraw.announced_at).toLocaleString("en-GB")}`
+                      : "No lucky draw number added yet."}
+                  </div>
+                  {canEditLuckyDraw ? (
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setLuckyDrawNumber(luckyDraw?.number ?? "");
+                        setIsLuckyDrawModalOpen(true);
+                      }}
+                      disabled={isSaving}
+                    >
+                      {luckyDraw?.id ? "Edit lucky number" : "Add lucky number"}
+                    </Button>
+                  ) : (
+                    <span className="text-sm font-medium text-stone-400">
+                      Lucky draw is locked after period end.
+                    </span>
+                  )}
+                </div>
+              </div>
+            ) : null}
+
             <div className="mt-6">
               <div className="flex items-center justify-between gap-4">
                 <div>
@@ -631,46 +672,6 @@ export function PeriodPage() {
               </div>
             ) : null}
 
-            {canManagePeriods && activePeriod ? (
-              <div className="mt-6 rounded-[24px] border border-stone-900/8 bg-white px-5 py-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)]">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Lucky draw</p>
-                    <h3 className="mt-2 text-xl font-semibold text-stone-950">Shared period number</h3>
-                    <p className="mt-3 text-sm leading-6 text-stone-500">
-                      Only admin users can add or edit the 6-digit lucky draw number, and it locks automatically after the period ends.
-                    </p>
-                  </div>
-                  <span className="rounded-full bg-stone-100 px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-stone-600">
-                    {activePeriod.lucky_draw_display || "***-***"}
-                  </span>
-                </div>
-
-                <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="text-sm text-stone-500">
-                    {luckyDraw?.announced_at
-                      ? `Last updated ${new Date(luckyDraw.announced_at).toLocaleString("en-GB")}`
-                      : "No lucky draw number added yet."}
-                  </div>
-                  {canEditLuckyDraw ? (
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setLuckyDrawNumber(luckyDraw?.number ?? "");
-                        setIsLuckyDrawModalOpen(true);
-                      }}
-                      disabled={isSaving}
-                    >
-                      {luckyDraw?.id ? "Edit lucky draw" : "Add lucky draw"}
-                    </Button>
-                  ) : (
-                    <span className="text-sm font-medium text-stone-400">
-                      Lucky draw is locked after period end.
-                    </span>
-                  )}
-                </div>
-              </div>
-            ) : null}
           </aside>
         </section>
       </div>
@@ -690,7 +691,7 @@ export function PeriodPage() {
           >
             <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Lucky draw</p>
             <h3 className="mt-2 text-2xl font-semibold text-stone-950">
-              {luckyDraw?.id ? "Edit lucky draw" : "Add lucky draw"}
+              {luckyDraw?.id ? "Edit lucky number" : "Add lucky number"}
             </h3>
             <p className="mt-3 text-sm leading-6 text-stone-500">
               This number is shared across all users for the active period and becomes read-only after the period ends.
