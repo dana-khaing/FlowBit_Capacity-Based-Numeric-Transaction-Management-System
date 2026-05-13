@@ -1701,6 +1701,7 @@ class PrivateWorkspaceTests(APITestCase):
         self.period.refresh_from_db()
         self.assertEqual(lucky_draw.number, '654321')
         self.assertEqual(self.period.lucky_draw_reveal_time.strftime('%H:%M'), '16:30')
+        self.assertEqual(lucky_draw.announced_at, self.period.lucky_draw_reveal_at)
         self.assertTrue(
             AuditLog.objects.filter(action='period.lucky_draw_created', target_id=lucky_draw.id).exists()
         )
@@ -1808,10 +1809,11 @@ class PrivateWorkspaceTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.user_one_ledger.refresh_from_db()
         reserve_ledger.refresh_from_db()
+        self.period.refresh_from_db()
         self.assertFalse(self.user_one_ledger.is_active)
         self.assertFalse(reserve_ledger.is_active)
-        self.assertIsNotNone(self.user_one_ledger.closed_at)
-        self.assertIsNotNone(reserve_ledger.closed_at)
+        self.assertEqual(self.user_one_ledger.closed_at, self.period.lucky_draw_reveal_at)
+        self.assertEqual(reserve_ledger.closed_at, self.period.lucky_draw_reveal_at)
 
     def test_period_and_ledger_changes_create_system_notifications(self):
         self.client.force_authenticate(user=self.admin_user)
