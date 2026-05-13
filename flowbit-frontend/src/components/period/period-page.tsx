@@ -116,7 +116,9 @@ export function PeriodPage() {
   const [overrideCode, setOverrideCode] = useState("");
   const [luckyDraw, setLuckyDraw] = useState<FlowBitLuckyDraw | null>(null);
   const [luckyDrawNumber, setLuckyDrawNumber] = useState("");
+  const [luckyDrawRevealTime, setLuckyDrawRevealTime] = useState("15:30");
   const [isLuckyDrawModalOpen, setIsLuckyDrawModalOpen] = useState(false);
+  const [isLuckyDrawTimeModalOpen, setIsLuckyDrawTimeModalOpen] = useState(false);
 
   const activePeriod = useMemo(
     () => periods.find((period) => period.is_open) ?? null,
@@ -162,6 +164,7 @@ export function PeriodPage() {
       setActivePeriodForm({ end_date: "", close_time: "23:00" });
       setLuckyDraw(null);
       setLuckyDrawNumber("");
+      setLuckyDrawRevealTime("15:30");
       return;
     }
 
@@ -186,6 +189,7 @@ export function PeriodPage() {
         }
         setLuckyDraw(nextLuckyDraw);
         setLuckyDrawNumber(nextLuckyDraw.number ?? "");
+        setLuckyDrawRevealTime((nextLuckyDraw.reveal_time ?? activePeriod.lucky_draw_reveal_time ?? "15:30").slice(0, 5));
       })
       .catch(() => {
         if (!isMounted) {
@@ -193,6 +197,7 @@ export function PeriodPage() {
         }
         setLuckyDraw(null);
         setLuckyDrawNumber("");
+        setLuckyDrawRevealTime((activePeriod.lucky_draw_reveal_time ?? "15:30").slice(0, 5));
       });
 
     return () => {
@@ -327,9 +332,13 @@ export function PeriodPage() {
 
     setIsSaving(true);
     try {
-      const savedLuckyDraw = await savePeriodLuckyDraw(activePeriod.id, normalizedNumber);
+      const savedLuckyDraw = await savePeriodLuckyDraw(activePeriod.id, {
+        number: normalizedNumber,
+        reveal_time: luckyDrawRevealTime || "15:30",
+      });
       setLuckyDraw(savedLuckyDraw);
       setLuckyDrawNumber(savedLuckyDraw.number ?? normalizedNumber);
+      setLuckyDrawRevealTime((savedLuckyDraw.reveal_time ?? luckyDrawRevealTime ?? "15:30").slice(0, 5));
       setIsLuckyDrawModalOpen(false);
       setToast({
         type: "success",
@@ -371,6 +380,32 @@ export function PeriodPage() {
     }
   }
 
+  async function handleSaveLuckyDrawRevealTime(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!activePeriod || !canEditLuckyDraw) {
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await updatePeriod(activePeriod.id, {
+        lucky_draw_reveal_time: luckyDrawRevealTime || "15:30",
+      });
+      setIsLuckyDrawTimeModalOpen(false);
+      setToast({ type: "success", message: "Lucky draw reveal time updated successfully." });
+      await loadPageData();
+      notifyPeriodsUpdated();
+    } catch (error) {
+      setToast({
+        type: "error",
+        message: error instanceof Error ? error.message : "Request failed.",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   return (
     <WorkspaceShell>
       {toast ? <AdminActionToast message={toast.message} type={toast.type} onClose={() => setToast(null)} /> : null}
@@ -383,6 +418,11 @@ export function PeriodPage() {
         open={isSaving && isLuckyDrawModalOpen}
         title={luckyDraw?.id ? "Updating lucky draw" : "Creating lucky draw"}
         description="FlowBit is saving the period lucky draw number and updating the shared reveal state."
+      />
+      <ActionLoadingModal
+        open={isSaving && isLuckyDrawTimeModalOpen}
+        title="Updating reveal time"
+        description="FlowBit is saving the lucky draw reveal time for the active period."
       />
       <AdminConfirmModal
         open={showActionConfirm}
@@ -512,22 +552,35 @@ export function PeriodPage() {
                 </div>
 
                 <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="text-sm text-stone-500">
+                  <div className="space-y-1 text-sm text-stone-500">
                     {luckyDraw?.announced_at
                       ? `Last updated ${new Date(luckyDraw.announced_at).toLocaleString("en-GB")}`
                       : "No lucky draw number added yet."}
+                    <p>Reveal time {luckyDrawRevealTime}</p>
                   </div>
                   {canEditLuckyDraw ? (
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setLuckyDrawNumber(luckyDraw?.number ?? "");
-                        setIsLuckyDrawModalOpen(true);
-                      }}
-                      disabled={isSaving}
-                    >
-                      {luckyDraw?.id ? "Edit lucky number" : "Add lucky number"}
-                    </Button>
+                    <div className="flex flex-wrap gap-3">
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setLuckyDrawRevealTime((luckyDraw?.reveal_time ?? activePeriod.lucky_draw_reveal_time ?? "15:30").slice(0, 5));
+                          setIsLuckyDrawTimeModalOpen(true);
+                        }}
+                        disabled={isSaving}
+                      >
+                        Edit reveal time
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setLuckyDrawNumber(luckyDraw?.number ?? "");
+                          setIsLuckyDrawModalOpen(true);
+                        }}
+                        disabled={isSaving}
+                      >
+                        {luckyDraw?.id ? "Edit lucky number" : "Add lucky number"}
+                      </Button>
+                    </div>
                   ) : (
                     <span className="text-sm font-medium text-stone-400">
                       Lucky draw is locked after period end.
@@ -757,6 +810,55 @@ export function PeriodPage() {
                 </Button>
                 <Button type="submit" className="flex-1" disabled={isSaving}>
                   {luckyDraw?.id ? "Save" : "Add"}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {isLuckyDrawTimeModalOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/40 px-4 py-6"
+          onClick={() => {
+            if (!isSaving) {
+              setIsLuckyDrawTimeModalOpen(false);
+            }
+          }}
+        >
+          <div
+            className="w-full max-w-md rounded-[28px] border border-stone-900/8 bg-white p-6 shadow-[0_18px_60px_rgba(28,24,20,0.24)]"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Lucky draw</p>
+            <h3 className="mt-2 text-2xl font-semibold text-stone-950">Edit reveal time</h3>
+            <p className="mt-3 text-sm leading-6 text-stone-500">
+              This controls when the active period lucky draw changes from masked to visible on the dashboard.
+            </p>
+
+            <form className="mt-6 space-y-4" onSubmit={handleSaveLuckyDrawRevealTime}>
+              <label className="block space-y-2">
+                <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Reveal time</span>
+                <Input
+                  type="time"
+                  value={luckyDrawRevealTime}
+                  onChange={(event) => setLuckyDrawRevealTime(event.target.value)}
+                  disabled={isSaving}
+                />
+              </label>
+
+              <div className="flex gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setIsLuckyDrawTimeModalOpen(false)}
+                  disabled={isSaving}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" className="flex-1" disabled={isSaving}>
+                  Save
                 </Button>
               </div>
             </form>

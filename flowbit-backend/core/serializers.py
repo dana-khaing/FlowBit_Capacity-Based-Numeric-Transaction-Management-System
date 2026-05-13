@@ -101,6 +101,8 @@ class PeriodSerializer(serializers.ModelSerializer):
     lucky_draw_display = serializers.SerializerMethodField()
     lucky_draw_revealed = serializers.SerializerMethodField()
     lucky_draw_announced_at = serializers.SerializerMethodField()
+    lucky_draw_reveal_at = serializers.SerializerMethodField()
+    lucky_draw_reveal_time = serializers.TimeField(required=False)
     start_date = FlexibleDateTimeField(default_time=time.min)
     end_date = FlexibleDateTimeField(default_time=_serializer_close_time)
     close_time = serializers.TimeField(write_only=True, required=False)
@@ -119,6 +121,8 @@ class PeriodSerializer(serializers.ModelSerializer):
             'lucky_draw_display',
             'lucky_draw_revealed',
             'lucky_draw_announced_at',
+            'lucky_draw_reveal_at',
+            'lucky_draw_reveal_time',
             'close_time',
         ]
         read_only_fields = ['closed_at', 'created_at', 'ledger_count']
@@ -141,6 +145,9 @@ class PeriodSerializer(serializers.ModelSerializer):
     def get_lucky_draw_announced_at(self, obj):
         lucky_draw = getattr(obj, 'lucky_draw', None)
         return lucky_draw.announced_at if lucky_draw is not None else None
+
+    def get_lucky_draw_reveal_at(self, obj):
+        return obj.lucky_draw_reveal_at
 
     def validate(self, attrs):
         attrs = super().validate(attrs)

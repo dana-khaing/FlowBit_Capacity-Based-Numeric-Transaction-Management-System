@@ -120,6 +120,21 @@ def parse_period_value(value):
     return None
 
 
+def parse_time_value(value):
+    if value in (None, ''):
+        return None
+    if isinstance(value, time):
+        return value.replace(tzinfo=None) if getattr(value, 'tzinfo', None) is not None else value
+    if isinstance(value, str):
+        stripped = value.strip()
+        for fmt in ('%H:%M', '%H:%M:%S'):
+            try:
+                return datetime.strptime(stripped, fmt).time()
+            except ValueError:
+                continue
+    return None
+
+
 def selected_period_from_request(request):
     period_id = request.query_params.get('period_id')
     if period_id:
@@ -704,12 +719,14 @@ class PeriodViewSet(viewsets.ModelViewSet):
                     'announced_by': None,
                     'announced_by_username': None,
                     'announced_at': None,
+                    'reveal_time': period.lucky_draw_reveal_time.strftime('%H:%M:%S'),
                     'created_at': None,
                     'updated_at': None,
                 }, status=status.HTTP_200_OK)
 
             serializer = LuckyDrawSerializer(lucky_draw, context={'request': request})
             data = serializer.data
+            data['reveal_time'] = period.lucky_draw_reveal_time.strftime('%H:%M:%S')
             if not is_admin_user(request.user):
                 data['number'] = None
             return Response(data)
@@ -753,6 +770,13 @@ class PeriodViewSet(viewsets.ModelViewSet):
             )
             return Response(status=status.HTTP_204_NO_CONTENT)
 
+        reveal_time = parse_time_value(request.data.get('reveal_time'))
+        if request.data.get('reveal_time') not in (None, '') and reveal_time is None:
+            return Response(
+                {'detail': 'Reveal time must be a valid time.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         serializer = LuckyDrawSerializer(
             lucky_draw,
             data=request.data,
@@ -761,6 +785,9 @@ class PeriodViewSet(viewsets.ModelViewSet):
         )
         serializer.is_valid(raise_exception=True)
         before = snapshot_instance(lucky_draw) if lucky_draw is not None else None
+        if reveal_time is not None and period.lucky_draw_reveal_time != reveal_time:
+            period.lucky_draw_reveal_time = reveal_time
+            period.save(update_fields=['lucky_draw_reveal_time'])
         lucky_draw = serializer.save(
             period=period,
             announced_by=request.user,
@@ -2880,7 +2907,7 @@ class SupportCaseViewSet(viewsets.ModelViewSet):
             notify_support_case_participants(
                 support_case=support_case,
                 actor=request.user,
-                title='Customer replied to a case',
+                title='Support case updated',
                 message=f"{actor_label} replied to case: {support_case.subject}.",
                 include_admins=True,
             )

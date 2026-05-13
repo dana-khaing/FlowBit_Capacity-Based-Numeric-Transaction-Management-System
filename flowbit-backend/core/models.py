@@ -19,6 +19,7 @@ class Period(models.Model):
     name = models.CharField(max_length=100, unique=True)
     start_date = models.DateTimeField()
     end_date = models.DateTimeField()
+    lucky_draw_reveal_time = models.TimeField(default=time(hour=15, minute=30))
     is_open = models.BooleanField(default=True)
     closed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -129,7 +130,7 @@ class Period(models.Model):
 
     @property
     def lucky_draw_reveal_at(self):
-        reveal_datetime = datetime.combine(self.end_date.date(), time(hour=15, minute=30))
+        reveal_datetime = datetime.combine(self.end_date.date(), self.lucky_draw_reveal_time)
         return timezone.make_aware(reveal_datetime, timezone.get_current_timezone())
 
 

@@ -314,13 +314,13 @@ export default function Home() {
     })) ?? [];
   }, [report]);
 
-  const periodEndLabel = useMemo(() => {
-    if (!activePeriod?.end_date) {
+  const luckyDrawRevealLabel = useMemo(() => {
+    if (!activePeriod?.lucky_draw_reveal_at) {
       return "No active draw";
     }
-    const parsed = new Date(activePeriod.end_date);
+    const parsed = new Date(activePeriod.lucky_draw_reveal_at);
     if (Number.isNaN(parsed.getTime())) {
-      return activePeriod.end_date;
+      return activePeriod.lucky_draw_reveal_at;
     }
     return parsed.toLocaleString("en-GB", {
       day: "numeric",
@@ -329,13 +329,13 @@ export default function Home() {
       hour: "numeric",
       minute: "2-digit",
     });
-  }, [activePeriod?.end_date]);
+  }, [activePeriod?.lucky_draw_reveal_at]);
 
   const nextDrawCountdown = useMemo(() => {
-    if (!activePeriod?.end_date) {
+    if (!activePeriod?.lucky_draw_reveal_at || activePeriod?.lucky_draw_revealed) {
       return "No countdown";
     }
-    const target = new Date(activePeriod.end_date).getTime();
+    const target = new Date(activePeriod.lucky_draw_reveal_at).getTime();
     if (Number.isNaN(target)) {
       return "No countdown";
     }
@@ -347,7 +347,7 @@ export default function Home() {
       return "Draw due now";
     }
     return `Draw in ${days}d ${hours}h`;
-  }, [activePeriod?.end_date]);
+  }, [activePeriod?.lucky_draw_reveal_at, activePeriod?.lucky_draw_revealed]);
 
   const isCloseToPeriodEndWithPendingOverflow = useMemo(() => {
     if (!activePeriod?.end_date || !report?.pending_overflow_count) {
@@ -482,19 +482,23 @@ export default function Home() {
             <div className="flex flex-col items-center gap-3 text-center">
               <div>
                 <p className="text-[13px] font-medium uppercase tracking-[0.18em] text-stone-400">
-                  Next draw
+                  {activePeriod?.lucky_draw_revealed ? "Lucky number" : "Next draw"}
                 </p>
                 <div className="mt-3 text-[48px] font-light tracking-[0.16em] text-stone-950 sm:text-[64px]">
                   <span>{luckyDrawDisplay}</span>
                 </div>
-                <p className="mt-3 text-base text-stone-500 sm:text-lg">{periodEndLabel}</p>
+                {!activePeriod?.lucky_draw_revealed ? (
+                  <p className="mt-3 text-base text-stone-500 sm:text-lg">{luckyDrawRevealLabel}</p>
+                ) : null}
               </div>
 
-              <div className="flex flex-col items-center gap-2">
-                <span className="rounded-full bg-amber-100 px-4 py-2 text-base font-medium text-amber-900 sm:text-lg">
-                  {nextDrawCountdown}
-                </span>
-              </div>
+              {nextDrawCountdown !== "No countdown" ? (
+                <div className="flex flex-col items-center gap-2">
+                  <span className="rounded-full bg-amber-100 px-4 py-2 text-base font-medium text-amber-900 sm:text-lg">
+                    {nextDrawCountdown}
+                  </span>
+                </div>
+              ) : null}
             </div>
           </section>
 

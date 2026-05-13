@@ -11,6 +11,8 @@ export type FlowBitPeriod = {
   lucky_draw_display?: string;
   lucky_draw_revealed?: boolean;
   lucky_draw_announced_at?: string | null;
+  lucky_draw_reveal_at?: string | null;
+  lucky_draw_reveal_time?: string | null;
 };
 
 export type FlowBitLuckyDraw = {
@@ -23,6 +25,7 @@ export type FlowBitLuckyDraw = {
   announced_by: number | null;
   announced_by_username: string | null;
   announced_at: string | null;
+  reveal_time?: string | null;
   created_at: string | null;
   updated_at: string | null;
 };
@@ -105,8 +108,9 @@ export async function createPeriod(payload: {
 export async function updatePeriod(
   periodId: number,
   payload: {
-    end_date: string;
-    close_time: string;
+    end_date?: string;
+    close_time?: string;
+    lucky_draw_reveal_time?: string;
     admin_override_code?: string;
   },
 ) {
@@ -159,11 +163,11 @@ export async function fetchPeriodLuckyDraw(periodId: number) {
   });
 }
 
-export async function savePeriodLuckyDraw(periodId: number, number: string) {
+export async function savePeriodLuckyDraw(periodId: number, payload: { number: string; reveal_time?: string }) {
   return apiRequest<FlowBitLuckyDraw>(`/periods/${periodId}/lucky-draw/`, {
     method: "POST",
     headers: authHeaders(),
-    body: JSON.stringify({ number }),
+    body: JSON.stringify(payload),
   });
 }
 

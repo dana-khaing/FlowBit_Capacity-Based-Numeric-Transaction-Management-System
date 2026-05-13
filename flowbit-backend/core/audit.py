@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 
 from django.utils import timezone
@@ -8,8 +8,19 @@ from .permissions import get_request_admin_override_profile
 
 
 def serialize_audit_value(value):
+    if isinstance(value, dict):
+        return {
+            key: serialize_audit_value(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, (list, tuple, set)):
+        return [serialize_audit_value(item) for item in value]
     if isinstance(value, Decimal):
         return str(value)
+    if isinstance(value, time):
+        return value.strftime('%H:%M:%S')
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value.isoformat()
     if isinstance(value, datetime):
         if timezone.is_aware(value):
             value = timezone.localtime(value)
@@ -54,6 +65,7 @@ def _override_admin_audit_changes(request, changes):
 
 
 def record_audit_log(request, action, target=None, details='', changes=None):
+    serialized_changes = serialize_audit_value(changes or {})
     actor = request.user if getattr(request, 'user', None) and request.user.is_authenticated else None
     AuditLog.objects.create(
         user=request.user if getattr(request, 'user', None) and request.user.is_authenticated else None,
@@ -62,10 +74,10 @@ def record_audit_log(request, action, target=None, details='', changes=None):
         target_model=target.__class__.__name__ if target is not None else '',
         target_id=getattr(target, 'pk', None) if target is not None else None,
         details=details,
-        changes=changes or {},
+        changes=serialized_changes,
     )
 
-    override_profile, override_changes = _override_admin_audit_changes(request, changes)
+    override_profile, override_changes = _override_admin_audit_changes(request, serialized_changes)
     if override_profile is None or override_changes is None:
         return
 
@@ -90,5 +102,5 @@ def record_system_audit_log(action, target=None, details='', changes=None):
         target_model=target.__class__.__name__ if target is not None else '',
         target_id=getattr(target, 'pk', None) if target is not None else None,
         details=details,
-        changes=changes or {},
+        changes=serialize_audit_value(changes or {}),
     )
