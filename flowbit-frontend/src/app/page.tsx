@@ -97,7 +97,7 @@ const footerGroups = [
   {
     title: "Support",
     items: [
-      { label: "Contact support", href: "/contact-support" },
+      { label: "Customer service", href: "/contact-support" },
       { label: "Archive review", href: "/archive" },
       { label: "Export", href: "/export-ledger" },
       { label: "Profile", href: "/profile" },
