@@ -363,7 +363,7 @@ export function CustomerServicePage() {
                           className={`flex ${isMine ? "justify-end" : "justify-start"}`}
                         >
                           <div
-                            className={`max-w-[88%] rounded-[22px] px-4 py-4 ${
+                            className={`min-w-0 max-w-[88%] overflow-hidden rounded-[22px] px-4 py-4 ${
                               isMine
                                 ? "bg-stone-950 text-white"
                                 : message.is_admin_sender
@@ -376,7 +376,7 @@ export function CustomerServicePage() {
                               {message.is_admin_sender ? <span className="rounded-full bg-white/70 px-2 py-1 text-[10px] text-emerald-700">Admin</span> : null}
                               <span className={isMine ? "text-stone-300" : "text-stone-400"}>{formatDateTime(message.created_at)}</span>
                             </div>
-                            <p className={`mt-3 whitespace-pre-wrap text-sm leading-6 ${isMine ? "text-stone-100" : "text-stone-700"}`}>
+                            <p className={`mt-3 whitespace-pre-wrap break-words text-sm leading-6 ${isMine ? "text-stone-100" : "text-stone-700"}`}>
                               {message.body}
                             </p>
                           </div>
