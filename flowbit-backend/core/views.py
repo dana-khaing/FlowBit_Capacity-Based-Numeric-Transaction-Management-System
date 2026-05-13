@@ -808,6 +808,10 @@ class PeriodViewSet(viewsets.ModelViewSet):
             announced_by=request.user,
             announced_at=timezone.now(),
         )
+        period.ledgers.filter(is_active=True).update(
+            is_active=False,
+            closed_at=lucky_draw.announced_at,
+        )
         _announce_pending_overflows(
             period,
             announced_at=lucky_draw.announced_at,
@@ -869,6 +873,7 @@ class PeriodViewSet(viewsets.ModelViewSet):
                 'lucky_draw': serialized_draw,
                 'tickets': [],
                 'approved_overflows': [],
+                'overkill_overflows': [],
             }, status=status.HTTP_200_OK)
 
         serialized_draw['display_number'] = f"{lucky_draw.number[:3]}-{lucky_draw.number[3:]}"
@@ -914,10 +919,27 @@ class PeriodViewSet(viewsets.ModelViewSet):
                 'collaborator_names': [collaborator.full_name for collaborator in overflow.collaborators.all()],
             })
 
+        overkill_rows = []
+        for overflow in Overflow.objects.filter(
+            owner=request.user,
+            period=period,
+            status=Overflow.STATUS_OVERKILL,
+            identifier__number__in=winning_identifiers,
+        ).select_related('identifier').prefetch_related('collaborators').order_by('-approved_at', '-id'):
+            overkill_rows.append({
+                'id': overflow.id,
+                'identifier_number': overflow.identifier.number if overflow.identifier_id else '',
+                'ticket_number': None,
+                'amount': str(overflow.amount_to_approve or overflow.excess_amount or Decimal('0.00')),
+                'approved_at': overflow.approved_at,
+                'collaborator_names': [collaborator.full_name for collaborator in overflow.collaborators.all()],
+            })
+
         return Response({
             'lucky_draw': serialized_draw,
             'tickets': tickets,
             'approved_overflows': approved_overflow_rows,
+            'overkill_overflows': overkill_rows,
         }, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='close')

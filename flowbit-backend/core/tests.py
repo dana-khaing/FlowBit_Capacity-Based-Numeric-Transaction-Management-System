@@ -1795,6 +1795,24 @@ class PrivateWorkspaceTests(APITestCase):
             User.objects.filter(is_active=True).count(),
         )
 
+    def test_lucky_draw_announcement_closes_active_ledgers(self):
+        reserve_ledger = Ledger.get_capacity_reserve(self.period, self.user_one, create=True)
+        self.client.force_authenticate(user=self.admin_user)
+
+        response = self.client.post(
+            f'/api/periods/{self.period.id}/lucky-draw/',
+            {'number': '123456'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.user_one_ledger.refresh_from_db()
+        reserve_ledger.refresh_from_db()
+        self.assertFalse(self.user_one_ledger.is_active)
+        self.assertFalse(reserve_ledger.is_active)
+        self.assertIsNotNone(self.user_one_ledger.closed_at)
+        self.assertIsNotNone(reserve_ledger.closed_at)
+
     def test_period_and_ledger_changes_create_system_notifications(self):
         self.client.force_authenticate(user=self.admin_user)
 
@@ -1973,7 +1991,7 @@ class PrivateWorkspaceTests(APITestCase):
             ).exists()
         )
 
-    def test_lucky_draw_winners_report_returns_matching_tickets_and_approved_overflows(self):
+    def test_lucky_draw_winners_report_returns_matching_tickets_approved_overflows_and_overkill(self):
         winning_identifier = Identifier.objects.create(number='456')
         LuckyDraw.objects.create(
             period=self.period,
@@ -1999,6 +2017,16 @@ class PrivateWorkspaceTests(APITestCase):
             status=Overflow.STATUS_CSO,
             approved_at=timezone.now(),
         )
+        winning_overkill = Overflow.objects.create(
+            transaction=None,
+            identifier=winning_identifier,
+            owner=self.user_one,
+            period=self.period,
+            excess_amount=Decimal('40.00'),
+            amount_to_approve=Decimal('40.00'),
+            status=Overflow.STATUS_OVERKILL,
+            approved_at=timezone.now(),
+        )
 
         self.client.force_authenticate(user=self.user_one)
         response = self.client.get(f'/api/periods/{self.period.id}/lucky-draw-winners/')
@@ -2009,6 +2037,8 @@ class PrivateWorkspaceTests(APITestCase):
         self.assertEqual(response.data['tickets'][0]['matched_identifiers'], ['456'])
         self.assertEqual(response.data['approved_overflows'][0]['id'], winning_overflow.id)
         self.assertEqual(response.data['approved_overflows'][0]['identifier_number'], '456')
+        self.assertEqual(response.data['overkill_overflows'][0]['id'], winning_overkill.id)
+        self.assertEqual(response.data['overkill_overflows'][0]['identifier_number'], '456')
 
 
 class PrivateWorkflowAPITests(APITestCase):
