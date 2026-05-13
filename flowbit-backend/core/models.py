@@ -62,7 +62,11 @@ class Period(models.Model):
                 helper_name=helper_name,
                 closing_user=closing_user,
             )
-            _create_reserve_archive_tickets(self)
+            _create_reserve_archive_tickets(
+                self,
+                closed_at=closed_at,
+                closing_user=closing_user,
+            )
 
             self.is_open = False
             self.closed_at = closed_at
@@ -902,6 +906,21 @@ def _auto_close_pending_overflows(period, closed_at=None, helper_name=DEFAULT_HE
         ])
         if collaborator is not None:
             overflow.collaborators.set([collaborator])
+        if overflow.owner_id:
+            _create_period_close_notification(
+                recipient=overflow.owner,
+                title='Pending spill over auto-approved',
+                message=(
+                    f"Identifier {overflow.identifier.number} spill over of "
+                    f"{(overflow.amount_to_approve or overflow.excess_amount or Decimal('0.00')).quantize(Decimal('0.01'))} "
+                    f"was auto-approved when {period.name} closed."
+                ),
+                period=period,
+                level=UserNotification.LEVEL_WARNING,
+                action_href='/archive',
+                source_key=f'period-close:pending-overflow:{period.id}:{overflow.id}',
+                created_by=closing_user,
+            )
 
 
 class Ticket(models.Model):
@@ -1377,6 +1396,42 @@ class UserNotification(models.Model):
         return self
 
 
+def _create_period_close_notification(
+    *,
+    recipient,
+    title,
+    message,
+    period,
+    level=UserNotification.LEVEL_INFO,
+    action_href='/archive',
+    source_key='',
+    created_by=None,
+):
+    defaults = {
+        'category': UserNotification.CATEGORY_SYSTEM,
+        'level': level,
+        'title': title,
+        'message': message,
+        'action_href': action_href,
+        'created_by': created_by,
+        'period': period,
+    }
+
+    if source_key:
+        notification, _ = UserNotification.objects.update_or_create(
+            recipient=recipient,
+            source_key=source_key,
+            defaults=defaults,
+        )
+        return notification
+
+    return UserNotification.objects.create(
+        recipient=recipient,
+        source_key='',
+        **defaults,
+    )
+
+
 class SupportCase(models.Model):
     STATUS_OPEN = 'OPEN'
     STATUS_CLOSED = 'CLOSED'
@@ -1733,10 +1788,11 @@ def refund_transactions(transactions, helper_name, resolution_type, refunded_at=
             _retry_pending_overflows(period, identifier)
 
 
-def _create_reserve_archive_tickets(period):
+def _create_reserve_archive_tickets(period, closed_at=None, closing_user=None):
     if period is None:
         return []
 
+    closed_at = closed_at or timezone.now()
     created_tickets = []
     owner_ids = set(
         period.ledgers.filter(
@@ -1817,6 +1873,23 @@ def _create_reserve_archive_tickets(period):
                 owner=owner,
                 amount=item['allocation_amount'],
                 consuming_transaction=transaction_obj,
+            )
+            _create_period_close_notification(
+                recipient=owner,
+                title='Overkill archived into closed period',
+                message=(
+                    f"Identifier {transaction_obj.identifier.number} leftover overkill of "
+                    f"{item['allocation_amount'].quantize(Decimal('0.01'))} was archived as a ticket when "
+                    f"{period.name} closed."
+                ),
+                period=period,
+                level=UserNotification.LEVEL_IMPORTANT,
+                action_href='/archive',
+                source_key=(
+                    f'period-close:overkill-archive:{period.id}:{owner.id}:'
+                    f'{transaction_obj.identifier_id}:{closed_at.isoformat()}'
+                ),
+                created_by=closing_user,
             )
 
         created_tickets.append(ticket)

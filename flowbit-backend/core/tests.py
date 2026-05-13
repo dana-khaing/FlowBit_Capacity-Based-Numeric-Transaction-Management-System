@@ -1821,6 +1821,18 @@ class PrivateWorkspaceTests(APITestCase):
         self.assertTrue(
             UserNotification.objects.filter(title='Ledger created', period=self.period).exists()
         )
+        user_period_notification = UserNotification.objects.filter(
+            recipient=self.user_one,
+            title='Period updated',
+            period=self.period,
+        ).latest('created_at')
+        admin_period_notification = UserNotification.objects.filter(
+            recipient=self.admin_user,
+            title='Period updated',
+            period=self.period,
+        ).latest('created_at')
+        self.assertEqual(user_period_notification.action_href, '/')
+        self.assertEqual(admin_period_notification.action_href, '/periods')
 
     def test_auto_closed_period_creates_system_notifications(self):
         self.period.start_date = timezone.now() - timezone.timedelta(days=2)
@@ -3431,6 +3443,61 @@ class PrivateWorkflowAPITests(APITestCase):
         self.assertTrue(
             LedgerAllocation.objects.filter(
                 transaction=archive_transaction,
+                ledger=reserve_ledger,
+                amount=Decimal('200.00'),
+            ).exists()
+        )
+
+    def test_period_close_notifies_pending_overflow_auto_approval(self):
+        seed_ticket = Ticket.objects.create(customer_name='Pending Close Notice', created_by=self.approver)
+        seed_transaction = Transaction.objects.create(
+            ticket=seed_ticket,
+            identifier=self.identifier,
+            total_amount=Decimal('250.00'),
+            created_by=self.approver,
+        )
+        pending_overflow = Overflow.objects.get(transaction=seed_transaction, status=Overflow.STATUS_TCSO)
+
+        self.active_period.close(closed_at=timezone.now(), closing_user=self.approver)
+
+        notification = UserNotification.objects.get(
+            recipient=self.approver,
+            source_key=f'period-close:pending-overflow:{self.active_period.id}:{pending_overflow.id}',
+        )
+        self.assertEqual(notification.title, 'Pending spill over auto-approved')
+        self.assertIn(
+            f'Identifier {self.identifier.number} spill over of 206.25 was auto-approved',
+            notification.message,
+        )
+        self.assertEqual(notification.action_href, '/archive')
+
+    def test_period_close_notifies_leftover_overkill_archive(self):
+        reserve_ledger = Ledger.get_capacity_reserve(self.active_period, self.approver, create=True)
+        IdentifierCapacityAdjustment.objects.create(
+            identifier=self.identifier,
+            period=self.active_period,
+            owner=self.approver,
+            amount=Decimal('200.00'),
+        )
+
+        closed_at = timezone.now()
+        self.active_period.close(closed_at=closed_at, closing_user=self.approver)
+
+        notification = UserNotification.objects.get(
+            recipient=self.approver,
+            source_key=(
+                f'period-close:overkill-archive:{self.active_period.id}:{self.approver.id}:'
+                f'{self.identifier.id}:{closed_at.isoformat()}'
+            ),
+        )
+        self.assertEqual(notification.title, 'Overkill archived into closed period')
+        self.assertIn(
+            f'Identifier {self.identifier.number} leftover overkill of 200.00 was archived as a ticket',
+            notification.message,
+        )
+        self.assertEqual(notification.action_href, '/archive')
+        self.assertTrue(
+            LedgerAllocation.objects.filter(
                 ledger=reserve_ledger,
                 amount=Decimal('200.00'),
             ).exists()
