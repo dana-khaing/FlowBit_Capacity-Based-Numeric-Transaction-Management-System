@@ -3423,7 +3423,7 @@ class PrivateWorkflowAPITests(APITestCase):
             Decimal('200.00'),
         )
 
-    def test_period_close_creates_reserve_archive_ticket_for_leftover_capacity(self):
+    def test_period_close_does_not_create_reserve_archive_ticket_for_leftover_capacity(self):
         reserve_ledger = Ledger.get_capacity_reserve(self.active_period, self.approver, create=True)
         IdentifierCapacityAdjustment.objects.create(
             identifier=self.identifier,
@@ -3434,22 +3434,21 @@ class PrivateWorkflowAPITests(APITestCase):
 
         self.active_period.close()
 
-        archive_ticket = Ticket.objects.filter(
-            created_by=self.approver,
-            notes=f"Reserve archive for {self.active_period.name}",
-        ).latest('created_at')
-        archive_transaction = archive_ticket.transactions.get(identifier=self.identifier)
-        self.assertTrue(getattr(archive_transaction, 'ticket_id', None))
-        self.assertTrue(
+        self.assertFalse(
+            Ticket.objects.filter(
+                created_by=self.approver,
+                notes=f"Reserve archive for {self.active_period.name}",
+            ).exists()
+        )
+        self.assertFalse(
             LedgerAllocation.objects.filter(
-                transaction=archive_transaction,
                 ledger=reserve_ledger,
                 amount=Decimal('200.00'),
             ).exists()
         )
 
-    def test_period_close_notifies_pending_overflow_auto_approval(self):
-        seed_ticket = Ticket.objects.create(customer_name='Pending Close Notice', created_by=self.approver)
+    def test_lucky_draw_announcement_notifies_pending_overflow_auto_approval(self):
+        seed_ticket = Ticket.objects.create(customer_name='Pending Draw Notice', created_by=self.approver)
         seed_transaction = Transaction.objects.create(
             ticket=seed_ticket,
             identifier=self.identifier,
@@ -3458,52 +3457,60 @@ class PrivateWorkflowAPITests(APITestCase):
         )
         pending_overflow = Overflow.objects.get(transaction=seed_transaction, status=Overflow.STATUS_TCSO)
 
-        self.active_period.close(closed_at=timezone.now(), closing_user=self.approver)
+        response = self.client.post(
+            f'/api/periods/{self.active_period.id}/lucky-draw/',
+            {'number': '123456'},
+            format='json',
+        )
 
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        pending_overflow.refresh_from_db()
+        self.assertEqual(pending_overflow.status, Overflow.STATUS_CSO)
         notification = UserNotification.objects.get(
             recipient=self.approver,
-            source_key=f'period-close:pending-overflow:{self.active_period.id}:{pending_overflow.id}',
+            source_key=f'lucky-draw:pending-overflow:{self.active_period.id}:{pending_overflow.id}',
         )
         self.assertEqual(notification.title, 'Pending spill over auto-approved')
         self.assertIn(
             f'Identifier {self.identifier.number} spill over of 206.25 was auto-approved',
             notification.message,
         )
-        self.assertEqual(notification.action_href, '/archive')
+        self.assertEqual(notification.action_href, '/spill-over')
 
-    def test_period_close_notifies_leftover_overkill_archive(self):
-        reserve_ledger = Ledger.get_capacity_reserve(self.active_period, self.approver, create=True)
-        IdentifierCapacityAdjustment.objects.create(
+    def test_lucky_draw_announcement_notifies_remaining_overkill(self):
+        overkill = Overflow.objects.create(
+            transaction=None,
             identifier=self.identifier,
-            period=self.active_period,
             owner=self.approver,
-            amount=Decimal('200.00'),
+            period=self.active_period,
+            excess_amount=Decimal('200.00'),
+            status=Overflow.STATUS_OVERKILL,
+            amount_to_approve=Decimal('200.00'),
+            approved_at=timezone.now(),
+            helper_name='Helper User',
+            resolution_type=Overflow.RESOLUTION_APPROVE,
         )
 
-        closed_at = timezone.now()
-        self.active_period.close(closed_at=closed_at, closing_user=self.approver)
+        response = self.client.post(
+            f'/api/periods/{self.active_period.id}/lucky-draw/',
+            {'number': '123456'},
+            format='json',
+        )
 
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         notification = UserNotification.objects.get(
             recipient=self.approver,
-            source_key=(
-                f'period-close:overkill-archive:{self.active_period.id}:{self.approver.id}:'
-                f'{self.identifier.id}:{closed_at.isoformat()}'
-            ),
+            source_key=f'lucky-draw:overkill-remaining:{self.active_period.id}:{overkill.id}',
         )
-        self.assertEqual(notification.title, 'Overkill archived into closed period')
+        self.assertEqual(notification.title, 'Overkill still remaining')
         self.assertIn(
-            f'Identifier {self.identifier.number} leftover overkill of 200.00 was archived as a ticket',
+            f'Identifier {self.identifier.number} still has overkill amount of 200.00',
             notification.message,
         )
-        self.assertEqual(notification.action_href, '/archive')
-        self.assertTrue(
-            LedgerAllocation.objects.filter(
-                ledger=reserve_ledger,
-                amount=Decimal('200.00'),
-            ).exists()
-        )
+        self.assertEqual(notification.action_href, '/spill-over')
+        self.assertTrue(Overflow.objects.filter(id=overkill.id, status=Overflow.STATUS_OVERKILL).exists())
 
-    def test_period_close_archives_overkill_into_cso_ticket_rows(self):
+    def test_lucky_draw_announcement_keeps_overkill_rows_unarchived(self):
         third_identifier = Identifier.objects.create(number='398')
         seed_ticket = Ticket.objects.create(customer_name='Archive Overkill Seed', created_by=self.approver)
         seed_transaction = Transaction.objects.create(
@@ -3531,27 +3538,24 @@ class PrivateWorkflowAPITests(APITestCase):
             ).exists()
         )
 
-        self.active_period.close()
-
-        archive_ticket = Ticket.objects.filter(
-            created_by=self.approver,
-            notes=f"Reserve archive for {self.active_period.name}",
-        ).latest('created_at')
-        archive_transaction = archive_ticket.transactions.get(identifier=third_identifier)
-        self.assertEqual(archive_transaction.total_amount, Decimal('160.00'))
-        archive_cso = Overflow.objects.get(
-            transaction=archive_transaction,
-            identifier=third_identifier,
-            status=Overflow.STATUS_CSO,
-            resolution_type=Overflow.RESOLUTION_RESERVE_CONSUMED,
+        announce_response = self.client.post(
+            f'/api/periods/{self.active_period.id}/lucky-draw/',
+            {'number': '123456'},
+            format='json',
         )
-        self.assertEqual(archive_cso.amount_to_approve, Decimal('200.00'))
+
+        self.assertEqual(announce_response.status_code, status.HTTP_201_CREATED)
+        remaining_overkill = Overflow.objects.get(
+            identifier=third_identifier,
+            owner=self.approver,
+            period=self.active_period,
+            status=Overflow.STATUS_OVERKILL,
+        )
+        self.assertEqual(remaining_overkill.amount_to_approve, Decimal('200.00'))
         self.assertFalse(
-            Overflow.objects.filter(
-                identifier=third_identifier,
-                owner=self.approver,
-                period=self.active_period,
-                status=Overflow.STATUS_OVERKILL,
+            Ticket.objects.filter(
+                created_by=self.approver,
+                notes=f"Reserve archive for {self.active_period.name}",
             ).exists()
         )
 
