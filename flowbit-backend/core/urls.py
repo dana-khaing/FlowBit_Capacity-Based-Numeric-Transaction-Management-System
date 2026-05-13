@@ -9,6 +9,7 @@ from .views import (
     OverflowViewSet,
     OverflowNotificationViewSet,
     UserNotificationViewSet,
+    SupportCaseViewSet,
     AuditLogViewSet,
     CollaboratorViewSet,
     UserManagementViewSet,
@@ -40,6 +41,7 @@ router.register(r'transactions', TransactionViewSet)
 router.register(r'overflows', OverflowViewSet)
 router.register(r'overflow-notifications', OverflowNotificationViewSet)
 router.register(r'notifications', UserNotificationViewSet, basename='notifications')
+router.register(r'support-cases', SupportCaseViewSet, basename='support-case')
 router.register(r'audit-logs', AuditLogViewSet)
 router.register(r'collaborators', CollaboratorViewSet)
 router.register(r'users', UserManagementViewSet, basename='user-management')

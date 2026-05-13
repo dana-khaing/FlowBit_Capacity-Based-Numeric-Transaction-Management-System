@@ -32,6 +32,8 @@ from core.models import (
     Collaborator,
     Ticket,
     Transaction,
+    SupportCase,
+    SupportMessage,
 )
 from flowbit_backend.db_config import build_database_config
 
@@ -1856,6 +1858,88 @@ class PrivateWorkspaceTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(response.data['detail'], 'Lucky draw number cannot be changed after the period ends.')
+
+    def test_user_support_case_list_is_scoped_to_owner(self):
+        case_one = SupportCase.objects.create(
+            created_by=self.user_one,
+            subject='User One Case',
+            last_message_at=timezone.now(),
+        )
+        case_two = SupportCase.objects.create(
+            created_by=self.user_two,
+            subject='User Two Case',
+            last_message_at=timezone.now(),
+        )
+        SupportMessage.objects.create(support_case=case_one, sender=self.user_one, body='User one message')
+        SupportMessage.objects.create(support_case=case_two, sender=self.user_two, body='User two message')
+
+        self.client.force_authenticate(user=self.user_one)
+        response = self.client.get('/api/support-cases/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        subjects = {item['subject'] for item in response.data}
+        self.assertEqual(subjects, {'User One Case'})
+
+    def test_admin_can_view_all_support_cases(self):
+        case_one = SupportCase.objects.create(
+            created_by=self.user_one,
+            subject='User One Case',
+            last_message_at=timezone.now(),
+        )
+        case_two = SupportCase.objects.create(
+            created_by=self.user_two,
+            subject='User Two Case',
+            last_message_at=timezone.now(),
+        )
+        SupportMessage.objects.create(support_case=case_one, sender=self.user_one, body='User one message')
+        SupportMessage.objects.create(support_case=case_two, sender=self.user_two, body='User two message')
+
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.get('/api/support-cases/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        subjects = {item['subject'] for item in response.data}
+        self.assertEqual(subjects, {'User One Case', 'User Two Case'})
+
+    def test_user_can_create_support_case_with_initial_message(self):
+        self.client.force_authenticate(user=self.user_one)
+        response = self.client.post('/api/support-cases/', {
+            'subject': 'Ticket issue',
+            'message': 'I need help with a ticket.',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        support_case = SupportCase.objects.get(subject='Ticket issue')
+        self.assertEqual(support_case.created_by, self.user_one)
+        self.assertEqual(support_case.messages.count(), 1)
+        self.assertEqual(support_case.messages.first().body, 'I need help with a ticket.')
+
+    def test_case_can_be_replied_closed_and_reopened_by_both_sides(self):
+        support_case = SupportCase.objects.create(
+            created_by=self.user_one,
+            subject='Need overflow help',
+            last_message_at=timezone.now(),
+        )
+        SupportMessage.objects.create(support_case=support_case, sender=self.user_one, body='Initial issue')
+
+        self.client.force_authenticate(user=self.admin_user)
+        admin_reply = self.client.post(
+            f'/api/support-cases/{support_case.id}/reply/',
+            {'message': 'Please try again now.'},
+            format='json',
+        )
+        self.assertEqual(admin_reply.status_code, status.HTTP_200_OK)
+
+        self.client.force_authenticate(user=self.user_one)
+        close_response = self.client.post(f'/api/support-cases/{support_case.id}/close/', {}, format='json')
+        self.assertEqual(close_response.status_code, status.HTTP_200_OK)
+
+        reopen_response = self.client.post(f'/api/support-cases/{support_case.id}/reopen/', {}, format='json')
+        self.assertEqual(reopen_response.status_code, status.HTTP_200_OK)
+
+        support_case.refresh_from_db()
+        self.assertEqual(support_case.status, SupportCase.STATUS_OPEN)
+        self.assertEqual(support_case.messages.count(), 2)
 
     def test_lucky_draw_winners_report_returns_matching_tickets_and_approved_overflows(self):
         winning_identifier = Identifier.objects.create(number='456')

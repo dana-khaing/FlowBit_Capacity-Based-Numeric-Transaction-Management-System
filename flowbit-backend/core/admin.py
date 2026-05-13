@@ -8,6 +8,8 @@ from .models import (
     IdentifierCapacityAdjustment,
     OverflowNotification,
     UserNotification,
+    SupportCase,
+    SupportMessage,
     Transaction,
     LedgerAllocation,
     Overflow,
@@ -206,6 +208,28 @@ class UserNotificationAdmin(admin.ModelAdmin):
     list_display = ('recipient', 'category', 'level', 'title', 'created_by', 'period', 'read_at', 'created_at')
     list_filter = ('category', 'level', 'period', 'created_at')
     search_fields = ('recipient__username', 'title', 'message', 'created_by__username')
+
+
+class SupportMessageInline(admin.TabularInline):
+    model = SupportMessage
+    extra = 0
+    readonly_fields = ('sender', 'body', 'created_at')
+    can_delete = False
+
+
+@admin.register(SupportCase)
+class SupportCaseAdmin(admin.ModelAdmin):
+    list_display = ('subject', 'created_by', 'status', 'closed_by', 'last_message_at', 'created_at')
+    list_filter = ('status', 'created_at', 'closed_at')
+    search_fields = ('subject', 'created_by__username', 'messages__body')
+    inlines = [SupportMessageInline]
+
+
+@admin.register(SupportMessage)
+class SupportMessageAdmin(admin.ModelAdmin):
+    list_display = ('support_case', 'sender', 'created_at')
+    list_filter = ('created_at',)
+    search_fields = ('support_case__subject', 'sender__username', 'body')
 
 
 @admin.register(Collaborator)
