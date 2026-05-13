@@ -10,7 +10,13 @@ import { usePeriodState } from "@/components/period/use-period-state";
 import { Button } from "@/components/ui/button";
 import { ProfileAvatar } from "@/components/profile/profile-avatar";
 import { fetchCurrentUser, getStoredUser, logoutFromBackend, type AuthUser } from "@/lib/auth-client";
-import { fetchNotificationSummary, markNotificationRead, type FlowBitNotification } from "@/lib/notification-client";
+import {
+  dispatchNotificationsUpdated,
+  fetchNotificationSummary,
+  FLOWBIT_NOTIFICATIONS_UPDATED_EVENT,
+  markNotificationRead,
+  type FlowBitNotification,
+} from "@/lib/notification-client";
 
 type AppHeaderProps = {
   onMenuClick: () => void;
@@ -36,6 +42,20 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
     fetchNotificationSummary().then(setNotificationSummary).catch(() => {
       // Header can stay quiet if notification fetch fails.
     });
+  }, []);
+
+  useEffect(() => {
+    async function refreshNotifications() {
+      try {
+        const nextSummary = await fetchNotificationSummary();
+        setNotificationSummary(nextSummary);
+      } catch {
+        // Header can stay quiet if notification fetch fails.
+      }
+    }
+
+    window.addEventListener(FLOWBIT_NOTIFICATIONS_UPDATED_EVENT, refreshNotifications);
+    return () => window.removeEventListener(FLOWBIT_NOTIFICATIONS_UPDATED_EVENT, refreshNotifications);
   }, []);
 
   async function handleLogout() {
@@ -65,6 +85,7 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
         await markNotificationRead(notification.id);
         const nextSummary = await fetchNotificationSummary();
         setNotificationSummary(nextSummary);
+        dispatchNotificationsUpdated();
       }
     } catch {
       // Let navigation continue.

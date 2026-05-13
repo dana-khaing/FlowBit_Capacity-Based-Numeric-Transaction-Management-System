@@ -22,6 +22,8 @@ export type FlowBitNotificationSummary = {
   recent: FlowBitNotification[];
 };
 
+export const FLOWBIT_NOTIFICATIONS_UPDATED_EVENT = "flowbit:notifications-updated";
+
 function authHeaders() {
   const token = getStoredToken();
   if (!token) {
@@ -76,4 +78,11 @@ export async function broadcastNotification(payload: {
     headers: authHeaders(),
     body: JSON.stringify(payload),
   });
+}
+
+export function dispatchNotificationsUpdated() {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.dispatchEvent(new Event(FLOWBIT_NOTIFICATIONS_UPDATED_EVENT));
 }

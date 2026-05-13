@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { fetchCurrentUser, getStoredUser, type AuthUser } from "@/lib/auth-client";
 import {
+  dispatchNotificationsUpdated,
   broadcastNotification,
   fetchNotifications,
   markAllNotificationsRead,
@@ -104,15 +105,28 @@ export function NotificationPage() {
 
   async function handleMarkAllRead() {
     setIsSubmitting(true);
+    const readAt = new Date().toISOString();
+    setNotifications((current) =>
+      current
+        .map((notification) => ({
+          ...notification,
+          is_read: true,
+          read_at: notification.read_at ?? readAt,
+        }))
+        .filter((notification) => !showUnreadOnly || !notification.is_read),
+    );
+    dispatchNotificationsUpdated();
     try {
       await markAllNotificationsRead();
       setToast({ type: "success", message: "Notifications marked as read." });
+      dispatchNotificationsUpdated();
       await loadNotifications(showUnreadOnly);
     } catch (error) {
       setToast({
         type: "error",
         message: error instanceof Error ? error.message : "Request failed.",
       });
+      await loadNotifications(showUnreadOnly);
     } finally {
       setIsSubmitting(false);
     }
@@ -134,6 +148,7 @@ export function NotificationPage() {
       });
       setBroadcastForm({ title: "", message: "", action_href: "", level: "INFO" });
       setToast({ type: "success", message: "Announcement sent to all users." });
+      dispatchNotificationsUpdated();
       await loadNotifications(showUnreadOnly);
     } catch (error) {
       setToast({
@@ -159,23 +174,42 @@ export function NotificationPage() {
       >
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
           <article className="rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Inbox</p>
-                <h2 className="mt-2 text-2xl font-semibold text-stone-950">All notifications</h2>
-                <p className="mt-2 text-sm text-stone-500">System alerts and admin announcements are grouped by date for your account.</p>
-              </div>
-              <div className="flex flex-wrap gap-2">
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Inbox</p>
+                  <h2 className="mt-2 text-2xl font-semibold text-stone-950">All notifications</h2>
+                  <p className="mt-2 text-sm text-stone-500">System alerts and admin announcements are grouped by date for your account.</p>
+                </div>
                 <Button
-                  variant={showUnreadOnly ? "default" : "outline"}
-                  className="rounded-[18px]"
-                  onClick={() => setShowUnreadOnly((current) => !current)}
+                  className="h-10 self-start rounded-[14px] border border-stone-900/10 bg-stone-100 px-3 text-sm font-semibold text-stone-700 shadow-none hover:bg-stone-200"
+                  onClick={handleMarkAllRead}
+                  disabled={isSubmitting}
                 >
-                  {showUnreadOnly ? "Showing unread" : "Unread only"}
+                  <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white text-stone-600">
+                    <FontAwesomeIcon icon={faCheckDouble} className="h-3.5 w-3.5" />
+                  </span>
+                  <span className="whitespace-nowrap">Mark all read</span>
                 </Button>
-                <Button variant="outline" className="rounded-[18px]" onClick={handleMarkAllRead} disabled={isSubmitting}>
-                  <FontAwesomeIcon icon={faCheckDouble} className="h-4 w-4" />
-                  Mark all read
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 rounded-[20px] border border-stone-900/8 bg-stone-50 p-2">
+                <span className="px-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-500">
+                  Filter
+                </span>
+                <Button
+                  variant={showUnreadOnly ? "ghost" : "default"}
+                  className="rounded-[16px]"
+                  onClick={() => setShowUnreadOnly(false)}
+                >
+                  All
+                </Button>
+                <Button
+                  variant={showUnreadOnly ? "default" : "ghost"}
+                  className="rounded-[16px]"
+                  onClick={() => setShowUnreadOnly(true)}
+                >
+                  Unread
                 </Button>
               </div>
             </div>
