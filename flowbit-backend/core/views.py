@@ -78,6 +78,7 @@ from .serializers import (
     UserNotificationSerializer,
     NotificationBroadcastSerializer,
     SupportCaseSerializer,
+    SupportCaseDetailSerializer,
     SupportCaseCreateSerializer,
     SupportCaseReplySerializer,
     TicketSerializer,
@@ -2805,6 +2806,8 @@ class SupportCaseViewSet(viewsets.ModelViewSet):
             return SupportCaseCreateSerializer
         if self.action == 'reply':
             return SupportCaseReplySerializer
+        if self.action == 'retrieve':
+            return SupportCaseDetailSerializer
         return SupportCaseSerializer
 
     def create(self, request, *args, **kwargs):

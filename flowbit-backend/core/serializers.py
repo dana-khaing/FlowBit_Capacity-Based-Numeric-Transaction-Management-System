@@ -871,8 +871,6 @@ class SupportCaseSerializer(serializers.ModelSerializer):
     closed_by_username = serializers.CharField(source='closed_by.username', read_only=True, allow_null=True)
     message_count = serializers.SerializerMethodField()
     last_message_preview = serializers.SerializerMethodField()
-    messages = SupportMessageSerializer(many=True, read_only=True)
-
     class Meta:
         model = SupportCase
         fields = [
@@ -891,7 +889,6 @@ class SupportCaseSerializer(serializers.ModelSerializer):
             'last_message_preview',
             'created_at',
             'updated_at',
-            'messages',
         ]
         read_only_fields = fields
 
@@ -938,6 +935,14 @@ class SupportCaseReplySerializer(serializers.Serializer):
         if not value:
             raise serializers.ValidationError('Message is required.')
         return value
+
+
+class SupportCaseDetailSerializer(SupportCaseSerializer):
+    messages = SupportMessageSerializer(many=True, read_only=True)
+
+    class Meta(SupportCaseSerializer.Meta):
+        fields = SupportCaseSerializer.Meta.fields + ['messages']
+        read_only_fields = fields
 
 
 class TransactionSerializer(serializers.ModelSerializer):
