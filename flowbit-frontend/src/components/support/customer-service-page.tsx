@@ -16,6 +16,15 @@ import {
 
 type StatusFilter = "ALL" | "OPEN" | "CLOSED";
 
+function normalizeSupportCaseDetail(
+  caseDetail: FlowBitSupportCaseDetail | (FlowBitSupportCase & { messages?: FlowBitSupportCaseDetail["messages"] }),
+) {
+  return {
+    ...caseDetail,
+    messages: caseDetail.messages ?? [],
+  };
+}
+
 function formatDateTime(value: string | null) {
   if (!value) {
     return "-";
@@ -87,7 +96,7 @@ export function CustomerServicePage() {
     fetchSupportCase(selectedCaseId)
       .then((detail) => {
         if (active) {
-          setSelectedCase(detail);
+          setSelectedCase(normalizeSupportCaseDetail(detail));
         }
       })
       .catch((error) => {
@@ -129,6 +138,7 @@ export function CustomerServicePage() {
 
   const openCount = cases.filter((item) => item.status === "OPEN").length;
   const closedCount = cases.filter((item) => item.status === "CLOSED").length;
+  const selectedMessages = selectedCase?.messages ?? [];
 
   async function handleCreateCase() {
     setIsSaving(true);
@@ -157,9 +167,10 @@ export function CustomerServicePage() {
     setIsSaving(true);
     setErrorMessage("");
     try {
-      const updated = await replyToSupportCase(selectedCaseId, replyDraft);
+      await replyToSupportCase(selectedCaseId, replyDraft);
       setReplyDraft("");
-      setSelectedCase(updated);
+      const refreshedCase = await fetchSupportCase(selectedCaseId);
+      setSelectedCase(normalizeSupportCaseDetail(refreshedCase));
       await loadCases(selectedCaseId);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to send reply.");
@@ -176,11 +187,13 @@ export function CustomerServicePage() {
     setIsSaving(true);
     setErrorMessage("");
     try {
-      const updated =
+      await (
         selectedCase.status === "OPEN"
           ? await closeSupportCase(selectedCaseId)
-          : await reopenSupportCase(selectedCaseId);
-      setSelectedCase(updated);
+          : await reopenSupportCase(selectedCaseId)
+      );
+      const refreshedCase = await fetchSupportCase(selectedCaseId);
+      setSelectedCase(normalizeSupportCaseDetail(refreshedCase));
       await loadCases(selectedCaseId);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to update case status.");
@@ -341,8 +354,8 @@ export function CustomerServicePage() {
                     <div className="rounded-[20px] border border-dashed border-stone-300 bg-stone-50 px-4 py-8 text-center text-sm text-stone-500">
                       Loading case detail...
                     </div>
-                  ) : selectedCase.messages.length ? (
-                    selectedCase.messages.map((message) => {
+                  ) : selectedMessages.length ? (
+                    selectedMessages.map((message) => {
                       const isMine = message.sender === currentUser?.id;
                       return (
                         <div
