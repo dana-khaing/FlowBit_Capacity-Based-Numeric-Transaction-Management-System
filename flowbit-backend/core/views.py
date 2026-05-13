@@ -242,6 +242,19 @@ def helper_name_from_request(request):
     return DEFAULT_HELPER_NAME
 
 
+def notification_action_href_for_recipient(recipient, action_href):
+    if not action_href:
+        return action_href
+
+    if action_href.startswith('/admin/'):
+        return action_href if is_admin_user(recipient) else '/notifications'
+
+    if action_href == '/periods':
+        return action_href if is_admin_user(recipient) else '/'
+
+    return action_href
+
+
 def create_user_notification(
     *,
     recipient,
@@ -259,7 +272,7 @@ def create_user_notification(
         'level': level,
         'title': title,
         'message': message,
-        'action_href': action_href,
+        'action_href': notification_action_href_for_recipient(recipient, action_href),
         'created_by': created_by,
         'period': period,
     }
@@ -278,7 +291,7 @@ def create_user_notification(
         level=level,
         title=title,
         message=message,
-        action_href=action_href,
+        action_href=notification_action_href_for_recipient(recipient, action_href),
         created_by=created_by,
         period=period,
     )
