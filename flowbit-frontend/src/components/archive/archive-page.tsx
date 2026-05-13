@@ -679,9 +679,24 @@ export function ArchivePage() {
                           </button>
                         ))}
 
-                        {!luckyDrawWinners.tickets.length && !luckyDrawWinners.approved_overflows.length ? (
+                        {luckyDrawWinners.overkill_overflows.map((overflow) => (
+                          <div
+                            key={overflow.id}
+                            className="w-full rounded-[22px] border border-sky-200 bg-sky-50 px-4 py-4 text-left"
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="text-base font-semibold text-stone-950">{overflow.identifier_number}</span>
+                              <span className="text-sm font-medium text-stone-600">{formatTicketAmount(overflow.amount)}</span>
+                            </div>
+                            <p className="mt-2 text-sm text-stone-600">
+                              Overkill{overflow.collaborator_names.length ? ` · ${overflow.collaborator_names.join(", ")}` : ""}
+                            </p>
+                          </div>
+                        ))}
+
+                        {!luckyDrawWinners.tickets.length && !luckyDrawWinners.approved_overflows.length && !luckyDrawWinners.overkill_overflows.length ? (
                           <div className="rounded-[22px] border border-dashed border-stone-300 bg-stone-50 px-4 py-4 text-sm text-stone-500">
-                            No winning tickets or approved spill over for this period.
+                            No winning tickets, approved spill over, or overkill for this period.
                           </div>
                         ) : null}
                       </div>

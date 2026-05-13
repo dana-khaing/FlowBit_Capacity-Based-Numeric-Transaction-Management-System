@@ -48,6 +48,14 @@ export type FlowBitLuckyDrawWinners = {
     approved_at: string | null;
     collaborator_names: string[];
   }>;
+  overkill_overflows: Array<{
+    id: number;
+    identifier_number: string;
+    ticket_number: string | null;
+    amount: string;
+    approved_at: string | null;
+    collaborator_names: string[];
+  }>;
 };
 
 type CurrentPeriodResponse = FlowBitPeriod;
