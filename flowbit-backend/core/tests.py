@@ -1686,19 +1686,21 @@ class PrivateWorkspaceTests(APITestCase):
 
         create_response = self.client.post(
             f'/api/periods/{self.period.id}/lucky-draw/',
-            {'number': '123456'},
+            {'number': '123456', 'reveal_time': '15:30'},
             format='json',
         )
         update_response = self.client.patch(
             f'/api/periods/{self.period.id}/lucky-draw/',
-            {'number': '654321'},
+            {'number': '654321', 'reveal_time': '16:30'},
             format='json',
         )
 
         self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(update_response.status_code, status.HTTP_200_OK)
         lucky_draw = LuckyDraw.objects.get(period=self.period)
+        self.period.refresh_from_db()
         self.assertEqual(lucky_draw.number, '654321')
+        self.assertEqual(self.period.lucky_draw_reveal_time.strftime('%H:%M'), '16:30')
         self.assertTrue(
             AuditLog.objects.filter(action='period.lucky_draw_created', target_id=lucky_draw.id).exists()
         )
