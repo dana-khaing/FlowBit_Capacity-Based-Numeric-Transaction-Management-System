@@ -322,9 +322,9 @@ export function CustomerServicePage() {
             </div>
           </section>
 
-          <section className="rounded-[26px] border border-stone-900/8 bg-white p-4 shadow-[0_8px_24px_rgba(28,24,20,0.04)]">
+          <section className="rounded-[26px] border border-stone-900/8 bg-white p-4 shadow-[0_8px_24px_rgba(28,24,20,0.04)] xl:h-[72vh] xl:min-h-[720px]">
             {selectedCase ? (
-              <div className="flex h-full flex-col">
+              <div className="flex h-full min-h-[520px] flex-col">
                 <div className="flex flex-col gap-4 border-b border-stone-900/8 pb-4 sm:flex-row sm:items-start sm:justify-between">
                   <div className="space-y-2">
                     <div className="flex flex-wrap items-center gap-2">
@@ -349,7 +349,7 @@ export function CustomerServicePage() {
                   </button>
                 </div>
 
-                <div className="mt-4 flex-1 space-y-4 overflow-y-auto pr-1 thin-scrollbar">
+                <div className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto pr-1 thin-scrollbar">
                   {isLoadingDetail ? (
                     <div className="rounded-[20px] border border-dashed border-stone-300 bg-stone-50 px-4 py-8 text-center text-sm text-stone-500">
                       Loading case detail...
@@ -396,9 +396,9 @@ export function CustomerServicePage() {
                       value={replyDraft}
                       onChange={(event) => setReplyDraft(event.target.value)}
                       placeholder="Write your reply"
-                      rows={4}
+                      rows={1}
                       disabled={selectedCase.status === "CLOSED"}
-                      className="w-full rounded-[20px] border border-stone-900/10 bg-[#f8f6f2] px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-400 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="h-20 w-full resize-none rounded-[18px] border border-stone-900/10 bg-[#f8f6f2] px-4 py-2.5 text-sm leading-5 text-stone-900 outline-none transition focus:border-stone-400 disabled:cursor-not-allowed disabled:opacity-60"
                     />
                     <div className="flex justify-end">
                       <button
