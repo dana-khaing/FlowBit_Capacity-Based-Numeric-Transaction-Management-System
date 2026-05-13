@@ -552,7 +552,7 @@ export default function Home() {
                   </p>
                 </div>
 
-                <div className="grid gap-4 lg:grid-cols-2">
+                <div className="grid gap-4 xl:grid-cols-3">
                   <div className="rounded-[22px] border border-stone-900/8 bg-white/80 px-4 py-4">
                     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Winner tickets</p>
                     <div className="thin-scrollbar mt-3 max-h-[320px] space-y-3 overflow-y-auto pr-1">
@@ -604,6 +604,28 @@ export default function Home() {
                         </button>
                       )) : (
                         <p className="text-sm text-stone-500">No approved spill over winners.</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="rounded-[22px] border border-stone-900/8 bg-white/80 px-4 py-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Overkill</p>
+                    <div className="thin-scrollbar mt-3 max-h-[320px] space-y-3 overflow-y-auto pr-1">
+                      {luckyDrawWinners.overkill_overflows.length ? luckyDrawWinners.overkill_overflows.map((overflow) => (
+                        <div
+                          key={overflow.id}
+                          className="w-full rounded-[18px] border border-sky-200 bg-sky-50 px-4 py-3 text-left"
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-base font-semibold text-stone-950">{overflow.identifier_number}</span>
+                            <span className="text-sm text-stone-600">{formatAmount(overflow.amount)}</span>
+                          </div>
+                          <p className="mt-2 text-sm text-stone-500">
+                            {overflow.collaborator_names.length ? overflow.collaborator_names.join(", ") : "Overkill"}
+                          </p>
+                        </div>
+                      )) : (
+                        <p className="text-sm text-stone-500">No overkill winners.</p>
                       )}
                     </div>
                   </div>
