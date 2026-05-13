@@ -21,5 +21,5 @@ export const primaryNavItems = [
   { label: "Profile", href: "/profile", icon: faIdBadge },
   { label: "Export", href: "/export-ledger", icon: faFolderOpen },
   { label: "Archive", href: "/archive", icon: faBoxArchive },
-  { label: "Contact Support", href: "/contact-support", icon: faHeadset },
+  { label: "Customer Service", href: "/contact-support", icon: faHeadset },
 ] as const;
