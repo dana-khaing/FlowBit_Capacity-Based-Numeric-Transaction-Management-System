@@ -56,18 +56,6 @@ class Period(models.Model):
             closed_at = timezone.now()
 
         with transaction.atomic():
-            _auto_close_pending_overflows(
-                self,
-                closed_at=closed_at,
-                helper_name=helper_name,
-                closing_user=closing_user,
-            )
-            _create_reserve_archive_tickets(
-                self,
-                closed_at=closed_at,
-                closing_user=closing_user,
-            )
-
             self.is_open = False
             self.closed_at = closed_at
 
@@ -907,7 +895,7 @@ def _auto_close_pending_overflows(period, closed_at=None, helper_name=DEFAULT_HE
         if collaborator is not None:
             overflow.collaborators.set([collaborator])
         if overflow.owner_id:
-            _create_period_close_notification(
+            _create_period_event_notification(
                 recipient=overflow.owner,
                 title='Pending spill over auto-approved',
                 message=(
@@ -921,6 +909,93 @@ def _auto_close_pending_overflows(period, closed_at=None, helper_name=DEFAULT_HE
                 source_key=f'period-close:pending-overflow:{period.id}:{overflow.id}',
                 created_by=closing_user,
             )
+
+
+def _announce_pending_overflows(period, announced_at=None, helper_name=DEFAULT_HELPER_NAME, announcing_user=None):
+    if period is None:
+        return
+
+    announced_at = announced_at or timezone.now()
+    pending_overflows = Overflow.objects.filter(
+        _period_overflow_filter(period),
+        status=Overflow.STATUS_TCSO,
+    ).select_related(
+        'identifier',
+        'owner',
+        'owner__profile',
+    ).distinct()
+
+    for overflow in pending_overflows:
+        collaborator = _get_or_create_auto_close_collaborator(
+            owner=overflow.owner,
+            closing_user=announcing_user,
+            helper_name=helper_name,
+        )
+        overflow.status = Overflow.STATUS_CSO
+        overflow.amount_to_approve = overflow.excess_amount
+        overflow.approved_at = announced_at
+        overflow.helper_name = (
+            collaborator.full_name.strip()
+            if collaborator and collaborator.full_name.strip()
+            else helper_name or DEFAULT_HELPER_NAME
+        )
+        overflow.resolution_type = Overflow.RESOLUTION_AUTO_CLOSE
+        overflow.save(update_fields=[
+            'status',
+            'amount_to_approve',
+            'approved_at',
+            'helper_name',
+            'resolution_type',
+        ])
+        if collaborator is not None:
+            overflow.collaborators.set([collaborator])
+        if overflow.owner_id:
+            _create_period_event_notification(
+                recipient=overflow.owner,
+                title='Pending spill over auto-approved',
+                message=(
+                    f"Identifier {overflow.identifier.number} spill over of "
+                    f"{(overflow.amount_to_approve or overflow.excess_amount or Decimal('0.00')).quantize(Decimal('0.01'))} "
+                    f"was auto-approved when the lucky draw was announced for {period.name}."
+                ),
+                period=period,
+                level=UserNotification.LEVEL_WARNING,
+                action_href='/spill-over',
+                source_key=f'lucky-draw:pending-overflow:{period.id}:{overflow.id}',
+                created_by=announcing_user,
+            )
+
+
+def _notify_remaining_overkill_for_lucky_draw(period, announced_at=None, announcing_user=None):
+    if period is None:
+        return
+
+    remaining_overkill_rows = Overflow.objects.filter(
+        _period_overflow_filter(period),
+        status=Overflow.STATUS_OVERKILL,
+    ).select_related(
+        'identifier',
+        'owner',
+        'owner__profile',
+    ).distinct()
+
+    for overflow in remaining_overkill_rows:
+        if not overflow.owner_id:
+            continue
+        amount = overflow.amount_to_approve or overflow.excess_amount or Decimal('0.00')
+        _create_period_event_notification(
+            recipient=overflow.owner,
+            title='Overkill still remaining',
+            message=(
+                f"Identifier {overflow.identifier.number} still has overkill amount of "
+                f"{amount.quantize(Decimal('0.01'))} after the lucky draw was announced for {period.name}."
+            ),
+            period=period,
+            level=UserNotification.LEVEL_WARNING,
+            action_href='/spill-over',
+            source_key=f'lucky-draw:overkill-remaining:{period.id}:{overflow.id}',
+            created_by=announcing_user,
+        )
 
 
 class Ticket(models.Model):
@@ -1396,7 +1471,7 @@ class UserNotification(models.Model):
         return self
 
 
-def _create_period_close_notification(
+def _create_period_event_notification(
     *,
     recipient,
     title,
@@ -1874,7 +1949,7 @@ def _create_reserve_archive_tickets(period, closed_at=None, closing_user=None):
                 amount=item['allocation_amount'],
                 consuming_transaction=transaction_obj,
             )
-            _create_period_close_notification(
+            _create_period_event_notification(
                 recipient=owner,
                 title='Overkill archived into closed period',
                 message=(

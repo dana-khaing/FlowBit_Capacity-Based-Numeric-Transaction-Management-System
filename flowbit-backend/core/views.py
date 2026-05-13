@@ -50,6 +50,8 @@ from .models import (
     IdentifierCapacityAdjustment,
     IdentifierLedgerFreeze,
     _is_returned_pending_overflow,
+    _announce_pending_overflows,
+    _notify_remaining_overkill_for_lucky_draw,
     _retry_pending_overflows,
     preview_transaction_allocation,
     refund_overflow,
@@ -805,6 +807,17 @@ class PeriodViewSet(viewsets.ModelViewSet):
             period=period,
             announced_by=request.user,
             announced_at=timezone.now(),
+        )
+        _announce_pending_overflows(
+            period,
+            announced_at=lucky_draw.announced_at,
+            helper_name=request.user.username,
+            announcing_user=request.user,
+        )
+        _notify_remaining_overkill_for_lucky_draw(
+            period,
+            announced_at=lucky_draw.announced_at,
+            announcing_user=request.user,
         )
         broadcast_user_notification(
             title='Lucky draw announced',
