@@ -1913,6 +1913,18 @@ class PrivateWorkspaceTests(APITestCase):
         self.assertEqual(support_case.created_by, self.user_one)
         self.assertEqual(support_case.messages.count(), 1)
         self.assertEqual(support_case.messages.first().body, 'I need help with a ticket.')
+        self.assertTrue(
+            UserNotification.objects.filter(
+                recipient=self.admin_user,
+                title='New customer service case',
+            ).exists()
+        )
+        self.assertFalse(
+            UserNotification.objects.filter(
+                recipient=self.user_one,
+                title='New customer service case',
+            ).exists()
+        )
 
     def test_case_can_be_replied_closed_and_reopened_by_both_sides(self):
         support_case = SupportCase.objects.create(
@@ -1940,6 +1952,12 @@ class PrivateWorkspaceTests(APITestCase):
         support_case.refresh_from_db()
         self.assertEqual(support_case.status, SupportCase.STATUS_OPEN)
         self.assertEqual(support_case.messages.count(), 2)
+        self.assertTrue(
+            UserNotification.objects.filter(
+                recipient=self.user_one,
+                title='Admin replied to your case',
+            ).exists()
+        )
 
     def test_lucky_draw_winners_report_returns_matching_tickets_and_approved_overflows(self):
         winning_identifier = Identifier.objects.create(number='456')

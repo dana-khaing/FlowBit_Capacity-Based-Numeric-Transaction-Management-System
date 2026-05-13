@@ -393,13 +393,13 @@ def notify_support_case_participants(
     include_admins=False,
     action_href='/contact-support',
 ):
-    recipients = {support_case.created_by}
+    recipients = set()
+    if support_case.created_by_id != actor.id:
+        recipients.add(support_case.created_by)
     if include_admins:
         recipients.update(
             User.objects.filter(profile__role='admin', is_active=True).exclude(pk=actor.pk)
         )
-    else:
-        recipients.discard(actor)
 
     for recipient in recipients:
         create_user_notification(
