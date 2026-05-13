@@ -24,6 +24,8 @@ from .models import (
     Collaborator,
     Ticket,
     IdentifierCapacityAdjustment,
+    SupportCase,
+    SupportMessage,
     _from_allocation_basis_amount,
 )
 
@@ -828,6 +830,114 @@ class NotificationBroadcastSerializer(serializers.Serializer):
     message = serializers.CharField()
     action_href = serializers.CharField(max_length=255, required=False, allow_blank=True)
     level = serializers.ChoiceField(choices=UserNotification.LEVEL_CHOICES, default=UserNotification.LEVEL_INFO)
+
+
+class SupportMessageSerializer(serializers.ModelSerializer):
+    sender_username = serializers.CharField(source='sender.username', read_only=True)
+    sender_full_name = serializers.SerializerMethodField()
+    sender_role = serializers.SerializerMethodField()
+    is_admin_sender = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SupportMessage
+        fields = [
+            'id',
+            'sender',
+            'sender_username',
+            'sender_full_name',
+            'sender_role',
+            'is_admin_sender',
+            'body',
+            'created_at',
+        ]
+        read_only_fields = fields
+
+    def get_sender_full_name(self, obj):
+        return obj.sender.get_full_name().strip() or obj.sender.username
+
+    def get_sender_role(self, obj):
+        profile = getattr(obj.sender, 'profile', None)
+        return getattr(profile, 'role', '')
+
+    def get_is_admin_sender(self, obj):
+        profile = getattr(obj.sender, 'profile', None)
+        return bool(profile and profile.role == 'admin')
+
+
+class SupportCaseSerializer(serializers.ModelSerializer):
+    created_by_username = serializers.CharField(source='created_by.username', read_only=True)
+    created_by_full_name = serializers.SerializerMethodField()
+    created_by_role = serializers.SerializerMethodField()
+    closed_by_username = serializers.CharField(source='closed_by.username', read_only=True, allow_null=True)
+    message_count = serializers.SerializerMethodField()
+    last_message_preview = serializers.SerializerMethodField()
+    messages = SupportMessageSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = SupportCase
+        fields = [
+            'id',
+            'subject',
+            'status',
+            'created_by',
+            'created_by_username',
+            'created_by_full_name',
+            'created_by_role',
+            'closed_at',
+            'closed_by',
+            'closed_by_username',
+            'last_message_at',
+            'message_count',
+            'last_message_preview',
+            'created_at',
+            'updated_at',
+            'messages',
+        ]
+        read_only_fields = fields
+
+    def get_created_by_full_name(self, obj):
+        return obj.created_by.get_full_name().strip() or obj.created_by.username
+
+    def get_created_by_role(self, obj):
+        profile = getattr(obj.created_by, 'profile', None)
+        return getattr(profile, 'role', '')
+
+    def get_message_count(self, obj):
+        annotated_count = getattr(obj, 'message_count_annotated', None)
+        if annotated_count is not None:
+            return annotated_count
+        return obj.messages.count()
+
+    def get_last_message_preview(self, obj):
+        last_message = obj.messages.order_by('-created_at', '-id').first()
+        return last_message.body[:140] if last_message else ''
+
+
+class SupportCaseCreateSerializer(serializers.Serializer):
+    subject = serializers.CharField(max_length=160)
+    message = serializers.CharField()
+
+    def validate_subject(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError('Subject is required.')
+        return value
+
+    def validate_message(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError('Message is required.')
+        return value
+
+
+class SupportCaseReplySerializer(serializers.Serializer):
+    message = serializers.CharField()
+
+    def validate_message(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError('Message is required.')
+        return value
 
 
 class TransactionSerializer(serializers.ModelSerializer):

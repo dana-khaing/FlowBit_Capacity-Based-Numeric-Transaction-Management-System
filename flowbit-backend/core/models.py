@@ -1376,6 +1376,77 @@ class UserNotification(models.Model):
         return self
 
 
+class SupportCase(models.Model):
+    STATUS_OPEN = 'OPEN'
+    STATUS_CLOSED = 'CLOSED'
+    STATUS_CHOICES = (
+        (STATUS_OPEN, 'Open'),
+        (STATUS_CLOSED, 'Closed'),
+    )
+
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='support_cases',
+    )
+    subject = models.CharField(max_length=160)
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_OPEN)
+    closed_at = models.DateTimeField(null=True, blank=True)
+    closed_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        related_name='closed_support_cases',
+        null=True,
+        blank=True,
+    )
+    last_message_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-last_message_at', '-updated_at', '-id']
+
+    def __str__(self):
+        return f"{self.subject} ({self.created_by.username})"
+
+    def close(self, closed_by=None, save=True):
+        self.status = self.STATUS_CLOSED
+        self.closed_at = timezone.now()
+        self.closed_by = closed_by
+        if save:
+            self.save(update_fields=['status', 'closed_at', 'closed_by', 'updated_at'])
+        return self
+
+    def reopen(self, save=True):
+        self.status = self.STATUS_OPEN
+        self.closed_at = None
+        self.closed_by = None
+        if save:
+            self.save(update_fields=['status', 'closed_at', 'closed_by', 'updated_at'])
+        return self
+
+
+class SupportMessage(models.Model):
+    support_case = models.ForeignKey(
+        SupportCase,
+        on_delete=models.CASCADE,
+        related_name='messages',
+    )
+    sender = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='support_messages',
+    )
+    body = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at', 'id']
+
+    def __str__(self):
+        return f"{self.sender.username}: {self.support_case.subject}"
+
+
 def _grant_capacity_adjustment(overflow, amount, adjustment_type, helper_name):
     if amount == 0:
         return None

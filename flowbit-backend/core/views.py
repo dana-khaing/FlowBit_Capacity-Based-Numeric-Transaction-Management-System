@@ -39,6 +39,8 @@ from .models import (
     Overflow,
     OverflowNotification,
     UserNotification,
+    SupportCase,
+    SupportMessage,
     AuditLog,
     Profile,
     PasswordResetToken,
@@ -75,6 +77,9 @@ from .serializers import (
     OverflowNotificationSerializer,
     UserNotificationSerializer,
     NotificationBroadcastSerializer,
+    SupportCaseSerializer,
+    SupportCaseCreateSerializer,
+    SupportCaseReplySerializer,
     TicketSerializer,
     TicketDetailSerializer,
     AuditLogSerializer,
@@ -376,6 +381,36 @@ def notify_user_account_change(
         source_key=source_key,
         created_by=request_user,
     )
+
+
+def notify_support_case_participants(
+    *,
+    support_case,
+    actor,
+    title,
+    message,
+    include_admins=False,
+    action_href='/contact-support',
+):
+    recipients = {support_case.created_by}
+    if include_admins:
+        recipients.update(
+            User.objects.filter(profile__role='admin', is_active=True).exclude(pk=actor.pk)
+        )
+    else:
+        recipients.discard(actor)
+
+    for recipient in recipients:
+        create_user_notification(
+            recipient=recipient,
+            title=title,
+            message=message,
+            category=UserNotification.CATEGORY_SYSTEM,
+            level=UserNotification.LEVEL_IMPORTANT,
+            action_href=action_href,
+            source_key=f"support-case:{support_case.id}:{title.lower().replace(' ', '-')}:{recipient.id}:{timezone.now().isoformat()}",
+            created_by=actor,
+        )
 
 
 def _ticket_refund_summary(ticket):
@@ -2742,6 +2777,169 @@ class UserNotificationViewSet(viewsets.ReadOnlyModelViewSet):
             {'message': 'Notification sent to all users.', 'recipient_count': created_count},
             status=status.HTTP_201_CREATED,
         )
+
+
+class SupportCaseViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = SupportCase.objects.select_related(
+            'created_by',
+            'created_by__profile',
+            'closed_by',
+        ).prefetch_related(
+            Prefetch(
+                'messages',
+                queryset=SupportMessage.objects.select_related('sender', 'sender__profile').order_by('created_at', 'id'),
+            )
+        ).annotate(
+            message_count_annotated=Count('messages', distinct=True),
+        )
+
+        if is_admin_user(self.request.user):
+            return queryset
+        return queryset.filter(created_by=self.request.user)
+
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return SupportCaseCreateSerializer
+        if self.action == 'reply':
+            return SupportCaseReplySerializer
+        return SupportCaseSerializer
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        with db_transaction.atomic():
+            support_case = SupportCase.objects.create(
+                created_by=request.user,
+                subject=serializer.validated_data['subject'],
+                last_message_at=timezone.now(),
+            )
+            SupportMessage.objects.create(
+                support_case=support_case,
+                sender=request.user,
+                body=serializer.validated_data['message'],
+            )
+
+        support_case = self.get_queryset().get(pk=support_case.pk)
+        if is_admin_user(request.user):
+            notify_support_case_participants(
+                support_case=support_case,
+                actor=request.user,
+                title='Customer service case created',
+                message=f"A customer service case was opened: {support_case.subject}.",
+                include_admins=False,
+            )
+        else:
+            notify_support_case_participants(
+                support_case=support_case,
+                actor=request.user,
+                title='New customer service case',
+                message=f"{request.user.get_full_name().strip() or request.user.username} opened a new case: {support_case.subject}.",
+                include_admins=True,
+            )
+        record_audit_log(
+            request,
+            'support.case_created',
+            target=support_case,
+            details=f"Created support case '{support_case.subject}'",
+            changes={'case_id': support_case.id, 'subject': support_case.subject},
+        )
+        return Response(SupportCaseSerializer(support_case).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='reply')
+    def reply(self, request, pk=None):
+        support_case = self.get_object()
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        with db_transaction.atomic():
+            message = SupportMessage.objects.create(
+                support_case=support_case,
+                sender=request.user,
+                body=serializer.validated_data['message'],
+            )
+            support_case.last_message_at = message.created_at
+            support_case.save(update_fields=['last_message_at', 'updated_at'])
+
+        actor_label = request.user.get_full_name().strip() or request.user.username
+        if is_admin_user(request.user):
+            notify_support_case_participants(
+                support_case=support_case,
+                actor=request.user,
+                title='Admin replied to your case',
+                message=f"{actor_label} replied to your customer service case: {support_case.subject}.",
+                include_admins=False,
+            )
+        else:
+            notify_support_case_participants(
+                support_case=support_case,
+                actor=request.user,
+                title='Customer replied to a case',
+                message=f"{actor_label} replied to case: {support_case.subject}.",
+                include_admins=True,
+            )
+        record_audit_log(
+            request,
+            'support.case_replied',
+            target=support_case,
+            details=f"Replied to support case '{support_case.subject}'",
+            changes={'case_id': support_case.id, 'message_id': message.id},
+        )
+        support_case = self.get_queryset().get(pk=support_case.pk)
+        return Response(SupportCaseSerializer(support_case).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='close')
+    def close_case(self, request, pk=None):
+        support_case = self.get_object()
+        if support_case.status == SupportCase.STATUS_CLOSED:
+            return Response({'detail': 'Case is already closed.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        support_case.close(closed_by=request.user)
+        actor_label = request.user.get_full_name().strip() or request.user.username
+        notify_support_case_participants(
+            support_case=support_case,
+            actor=request.user,
+            title='Customer service case closed',
+            message=f"{actor_label} closed case: {support_case.subject}.",
+            include_admins=not is_admin_user(request.user),
+        )
+        record_audit_log(
+            request,
+            'support.case_closed',
+            target=support_case,
+            details=f"Closed support case '{support_case.subject}'",
+            changes={'case_id': support_case.id},
+        )
+        support_case = self.get_queryset().get(pk=support_case.pk)
+        return Response(SupportCaseSerializer(support_case).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='reopen')
+    def reopen_case(self, request, pk=None):
+        support_case = self.get_object()
+        if support_case.status == SupportCase.STATUS_OPEN:
+            return Response({'detail': 'Case is already open.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        support_case.reopen()
+        actor_label = request.user.get_full_name().strip() or request.user.username
+        notify_support_case_participants(
+            support_case=support_case,
+            actor=request.user,
+            title='Customer service case reopened',
+            message=f"{actor_label} reopened case: {support_case.subject}.",
+            include_admins=not is_admin_user(request.user),
+        )
+        record_audit_log(
+            request,
+            'support.case_reopened',
+            target=support_case,
+            details=f"Reopened support case '{support_case.subject}'",
+            changes={'case_id': support_case.id},
+        )
+        support_case = self.get_queryset().get(pk=support_case.pk)
+        return Response(SupportCaseSerializer(support_case).data, status=status.HTTP_200_OK)
 
 
 class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
