@@ -2464,6 +2464,11 @@ class OverflowViewSet(viewsets.ModelViewSet):
         period = Period.get_open_period()
         if not period:
             return Response({"detail": "No open period available."}, status=status.HTTP_400_BAD_REQUEST)
+        if ticket_creation_locked_for_period(period):
+            return Response(
+                {"detail": "Ticket creation is locked after the lucky draw is announced."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         identifier_id = request.data.get('identifier')
         amount_str = request.data.get('amount')
