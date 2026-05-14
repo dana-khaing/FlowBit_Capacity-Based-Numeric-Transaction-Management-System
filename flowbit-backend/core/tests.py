@@ -1343,6 +1343,37 @@ class PrivateWorkspaceTests(APITestCase):
             ).exists()
         )
 
+    @patch('core.views.timezone.now')
+    def test_period_update_cannot_change_pre_close_time_after_lucky_draw_announcement(self, mocked_now):
+        triggered_at = timezone.make_aware(datetime(2028, 1, 1, 15, 30, 0))
+        mocked_now.return_value = timezone.make_aware(datetime(2028, 1, 1, 15, 31, 0))
+        self.period.end_date = timezone.make_aware(datetime(2028, 1, 1, 23, 0, 0))
+        self.period.pre_close_time = time(hour=15, minute=30)
+        self.period.save(update_fields=['end_date', 'pre_close_time'])
+        self.user_one_ledger.end_date = self.period.end_date
+        self.user_one_ledger.save(update_fields=['end_date'])
+        self.period.apply_pre_close(triggered_at=triggered_at, acting_user=self.admin_user)
+        LuckyDraw.objects.create(
+            period=self.period,
+            number='123456',
+            announced_by=self.admin_user,
+            announced_at=timezone.now(),
+        )
+
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.patch(
+            f'/api/periods/{self.period.id}/',
+            {'pre_close_time': '16:30'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('pre_close_time', response.data)
+        self.period.refresh_from_db()
+        self.user_one_ledger.refresh_from_db()
+        self.assertIsNotNone(self.period.pre_closed_at)
+        self.assertFalse(self.user_one_ledger.is_active)
+
     @patch('core.management.commands.close_expired_periods.timezone.now')
     def test_close_expired_periods_command_closes_ledgers_with_same_timestamp(self, mocked_now):
         closed_at = timezone.make_aware(datetime(2028, 1, 2, 12, 5, 0))

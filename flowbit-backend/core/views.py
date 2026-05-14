@@ -723,6 +723,16 @@ class PeriodViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         before = snapshot_instance(self.get_object())
         instance = self.get_object()
+        existing_lucky_draw = getattr(instance, 'lucky_draw', None)
+        requested_pre_close_time = self.request.data.get('pre_close_time')
+        if (
+            requested_pre_close_time not in (None, '')
+            and existing_lucky_draw is not None
+            and existing_lucky_draw.announced_at
+        ):
+            raise DRFValidationError({
+                'pre_close_time': 'Pre-close time cannot be changed after the lucky draw is announced.',
+            })
         was_pre_closed = instance.pre_closed_at is not None
         pre_close_undone = False
         period = serializer.save()
