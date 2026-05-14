@@ -724,6 +724,7 @@ class PeriodViewSet(viewsets.ModelViewSet):
         before = snapshot_instance(self.get_object())
         instance = self.get_object()
         was_pre_closed = instance.pre_closed_at is not None
+        pre_close_undone = False
         period = serializer.save()
         lucky_draw = getattr(period, 'lucky_draw', None)
         if (
@@ -733,6 +734,7 @@ class PeriodViewSet(viewsets.ModelViewSet):
             and not (lucky_draw and lucky_draw.announced_at)
         ):
             period.undo_pre_close()
+            pre_close_undone = True
             notify_period_pre_close_change(
                 period=period,
                 title='Period pre-close removed',
@@ -755,6 +757,17 @@ class PeriodViewSet(viewsets.ModelViewSet):
             details=f"Updated period '{period.name}'",
             changes={'before': before, 'after': snapshot_instance(period)},
         )
+        if pre_close_undone:
+            record_audit_log(
+                self.request,
+                'period.pre_close_undone',
+                target=period,
+                details=f"Removed pre-close state for period '{period.name}' by moving pre-close time later",
+                changes={
+                    'before': before,
+                    'after': snapshot_instance(period),
+                },
+            )
 
     def perform_destroy(self, instance):
         try:
