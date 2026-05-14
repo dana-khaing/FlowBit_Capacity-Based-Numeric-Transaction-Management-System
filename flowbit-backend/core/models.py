@@ -82,22 +82,26 @@ class Period(models.Model):
         triggered_at = triggered_at or self.pre_close_at
 
         with transaction.atomic():
-            _announce_pending_overflows(
-                self,
-                announced_at=triggered_at,
-                helper_name=helper_name,
-                announcing_user=acting_user,
-            )
-            _notify_remaining_overkill_for_lucky_draw(
-                self,
-                announced_at=triggered_at,
-                announcing_user=acting_user,
-            )
             self.ledgers.filter(is_active=True).update(
                 is_active=False,
                 closed_at=triggered_at,
             )
             self.pre_closed_at = triggered_at
+            if save:
+                self.save(update_fields=['pre_closed_at'])
+
+        return self
+
+    def undo_pre_close(self, save=True):
+        if self.pre_closed_at is None:
+            return self
+
+        with transaction.atomic():
+            self.ledgers.filter(closed_at=self.pre_closed_at).update(
+                is_active=True,
+                closed_at=None,
+            )
+            self.pre_closed_at = None
             if save:
                 self.save(update_fields=['pre_closed_at'])
 
