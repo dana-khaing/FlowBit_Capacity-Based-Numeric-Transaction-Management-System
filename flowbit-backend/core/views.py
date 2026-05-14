@@ -703,7 +703,17 @@ class PeriodViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         before = snapshot_instance(self.get_object())
+        instance = self.get_object()
+        was_pre_closed = instance.pre_closed_at is not None
         period = serializer.save()
+        lucky_draw = getattr(period, 'lucky_draw', None)
+        if (
+            was_pre_closed
+            and period.pre_closed_at is not None
+            and timezone.now() < period.pre_close_at
+            and not (lucky_draw and lucky_draw.announced_at)
+        ):
+            period.undo_pre_close()
         period.sync_reserve_ledgers()
         notify_period_change(
             period=period,
@@ -869,6 +879,21 @@ class PeriodViewSet(viewsets.ModelViewSet):
             period=period,
             announced_by=request.user,
             announced_at=announced_at,
+        )
+        period.ledgers.filter(is_active=True).update(
+            is_active=False,
+            closed_at=lucky_draw.announced_at,
+        )
+        _announce_pending_overflows(
+            period,
+            announced_at=lucky_draw.announced_at,
+            helper_name=request.user.username,
+            announcing_user=request.user,
+        )
+        _notify_remaining_overkill_for_lucky_draw(
+            period,
+            announced_at=lucky_draw.announced_at,
+            announcing_user=request.user,
         )
         broadcast_user_notification(
             title='Lucky draw announced',
