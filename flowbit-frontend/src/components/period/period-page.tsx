@@ -532,10 +532,14 @@ export function PeriodPage() {
                 <h2 className="mt-2 text-2xl font-semibold text-stone-950">Current period</h2>
               </div>
               <span className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] ${
-                activePeriod ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+                activePeriod
+                  ? activePeriod.pre_closed_at
+                    ? "bg-amber-100 text-amber-800"
+                    : "bg-emerald-100 text-emerald-700"
+                  : "bg-amber-100 text-amber-700"
               }`}>
                 <FontAwesomeIcon icon={activePeriod ? faCircleDot : faLock} className="h-3 w-3" />
-                {activePeriod ? "Active" : "Locked"}
+                {activePeriod ? (activePeriod.pre_closed_at ? "Pre-closed" : "Active") : "Locked"}
               </span>
             </div>
 
@@ -562,9 +566,9 @@ export function PeriodPage() {
                       Pre-close {formatClockValue(activePeriod.pre_close_time)}
                     </span>
                   </div>
-                  {activePeriod.pre_close_at ? (
+                  {activePeriod.pre_closed_at ? (
                     <p className="text-sm text-stone-500">
-                      Pre-close applied {new Date(activePeriod.pre_close_at).toLocaleString("en-GB")}
+                      Pre-close applied {new Date(activePeriod.pre_closed_at).toLocaleString("en-GB")}
                     </p>
                   ) : null}
                 </div>
