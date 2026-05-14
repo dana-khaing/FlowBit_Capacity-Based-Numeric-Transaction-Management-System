@@ -255,6 +255,21 @@ def period_locked_after_lucky_draw(period):
     return ticket_creation_locked_for_period(period)
 
 
+def ensure_period_pre_close_state(period, request=None):
+    if period is None or not period.is_open or period.pre_closed_at is not None:
+        return period
+
+    if timezone.now() < period.pre_close_at:
+        return period
+
+    period.apply_pre_close(
+        triggered_at=period.pre_close_at,
+        helper_name=helper_name_from_request(request) if request is not None else DEFAULT_HELPER_NAME,
+        acting_user=request.user if request is not None and getattr(request, 'user', None) and request.user.is_authenticated else None,
+    )
+    return period
+
+
 def notification_action_href_for_recipient(recipient, action_href):
     if not action_href:
         return action_href
@@ -596,6 +611,38 @@ class PeriodViewSet(viewsets.ModelViewSet):
     serializer_class = PeriodSerializer
     permission_classes = [IsAuthenticatedReadOnlyOrAdminWrite]
 
+    def _auto_apply_due_pre_close_periods(self, request):
+        now = timezone.now()
+        due_periods = [
+            period
+            for period in Period.objects.filter(is_open=True, pre_closed_at__isnull=True).order_by('end_date', 'id')
+            if period.pre_close_at <= now
+        ]
+
+        if not due_periods:
+            return
+
+        pre_closed_periods = []
+        with db_transaction.atomic():
+            for period in due_periods:
+                period.apply_pre_close(
+                    triggered_at=period.pre_close_at,
+                    helper_name=helper_name_from_request(request),
+                    acting_user=request.user if getattr(request, 'user', None) and request.user.is_authenticated else None,
+                )
+                pre_closed_periods.append({
+                    'id': period.id,
+                    'name': period.name,
+                    'pre_closed_at': serialize_audit_value(period.pre_close_at),
+                })
+
+        record_audit_log(
+            request,
+            'period.pre_closed',
+            details=f"Applied pre-close to {len(pre_closed_periods)} period(s)",
+            changes={'pre_closed_periods': pre_closed_periods},
+        )
+
     def _auto_close_expired_periods(self, request):
         now = timezone.now()
         expired_periods = list(
@@ -697,6 +744,7 @@ class PeriodViewSet(viewsets.ModelViewSet):
         )
 
     def get_queryset(self):
+        self._auto_apply_due_pre_close_periods(self.request)
         self._auto_close_expired_periods(self.request)
         queryset = super().get_queryset()
         section = (self.request.query_params.get('section') or '').strip().lower()
@@ -718,6 +766,7 @@ class PeriodViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='current')
     def current_period(self, request):
+        self._auto_apply_due_pre_close_periods(request)
         self._auto_close_expired_periods(request)
         period = Period.get_open_period()
         if not period:
@@ -731,6 +780,7 @@ class PeriodViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get', 'post', 'patch', 'delete'], url_path='lucky-draw')
     def lucky_draw(self, request, pk=None):
+        self._auto_apply_due_pre_close_periods(request)
         period = self.get_object()
         lucky_draw = getattr(period, 'lucky_draw', None)
 
