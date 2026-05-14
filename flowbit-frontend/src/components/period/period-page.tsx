@@ -92,6 +92,13 @@ function formatTimeValue(value: string) {
   return `${String(parsed.getHours()).padStart(2, "0")}:${String(parsed.getMinutes()).padStart(2, "0")}`;
 }
 
+function formatClockValue(value?: string | null) {
+  if (!value) {
+    return "--:--";
+  }
+  return value.slice(0, 5);
+}
+
 function formatDateInputValue(value: string) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
@@ -532,7 +539,16 @@ export function PeriodPage() {
                       <FontAwesomeIcon icon={faClock} className="h-3.5 w-3.5" />
                       Close time {formatTimeValue(activePeriod.end_date)}
                     </span>
+                    <span className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-2">
+                      <FontAwesomeIcon icon={faClock} className="h-3.5 w-3.5" />
+                      Pre-close {formatClockValue(activePeriod.pre_close_time)}
+                    </span>
                   </div>
+                  {activePeriod.pre_close_at ? (
+                    <p className="text-sm text-stone-500">
+                      Pre-close applied {new Date(activePeriod.pre_close_at).toLocaleString("en-GB")}
+                    </p>
+                  ) : null}
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -722,7 +738,7 @@ export function PeriodPage() {
                 <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Active period actions</p>
                 <h3 className="mt-2 text-xl font-semibold text-stone-950">Edit end date and close time</h3>
                 <p className="mt-3 text-sm leading-6 text-stone-500">
-                  Update the active period end date or close the period now from this panel.
+                  Update the active period end date, pre-close time, or close the period now from this panel.
                 </p>
 
                 <div className="mt-5 space-y-4">
