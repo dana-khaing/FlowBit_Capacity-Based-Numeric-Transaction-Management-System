@@ -1416,6 +1416,37 @@ class PrivateWorkspaceTests(APITestCase):
         self.assertEqual(transaction.total_amount, Decimal('1000.00'))
         self.assertEqual(allocation_total, Decimal('1250.00'))
 
+    def test_ticket_creation_is_blocked_after_lucky_draw_announcement(self):
+        LuckyDraw.objects.create(
+            period=self.period,
+            number='123456',
+            announced_by=self.admin_user,
+            announced_at=timezone.now(),
+        )
+        self.client.force_authenticate(user=self.user_one)
+
+        ticket_response = self.client.post('/api/tickets/create-with-items/', {
+            'customer_name': 'Locked Customer',
+            'items': [
+                {'identifier': self.identifier.id, 'amount': '50.00'},
+            ],
+        }, format='json')
+        transaction_response = self.client.post('/api/transactions/', {
+            'identifier': self.identifier.id,
+            'total_amount': '50.00',
+        }, format='json')
+        preview_response = self.client.post('/api/transactions/allocation-preview/', {
+            'identifier': self.identifier.id,
+            'total_amount': '50.00',
+        }, format='json')
+
+        self.assertEqual(ticket_response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(ticket_response.data['detail'], 'Ticket creation is locked after the lucky draw is announced.')
+        self.assertEqual(transaction_response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(transaction_response.data['detail'], 'Ticket creation is locked after the lucky draw is announced.')
+        self.assertEqual(preview_response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(preview_response.data['detail'], 'Ticket creation is locked after the lucky draw is announced.')
+
     def test_ticket_creation_rejects_empty_items_without_creating_ticket(self):
         self.client.force_authenticate(user=self.user_one)
 
