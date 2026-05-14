@@ -7,6 +7,8 @@ export type FlowBitPeriod = {
   start_date: string;
   end_date: string;
   close_time?: string | null;
+  pre_close_time?: string | null;
+  pre_close_at?: string | null;
   is_open: boolean;
   lucky_draw_display?: string;
   lucky_draw_revealed?: boolean;
@@ -101,6 +103,7 @@ export async function createPeriod(payload: {
   start_date: string;
   end_date: string;
   close_time: string;
+  pre_close_time: string;
   is_open?: boolean;
 }) {
   return apiRequest<FlowBitPeriod>("/periods/", {
@@ -118,6 +121,7 @@ export async function updatePeriod(
   payload: {
     end_date?: string;
     close_time?: string;
+    pre_close_time?: string;
     lucky_draw_reveal_time?: string;
     admin_override_code?: string;
   },
