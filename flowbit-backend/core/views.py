@@ -247,8 +247,8 @@ def helper_name_from_request(request):
 def ticket_creation_locked_for_period(period):
     if period is None:
         return False
-    lucky_draw = getattr(period, 'lucky_draw', None)
-    return bool(lucky_draw and lucky_draw.announced_at)
+    ensure_period_pre_close_state(period)
+    return period.pre_closed_at is not None
 
 
 def period_locked_after_lucky_draw(period):
@@ -865,26 +865,10 @@ class PeriodViewSet(viewsets.ModelViewSet):
             period.lucky_draw_reveal_time = reveal_time
             period.save(update_fields=['lucky_draw_reveal_time'])
         announced_at = timezone.now()
-        reveal_at = period.lucky_draw_reveal_at
         lucky_draw = serializer.save(
             period=period,
             announced_by=request.user,
             announced_at=announced_at,
-        )
-        period.ledgers.filter(is_active=True).update(
-            is_active=False,
-            closed_at=lucky_draw.announced_at,
-        )
-        _announce_pending_overflows(
-            period,
-            announced_at=lucky_draw.announced_at,
-            helper_name=request.user.username,
-            announcing_user=request.user,
-        )
-        _notify_remaining_overkill_for_lucky_draw(
-            period,
-            announced_at=lucky_draw.announced_at,
-            announcing_user=request.user,
         )
         broadcast_user_notification(
             title='Lucky draw announced',
@@ -1171,7 +1155,7 @@ class LedgerViewSet(viewsets.ModelViewSet):
         period = serializer.validated_data.get('period')
         if ticket_creation_locked_for_period(period):
             return Response(
-                {"detail": "Ledger creation is locked after the lucky draw is announced for this period."},
+                {"detail": "Ledger creation is locked after the pre-close time is reached for this period."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -1310,7 +1294,7 @@ class LedgerViewSet(viewsets.ModelViewSet):
             )
         if period_locked_after_lucky_draw(ledger.period):
             return Response(
-                {"detail": "Ledger reopen is locked after the lucky draw is announced for this period."},
+                {"detail": "Ledger reopen is locked after the pre-close time is reached for this period."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -2188,7 +2172,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
             )
         if ticket_creation_locked_for_period(open_period):
             return Response(
-                {"detail": "Ticket creation is locked after the lucky draw is announced."},
+                {"detail": "Ticket creation is locked after the pre-close time is reached."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -2273,7 +2257,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
             )
         if ticket_creation_locked_for_period(open_period):
             return Response(
-                {"detail": "Ticket creation is locked after the lucky draw is announced."},
+                {"detail": "Ticket creation is locked after the pre-close time is reached."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -2539,7 +2523,7 @@ class OverflowViewSet(viewsets.ModelViewSet):
             return Response({"detail": "No open period available."}, status=status.HTTP_400_BAD_REQUEST)
         if ticket_creation_locked_for_period(period):
             return Response(
-                {"detail": "Ticket creation is locked after the lucky draw is announced."},
+                {"detail": "Ticket creation is locked after the pre-close time is reached."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -2735,7 +2719,7 @@ class OverflowViewSet(viewsets.ModelViewSet):
         if action_name in {'refund_overflow_only', 'refund_transaction', 'refund_ticket'}:
             if period_locked_after_lucky_draw(overflow.period):
                 return Response(
-                    {"detail": "Refunds are locked after the lucky draw is announced for this period."},
+                    {"detail": "Refunds are locked after the pre-close time is reached for this period."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             if not is_admin_user(request.user) and override_profile is None:
@@ -4963,7 +4947,7 @@ class TicketRefundView(APIView):
         ticket_period = ticket.transactions.first().period if ticket.transactions.exists() else None
         if period_locked_after_lucky_draw(ticket_period):
             return Response(
-                {"detail": "Refunds are locked after the lucky draw is announced for this period."},
+                {"detail": "Refunds are locked after the pre-close time is reached for this period."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -5317,7 +5301,7 @@ class CreateTicketWithTransactions(APIView):
             )
         if ticket_creation_locked_for_period(open_period):
             return Response(
-                {"detail": "Ticket creation is locked after the lucky draw is announced."},
+                {"detail": "Ticket creation is locked after the pre-close time is reached."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
