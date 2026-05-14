@@ -111,7 +111,7 @@ export function PeriodPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [toast, setToast] = useState<ToastState>(null);
   const [form, setForm] = useState<PeriodFormState>(buildDefaultPeriodFormState);
-  const [activePeriodForm, setActivePeriodForm] = useState({ end_date: "", close_time: "23:00" });
+  const [activePeriodForm, setActivePeriodForm] = useState({ end_date: "", close_time: "23:00", pre_close_time: "15:30" });
   const [reopenForm, setReopenForm] = useState({ end_date: "", close_time: "23:00" });
   const [showActionConfirm, setShowActionConfirm] = useState(false);
   const [pendingAction, setPendingAction] = useState<PeriodAction>(null);
@@ -163,7 +163,7 @@ export function PeriodPage() {
 
   useEffect(() => {
     if (!activePeriod) {
-      setActivePeriodForm({ end_date: "", close_time: "23:00" });
+      setActivePeriodForm({ end_date: "", close_time: "23:00", pre_close_time: "15:30" });
       setLuckyDraw(null);
       setLuckyDrawNumber("");
       setLuckyDrawRevealTime("15:30");
@@ -173,6 +173,7 @@ export function PeriodPage() {
     setActivePeriodForm({
       end_date: formatDateInputValue(activePeriod.end_date),
       close_time: formatTimeValue(activePeriod.end_date),
+      pre_close_time: (activePeriod.pre_close_time ?? "15:30").slice(0, 5),
     });
   }, [activePeriod]);
 
@@ -288,6 +289,7 @@ export function PeriodPage() {
         await updatePeriod(activePeriod.id, {
           end_date: activePeriodForm.end_date,
           close_time: activePeriodForm.close_time || "23:00",
+          pre_close_time: activePeriodForm.pre_close_time || "15:30",
         });
         setToast({ type: "success", message: "Period updated successfully." });
       } else if (pendingAction === "close" && activePeriod) {
@@ -743,6 +745,18 @@ export function PeriodPage() {
                       value={activePeriodForm.close_time}
                       onChange={(event) =>
                         setActivePeriodForm((current) => ({ ...current, close_time: event.target.value }))
+                      }
+                      disabled={isSaving}
+                    />
+                  </label>
+
+                  <label className="block space-y-2">
+                    <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Pre-close time</span>
+                    <Input
+                      type="time"
+                      value={activePeriodForm.pre_close_time}
+                      onChange={(event) =>
+                        setActivePeriodForm((current) => ({ ...current, pre_close_time: event.target.value }))
                       }
                       disabled={isSaving}
                     />
