@@ -1939,6 +1939,37 @@ class PrivateWorkspaceTests(APITestCase):
         self.assertEqual(len(response.data), 1)
         self.assertEqual(response.data[0]['title'], 'User One Notice')
 
+    @patch('core.signals.push_notification_event')
+    def test_user_notification_create_triggers_realtime_push(self, mocked_push):
+        with self.captureOnCommitCallbacks(execute=True):
+            UserNotification.objects.create(
+                recipient=self.user_one,
+                category=UserNotification.CATEGORY_SYSTEM,
+                level=UserNotification.LEVEL_INFO,
+                title='Realtime check',
+                message='Notification should push after commit.',
+            )
+
+        mocked_push.assert_called_once()
+
+    @patch('core.views.push_notification_refresh_for_user')
+    def test_mark_all_notifications_read_triggers_realtime_refresh(self, mocked_refresh):
+        notification = UserNotification.objects.create(
+            recipient=self.user_one,
+            category=UserNotification.CATEGORY_SYSTEM,
+            level=UserNotification.LEVEL_WARNING,
+            title='Unread notification',
+            message='Mark all read should refresh live state.',
+        )
+
+        self.client.force_authenticate(user=self.user_one)
+        response = self.client.post('/api/notifications/mark-all-read/', {}, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        notification.refresh_from_db()
+        self.assertIsNotNone(notification.read_at)
+        mocked_refresh.assert_called_once_with(self.user_one.id)
+
     def test_admin_can_broadcast_notification_to_all_users(self):
         self.client.force_authenticate(user=self.admin_user)
         response = self.client.post('/api/notifications/broadcast/', {
