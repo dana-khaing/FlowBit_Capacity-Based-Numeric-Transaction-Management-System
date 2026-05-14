@@ -9,6 +9,7 @@ export type FlowBitPeriod = {
   close_time?: string | null;
   pre_close_time?: string | null;
   pre_close_at?: string | null;
+  pre_closed_at?: string | null;
   is_open: boolean;
   lucky_draw_display?: string;
   lucky_draw_revealed?: boolean;
