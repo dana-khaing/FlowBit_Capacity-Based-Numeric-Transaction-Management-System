@@ -111,6 +111,10 @@ function comparePeriods(left: FlowBitPeriod, right: FlowBitPeriod) {
   return new Date(right.start_date).getTime() - new Date(left.start_date).getTime();
 }
 
+function isPreCloseTimeValid(preCloseTime: string, closeTime: string) {
+  return preCloseTime < closeTime;
+}
+
 export function PeriodPage() {
   const [user, setUser] = useState<AuthUser | null>(getStoredUser());
   const [periods, setPeriods] = useState<FlowBitPeriod[]>([]);
@@ -235,6 +239,11 @@ export function PeriodPage() {
       return;
     }
 
+    if (!isPreCloseTimeValid(form.pre_close_time || "15:30", form.close_time || "23:00")) {
+      setToast({ type: "error", message: "Pre-close time must be earlier than the period close time." });
+      return;
+    }
+
     setPendingAction("create");
     setIsSaving(true);
     try {
@@ -280,6 +289,15 @@ export function PeriodPage() {
 
     if (pendingAction === "update" && !activePeriodForm.end_date) {
       setToast({ type: "error", message: "End date is required." });
+      setShowActionConfirm(false);
+      return;
+    }
+
+    if (
+      pendingAction === "update" &&
+      !isPreCloseTimeValid(activePeriodForm.pre_close_time || "15:30", activePeriodForm.close_time || "23:00")
+    ) {
+      setToast({ type: "error", message: "Pre-close time must be earlier than the period close time." });
       setShowActionConfirm(false);
       return;
     }
