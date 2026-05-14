@@ -13,7 +13,9 @@ import {
   dispatchNotificationsUpdated,
   broadcastNotification,
   fetchNotifications,
+  FLOWBIT_NOTIFICATIONS_UPDATED_EVENT,
   markAllNotificationsRead,
+  startNotificationsLiveSync,
   type FlowBitNotification,
 } from "@/lib/notification-client";
 
@@ -88,6 +90,19 @@ export function NotificationPage() {
 
   useEffect(() => {
     void loadNotifications(showUnreadOnly);
+  }, [showUnreadOnly]);
+
+  useEffect(() => {
+    const stopLiveSync = startNotificationsLiveSync();
+    function handleNotificationsUpdated() {
+      void loadNotifications(showUnreadOnly);
+    }
+
+    window.addEventListener(FLOWBIT_NOTIFICATIONS_UPDATED_EVENT, handleNotificationsUpdated);
+    return () => {
+      window.removeEventListener(FLOWBIT_NOTIFICATIONS_UPDATED_EVENT, handleNotificationsUpdated);
+      stopLiveSync();
+    };
   }, [showUnreadOnly]);
 
   const groupedNotifications = useMemo(() => {

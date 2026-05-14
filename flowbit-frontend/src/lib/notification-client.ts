@@ -1,4 +1,4 @@
-import { apiRequest } from "@/lib/api";
+import { apiRequest, getApiBaseUrl } from "@/lib/api";
 import { getStoredToken } from "@/lib/auth-client";
 
 export type FlowBitNotification = {
@@ -23,6 +23,10 @@ export type FlowBitNotificationSummary = {
 };
 
 export const FLOWBIT_NOTIFICATIONS_UPDATED_EVENT = "flowbit:notifications-updated";
+
+let notificationSocket: WebSocket | null = null;
+let reconnectTimer: number | null = null;
+let socketListenerCount = 0;
 
 function authHeaders() {
   const token = getStoredToken();
@@ -85,4 +89,63 @@ export function dispatchNotificationsUpdated() {
     return;
   }
   window.dispatchEvent(new Event(FLOWBIT_NOTIFICATIONS_UPDATED_EVENT));
+}
+
+function getNotificationWebSocketUrl() {
+  const token = getStoredToken();
+  if (!token) {
+    return null;
+  }
+  const baseUrl = getApiBaseUrl();
+  const wsBase = baseUrl.startsWith("https://")
+    ? baseUrl.replace(/^https:\/\//, "wss://")
+    : baseUrl.replace(/^http:\/\//, "ws://");
+  return `${wsBase}/ws/notifications/?token=${encodeURIComponent(token)}`;
+}
+
+function connectNotificationSocket() {
+  const socketUrl = getNotificationWebSocketUrl();
+  if (!socketUrl || typeof window === "undefined") {
+    return;
+  }
+  if (notificationSocket && (notificationSocket.readyState === WebSocket.OPEN || notificationSocket.readyState === WebSocket.CONNECTING)) {
+    return;
+  }
+
+  notificationSocket = new WebSocket(socketUrl);
+
+  notificationSocket.onmessage = () => {
+    dispatchNotificationsUpdated();
+  };
+
+  notificationSocket.onclose = () => {
+    notificationSocket = null;
+    if (socketListenerCount > 0) {
+      reconnectTimer = window.setTimeout(() => {
+        reconnectTimer = null;
+        connectNotificationSocket();
+      }, 2000);
+    }
+  };
+}
+
+export function startNotificationsLiveSync() {
+  if (typeof window === "undefined") {
+    return () => {};
+  }
+
+  socketListenerCount += 1;
+  connectNotificationSocket();
+
+  return () => {
+    socketListenerCount = Math.max(0, socketListenerCount - 1);
+    if (socketListenerCount === 0) {
+      if (reconnectTimer) {
+        window.clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+      notificationSocket?.close();
+      notificationSocket = null;
+    }
+  };
 }

@@ -15,6 +15,7 @@ import {
   fetchNotificationSummary,
   FLOWBIT_NOTIFICATIONS_UPDATED_EVENT,
   markNotificationRead,
+  startNotificationsLiveSync,
   type FlowBitNotification,
 } from "@/lib/notification-client";
 
@@ -42,6 +43,7 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
     fetchNotificationSummary().then(setNotificationSummary).catch(() => {
       // Header can stay quiet if notification fetch fails.
     });
+    return startNotificationsLiveSync();
   }, []);
 
   useEffect(() => {
