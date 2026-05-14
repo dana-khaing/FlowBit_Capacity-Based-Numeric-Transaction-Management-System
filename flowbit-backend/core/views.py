@@ -58,6 +58,7 @@ from .models import (
     refund_transactions,
 )
 from .audit import record_audit_log, serialize_audit_value, snapshot_instance
+from .notification_realtime import push_notification_refresh_for_user
 from .permissions import (
     IsAdminRole,
     IsAuthenticatedReadOnlyOrAdminWrite,
@@ -2997,6 +2998,7 @@ class UserNotificationViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=False, methods=['post'], url_path='mark-all-read')
     def mark_all_read(self, request):
         updated = self.get_queryset().filter(read_at__isnull=True).update(read_at=timezone.now())
+        push_notification_refresh_for_user(request.user.id)
         return Response({'message': 'Notifications marked as read.', 'updated_count': updated}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='mark-read')
