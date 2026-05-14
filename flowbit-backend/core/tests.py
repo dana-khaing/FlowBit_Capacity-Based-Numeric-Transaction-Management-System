@@ -1312,6 +1312,31 @@ class PrivateWorkspaceTests(APITestCase):
         self.assertEqual(self.user_one_ledger.closed_at, self.period.pre_close_at)
         self.assertTrue(AuditLog.objects.filter(action='period.pre_closed').exists())
 
+    @patch('core.views.timezone.now')
+    def test_period_update_can_undo_pre_close_when_moved_later(self, mocked_now):
+        triggered_at = timezone.make_aware(datetime(2028, 1, 1, 15, 30, 0))
+        mocked_now.return_value = timezone.make_aware(datetime(2028, 1, 1, 15, 31, 0))
+        self.period.end_date = timezone.make_aware(datetime(2028, 1, 1, 23, 0, 0))
+        self.period.pre_close_time = time(hour=15, minute=30)
+        self.period.save(update_fields=['end_date', 'pre_close_time'])
+        self.user_one_ledger.end_date = self.period.end_date
+        self.user_one_ledger.save(update_fields=['end_date'])
+        self.period.apply_pre_close(triggered_at=triggered_at, acting_user=self.admin_user)
+
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.patch(
+            f'/api/periods/{self.period.id}/',
+            {'pre_close_time': '16:30'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.period.refresh_from_db()
+        self.user_one_ledger.refresh_from_db()
+        self.assertIsNone(self.period.pre_closed_at)
+        self.assertTrue(self.user_one_ledger.is_active)
+        self.assertIsNone(self.user_one_ledger.closed_at)
+
     @patch('core.management.commands.close_expired_periods.timezone.now')
     def test_close_expired_periods_command_closes_ledgers_with_same_timestamp(self, mocked_now):
         closed_at = timezone.make_aware(datetime(2028, 1, 2, 12, 5, 0))
@@ -3639,7 +3664,7 @@ class PrivateWorkflowAPITests(APITestCase):
             ).exists()
         )
 
-    def test_period_pre_close_notifies_pending_overflow_auto_approval(self):
+    def test_period_pre_close_does_not_auto_approve_pending_overflow(self):
         seed_ticket = Ticket.objects.create(customer_name='Pending Draw Notice', created_by=self.approver)
         seed_transaction = Transaction.objects.create(
             ticket=seed_ticket,
@@ -3650,19 +3675,15 @@ class PrivateWorkflowAPITests(APITestCase):
         pending_overflow = Overflow.objects.get(transaction=seed_transaction, status=Overflow.STATUS_TCSO)
         self.active_period.apply_pre_close(triggered_at=timezone.now(), acting_user=self.approver)
         pending_overflow.refresh_from_db()
-        self.assertEqual(pending_overflow.status, Overflow.STATUS_CSO)
-        notification = UserNotification.objects.get(
-            recipient=self.approver,
-            source_key=f'lucky-draw:pending-overflow:{self.active_period.id}:{pending_overflow.id}',
+        self.assertEqual(pending_overflow.status, Overflow.STATUS_TCSO)
+        self.assertFalse(
+            UserNotification.objects.filter(
+                recipient=self.approver,
+                source_key=f'lucky-draw:pending-overflow:{self.active_period.id}:{pending_overflow.id}',
+            ).exists()
         )
-        self.assertEqual(notification.title, 'Pending spill over auto-approved')
-        self.assertIn(
-            f'Identifier {self.identifier.number} spill over of 206.25 was auto-approved',
-            notification.message,
-        )
-        self.assertEqual(notification.action_href, '/spill-over')
 
-    def test_period_pre_close_notifies_remaining_overkill(self):
+    def test_period_pre_close_does_not_notify_remaining_overkill(self):
         overkill = Overflow.objects.create(
             transaction=None,
             identifier=self.identifier,
@@ -3677,19 +3698,15 @@ class PrivateWorkflowAPITests(APITestCase):
         )
 
         self.active_period.apply_pre_close(triggered_at=timezone.now(), acting_user=self.approver)
-        notification = UserNotification.objects.get(
-            recipient=self.approver,
-            source_key=f'lucky-draw:overkill-remaining:{self.active_period.id}:{overkill.id}',
+        self.assertFalse(
+            UserNotification.objects.filter(
+                recipient=self.approver,
+                source_key=f'lucky-draw:overkill-remaining:{self.active_period.id}:{overkill.id}',
+            ).exists()
         )
-        self.assertEqual(notification.title, 'Overkill still remaining')
-        self.assertIn(
-            f'Identifier {self.identifier.number} still has overkill amount of 200.00',
-            notification.message,
-        )
-        self.assertEqual(notification.action_href, '/spill-over')
         self.assertTrue(Overflow.objects.filter(id=overkill.id, status=Overflow.STATUS_OVERKILL).exists())
 
-    def test_period_pre_close_keeps_overkill_rows_unarchived(self):
+    def test_lucky_draw_announcement_keeps_overkill_rows_unarchived(self):
         third_identifier = Identifier.objects.create(number='398')
         seed_ticket = Ticket.objects.create(customer_name='Archive Overkill Seed', created_by=self.approver)
         seed_transaction = Transaction.objects.create(
@@ -3737,6 +3754,69 @@ class PrivateWorkflowAPITests(APITestCase):
                 notes=f"Reserve archive for {self.active_period.name}",
             ).exists()
         )
+
+    def test_lucky_draw_announcement_notifies_pending_overflow_auto_approval(self):
+        seed_ticket = Ticket.objects.create(customer_name='Pending Draw Notice', created_by=self.approver)
+        seed_transaction = Transaction.objects.create(
+            ticket=seed_ticket,
+            identifier=self.identifier,
+            total_amount=Decimal('250.00'),
+            created_by=self.approver,
+        )
+        pending_overflow = Overflow.objects.get(transaction=seed_transaction, status=Overflow.STATUS_TCSO)
+
+        response = self.client.post(
+            f'/api/periods/{self.active_period.id}/lucky-draw/',
+            {'number': '123456'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        pending_overflow.refresh_from_db()
+        self.assertEqual(pending_overflow.status, Overflow.STATUS_CSO)
+        notification = UserNotification.objects.get(
+            recipient=self.approver,
+            source_key=f'lucky-draw:pending-overflow:{self.active_period.id}:{pending_overflow.id}',
+        )
+        self.assertEqual(notification.title, 'Pending spill over auto-approved')
+        self.assertIn(
+            f'Identifier {self.identifier.number} spill over of 206.25 was auto-approved',
+            notification.message,
+        )
+        self.assertEqual(notification.action_href, '/spill-over')
+
+    def test_lucky_draw_announcement_notifies_remaining_overkill(self):
+        overkill = Overflow.objects.create(
+            transaction=None,
+            identifier=self.identifier,
+            owner=self.approver,
+            period=self.active_period,
+            excess_amount=Decimal('200.00'),
+            status=Overflow.STATUS_OVERKILL,
+            amount_to_approve=Decimal('200.00'),
+            approved_at=timezone.now(),
+            helper_name='Helper User',
+            resolution_type=Overflow.RESOLUTION_APPROVE,
+        )
+
+        response = self.client.post(
+            f'/api/periods/{self.active_period.id}/lucky-draw/',
+            {'number': '123456'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        notification = UserNotification.objects.get(
+            recipient=self.approver,
+            source_key=f'lucky-draw:overkill-remaining:{self.active_period.id}:{overkill.id}',
+        )
+        self.assertEqual(notification.title, 'Overkill still remaining')
+        self.assertIn(
+            f'Identifier {self.identifier.number} still has overkill amount of 200.00',
+            notification.message,
+        )
+        self.assertEqual(notification.action_href, '/spill-over')
+        self.assertTrue(Overflow.objects.filter(id=overkill.id, status=Overflow.STATUS_OVERKILL).exists())
 
     def test_reserve_consumption_turns_overkill_into_cso(self):
         third_identifier = Identifier.objects.create(number='398')
