@@ -251,6 +251,10 @@ def ticket_creation_locked_for_period(period):
     return bool(lucky_draw and lucky_draw.announced_at)
 
 
+def period_locked_after_lucky_draw(period):
+    return ticket_creation_locked_for_period(period)
+
+
 def notification_action_href_for_recipient(recipient, action_href):
     if not action_href:
         return action_href
@@ -1253,6 +1257,11 @@ class LedgerViewSet(viewsets.ModelViewSet):
             return Response(
                 {"detail": "Ledger is already active"},
                 status=status.HTTP_400_BAD_REQUEST
+            )
+        if period_locked_after_lucky_draw(ledger.period):
+            return Response(
+                {"detail": "Ledger reopen is locked after the lucky draw is announced for this period."},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         end_date_value = request.data.get('end_date')
@@ -2674,6 +2683,11 @@ class OverflowViewSet(viewsets.ModelViewSet):
             return self._approve_overflow(overflow, request)
 
         if action_name in {'refund_overflow_only', 'refund_transaction', 'refund_ticket'}:
+            if period_locked_after_lucky_draw(overflow.period):
+                return Response(
+                    {"detail": "Refunds are locked after the lucky draw is announced for this period."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             if not is_admin_user(request.user) and override_profile is None:
                 return Response(
                     {"detail": "Admin override code is required for refund actions."},
@@ -4896,6 +4910,12 @@ class TicketRefundView(APIView):
         serializer = TicketRefundActionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         validated = serializer.validated_data
+        ticket_period = ticket.transactions.first().period if ticket.transactions.exists() else None
+        if period_locked_after_lucky_draw(ticket_period):
+            return Response(
+                {"detail": "Refunds are locked after the lucky draw is announced for this period."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         override_profile = get_request_admin_override_profile(request)
         if not is_admin_user(request.user) and override_profile is None:

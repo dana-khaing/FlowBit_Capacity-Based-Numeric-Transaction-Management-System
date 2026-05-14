@@ -818,6 +818,28 @@ class RolePermissionTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(response.data['detail'], 'End date and close time are required to reopen a ledger.')
 
+    def test_ledger_reopen_is_blocked_after_lucky_draw_announcement_for_period(self):
+        self.client.force_authenticate(user=self.regular_user)
+        self.ledger.close()
+        LuckyDraw.objects.create(
+            period=self.period,
+            number='123456',
+            announced_by=self.admin_user,
+            announced_at=timezone.now(),
+        )
+
+        response = self.client.post(
+            f'/api/ledgers/{self.ledger.id}/reopen/',
+            {
+                'end_date': '2027-01-20',
+                'close_time': '18:30',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['detail'], 'Ledger reopen is locked after the lucky draw is announced for this period.')
+
     def test_admin_can_list_users(self):
         self.client.force_authenticate(user=self.admin_user)
 
@@ -2984,6 +3006,55 @@ class PrivateWorkflowAPITests(APITestCase):
                 title='Spill over refunded',
             ).exists()
         )
+
+    def test_ticket_refunds_are_blocked_after_lucky_draw_announcement(self):
+        LuckyDraw.objects.create(
+            period=self.active_period,
+            number='123456',
+            announced_by=self.approver,
+            announced_at=timezone.now(),
+        )
+
+        refund_ticket_response = self.client.post(
+            f'/api/tickets/{self.active_ticket.ticket_number}/refund/',
+            {'action': 'refund_ticket'},
+            format='json',
+        )
+        refund_transaction_response = self.client.post(
+            f'/api/tickets/{self.active_ticket.ticket_number}/refund/',
+            {
+                'action': 'refund_transaction',
+                'transaction_id': self.active_transaction.id,
+            },
+            format='json',
+        )
+
+        self.assertEqual(refund_ticket_response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(refund_ticket_response.data['detail'], 'Refunds are locked after the lucky draw is announced for this period.')
+        self.assertEqual(refund_transaction_response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(refund_transaction_response.data['detail'], 'Refunds are locked after the lucky draw is announced for this period.')
+
+    def test_overflow_refunds_are_blocked_after_lucky_draw_announcement(self):
+        overflow = Overflow.objects.create(
+            transaction=self.active_transaction,
+            excess_amount=Decimal('30.00'),
+            status=Overflow.STATUS_TCSO,
+        )
+        LuckyDraw.objects.create(
+            period=self.active_period,
+            number='123456',
+            announced_by=self.approver,
+            announced_at=timezone.now(),
+        )
+
+        response = self.client.post(
+            f'/api/overflows/{overflow.id}/resolve/',
+            {'action': 'refund_overflow_only'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['detail'], 'Refunds are locked after the lucky draw is announced for this period.')
 
     def test_ticket_total_amount_converts_refunded_spill_over_from_basis_amount(self):
         high_value_ticket = Ticket.objects.create(
