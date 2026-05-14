@@ -35,6 +35,7 @@ type PeriodFormState = {
   start_date: string;
   end_date: string;
   close_time: string;
+  pre_close_time: string;
 };
 
 type PeriodAction = "create" | "update" | "close" | "reopen" | "delete" | null;
@@ -63,6 +64,7 @@ function buildDefaultPeriodFormState(): PeriodFormState {
     start_date: formatDateFieldValue(today),
     end_date: formatDateFieldValue(endDate),
     close_time: "23:00",
+    pre_close_time: "15:30",
   };
 }
 
@@ -233,6 +235,7 @@ export function PeriodPage() {
         start_date: form.start_date,
         end_date: form.end_date,
         close_time: form.close_time || "23:00",
+        pre_close_time: form.pre_close_time || "15:30",
         is_open: true,
       });
       setForm(buildDefaultPeriodFormState());
@@ -684,6 +687,16 @@ export function PeriodPage() {
                     type="time"
                     value={form.close_time}
                     onChange={(event) => setForm((current) => ({ ...current, close_time: event.target.value }))}
+                    disabled={isSaving}
+                  />
+                </label>
+
+                <label className="block space-y-2">
+                  <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Pre-close time</span>
+                  <Input
+                    type="time"
+                    value={form.pre_close_time}
+                    onChange={(event) => setForm((current) => ({ ...current, pre_close_time: event.target.value }))}
                     disabled={isSaving}
                   />
                 </label>
