@@ -1,6 +1,6 @@
 from io import StringIO
 from decimal import Decimal
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 from unittest.mock import patch
 
 from django.core.management import call_command
@@ -818,15 +818,10 @@ class RolePermissionTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(response.data['detail'], 'End date and close time are required to reopen a ledger.')
 
-    def test_ledger_reopen_is_blocked_after_lucky_draw_announcement_for_period(self):
+    def test_ledger_reopen_is_blocked_after_period_pre_close_for_period(self):
         self.client.force_authenticate(user=self.regular_user)
         self.ledger.close()
-        LuckyDraw.objects.create(
-            period=self.period,
-            number='123456',
-            announced_by=self.admin_user,
-            announced_at=timezone.now(),
-        )
+        self.period.apply_pre_close(triggered_at=timezone.now(), acting_user=self.admin_user)
 
         response = self.client.post(
             f'/api/ledgers/{self.ledger.id}/reopen/',
@@ -838,7 +833,7 @@ class RolePermissionTests(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(response.data['detail'], 'Ledger reopen is locked after the lucky draw is announced for this period.')
+        self.assertEqual(response.data['detail'], 'Ledger reopen is locked after the pre-close time is reached for this period.')
 
     def test_admin_can_list_users(self):
         self.client.force_authenticate(user=self.admin_user)
@@ -1220,6 +1215,21 @@ class PrivateWorkspaceTests(APITestCase):
         self.assertEqual(self.period.end_date.date().isoformat(), '2028-01-15')
         self.assertEqual(self.period.end_date.strftime('%H:%M'), '18:30')
 
+    def test_period_rejects_pre_close_time_after_close_time(self):
+        self.period.close(closed_at=timezone.now())
+        self.client.force_authenticate(user=self.admin_user)
+
+        response = self.client.post('/api/periods/', {
+            'name': 'Bad Pre Close Period',
+            'start_date': '2028-02-01',
+            'end_date': '2028-02-28',
+            'close_time': '15:00',
+            'pre_close_time': '16:00',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('pre_close_time', response.data)
+
     def test_period_update_syncs_reserve_ledger_end_date(self):
         reserve = Ledger.get_capacity_reserve(self.period, self.user_one, create=True)
         self.client.force_authenticate(user=self.admin_user)
@@ -1282,6 +1292,26 @@ class PrivateWorkspaceTests(APITestCase):
         self.assertFalse(self.user_one_ledger.is_active)
         self.assertTrue(AuditLog.objects.filter(action='period.auto_closed').exists())
 
+    @patch('core.views.timezone.now')
+    def test_fetch_periods_auto_applies_due_pre_close(self, mocked_now):
+        mocked_now.return_value = timezone.make_aware(datetime(2028, 1, 1, 15, 31, 0))
+        self.period.end_date = timezone.make_aware(datetime(2028, 1, 1, 23, 0, 0))
+        self.period.pre_close_time = time(hour=15, minute=30)
+        self.period.save(update_fields=['end_date', 'pre_close_time'])
+        self.user_one_ledger.end_date = self.period.end_date
+        self.user_one_ledger.save(update_fields=['end_date'])
+
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.get('/api/periods/current/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.period.refresh_from_db()
+        self.user_one_ledger.refresh_from_db()
+        self.assertEqual(self.period.pre_closed_at, self.period.pre_close_at)
+        self.assertFalse(self.user_one_ledger.is_active)
+        self.assertEqual(self.user_one_ledger.closed_at, self.period.pre_close_at)
+        self.assertTrue(AuditLog.objects.filter(action='period.pre_closed').exists())
+
     @patch('core.management.commands.close_expired_periods.timezone.now')
     def test_close_expired_periods_command_closes_ledgers_with_same_timestamp(self, mocked_now):
         closed_at = timezone.make_aware(datetime(2028, 1, 2, 12, 5, 0))
@@ -1301,6 +1331,26 @@ class PrivateWorkspaceTests(APITestCase):
         self.assertFalse(self.user_one_ledger.is_active)
         self.assertEqual(self.user_one_ledger.closed_at, closed_at)
         self.assertTrue(AuditLog.objects.filter(action='period.auto_closed').exists())
+
+    @patch('core.management.commands.close_expired_periods.timezone.now')
+    def test_close_expired_periods_command_applies_due_pre_close(self, mocked_now):
+        now = timezone.make_aware(datetime(2028, 1, 1, 15, 35, 0))
+        mocked_now.return_value = now
+        self.period.end_date = timezone.make_aware(datetime(2028, 1, 1, 23, 0, 0))
+        self.period.pre_close_time = time(hour=15, minute=30)
+        self.period.save(update_fields=['end_date', 'pre_close_time'])
+        self.user_one_ledger.end_date = self.period.end_date
+        self.user_one_ledger.save(update_fields=['end_date'])
+
+        out = StringIO()
+        call_command('close_expired_periods', stdout=out)
+
+        self.period.refresh_from_db()
+        self.user_one_ledger.refresh_from_db()
+        self.assertEqual(self.period.pre_closed_at, self.period.pre_close_at)
+        self.assertFalse(self.user_one_ledger.is_active)
+        self.assertEqual(self.user_one_ledger.closed_at, self.period.pre_close_at)
+        self.assertTrue(AuditLog.objects.filter(action='period.pre_closed').exists())
 
     def test_admin_period_create_creates_reserve_ledgers_for_all_users(self):
         self.period.close(closed_at=timezone.now())
@@ -1364,13 +1414,8 @@ class PrivateWorkspaceTests(APITestCase):
         self.assertEqual(response.data['priority'], 1)
         self.assertEqual(response.data['owner_username'], self.user_two.username)
 
-    def test_ledger_creation_is_blocked_after_lucky_draw_announcement_for_period(self):
-        LuckyDraw.objects.create(
-            period=self.period,
-            number='123456',
-            announced_by=self.admin_user,
-            announced_at=timezone.now(),
-        )
+    def test_ledger_creation_is_blocked_after_period_pre_close_for_period(self):
+        self.period.apply_pre_close(triggered_at=timezone.now(), acting_user=self.admin_user)
         self.client.force_authenticate(user=self.user_one)
 
         response = self.client.post('/api/ledgers/', {
@@ -1382,7 +1427,7 @@ class PrivateWorkspaceTests(APITestCase):
         }, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(response.data['detail'], 'Ledger creation is locked after the lucky draw is announced for this period.')
+        self.assertEqual(response.data['detail'], 'Ledger creation is locked after the pre-close time is reached for this period.')
 
     def test_ticket_creation_uses_only_current_users_ledgers(self):
         self.client.force_authenticate(user=self.user_two)
@@ -1458,13 +1503,8 @@ class PrivateWorkspaceTests(APITestCase):
         self.assertEqual(transaction.total_amount, Decimal('1000.00'))
         self.assertEqual(allocation_total, Decimal('1250.00'))
 
-    def test_ticket_creation_is_blocked_after_lucky_draw_announcement(self):
-        LuckyDraw.objects.create(
-            period=self.period,
-            number='123456',
-            announced_by=self.admin_user,
-            announced_at=timezone.now(),
-        )
+    def test_ticket_creation_is_blocked_after_period_pre_close(self):
+        self.period.apply_pre_close(triggered_at=timezone.now(), acting_user=self.admin_user)
         self.client.force_authenticate(user=self.user_one)
 
         ticket_response = self.client.post('/api/tickets/create-with-items/', {
@@ -1483,11 +1523,11 @@ class PrivateWorkspaceTests(APITestCase):
         }, format='json')
 
         self.assertEqual(ticket_response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(ticket_response.data['detail'], 'Ticket creation is locked after the lucky draw is announced.')
+        self.assertEqual(ticket_response.data['detail'], 'Ticket creation is locked after the pre-close time is reached.')
         self.assertEqual(transaction_response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(transaction_response.data['detail'], 'Ticket creation is locked after the lucky draw is announced.')
+        self.assertEqual(transaction_response.data['detail'], 'Ticket creation is locked after the pre-close time is reached.')
         self.assertEqual(preview_response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(preview_response.data['detail'], 'Ticket creation is locked after the lucky draw is announced.')
+        self.assertEqual(preview_response.data['detail'], 'Ticket creation is locked after the pre-close time is reached.')
 
     def test_ticket_creation_rejects_empty_items_without_creating_ticket(self):
         self.client.force_authenticate(user=self.user_one)
@@ -1869,24 +1909,16 @@ class PrivateWorkspaceTests(APITestCase):
             User.objects.filter(is_active=True).count(),
         )
 
-    def test_lucky_draw_announcement_closes_active_ledgers(self):
+    def test_period_pre_close_closes_active_ledgers(self):
         reserve_ledger = Ledger.get_capacity_reserve(self.period, self.user_one, create=True)
-        self.client.force_authenticate(user=self.admin_user)
-
-        response = self.client.post(
-            f'/api/periods/{self.period.id}/lucky-draw/',
-            {'number': '123456'},
-            format='json',
-        )
-
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        lucky_draw = LuckyDraw.objects.get(period=self.period)
+        triggered_at = timezone.now()
+        self.period.apply_pre_close(triggered_at=triggered_at, acting_user=self.admin_user)
         self.user_one_ledger.refresh_from_db()
         reserve_ledger.refresh_from_db()
         self.assertFalse(self.user_one_ledger.is_active)
         self.assertFalse(reserve_ledger.is_active)
-        self.assertEqual(self.user_one_ledger.closed_at, lucky_draw.announced_at)
-        self.assertEqual(reserve_ledger.closed_at, lucky_draw.announced_at)
+        self.assertEqual(self.user_one_ledger.closed_at, triggered_at)
+        self.assertEqual(reserve_ledger.closed_at, triggered_at)
 
     def test_period_and_ledger_changes_create_system_notifications(self):
         self.client.force_authenticate(user=self.admin_user)
@@ -3007,13 +3039,8 @@ class PrivateWorkflowAPITests(APITestCase):
             ).exists()
         )
 
-    def test_ticket_refunds_are_blocked_after_lucky_draw_announcement(self):
-        LuckyDraw.objects.create(
-            period=self.active_period,
-            number='123456',
-            announced_by=self.approver,
-            announced_at=timezone.now(),
-        )
+    def test_ticket_refunds_are_blocked_after_period_pre_close(self):
+        self.active_period.apply_pre_close(triggered_at=timezone.now(), acting_user=self.approver)
 
         refund_ticket_response = self.client.post(
             f'/api/tickets/{self.active_ticket.ticket_number}/refund/',
@@ -3030,22 +3057,17 @@ class PrivateWorkflowAPITests(APITestCase):
         )
 
         self.assertEqual(refund_ticket_response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(refund_ticket_response.data['detail'], 'Refunds are locked after the lucky draw is announced for this period.')
+        self.assertEqual(refund_ticket_response.data['detail'], 'Refunds are locked after the pre-close time is reached for this period.')
         self.assertEqual(refund_transaction_response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(refund_transaction_response.data['detail'], 'Refunds are locked after the lucky draw is announced for this period.')
+        self.assertEqual(refund_transaction_response.data['detail'], 'Refunds are locked after the pre-close time is reached for this period.')
 
-    def test_overflow_refunds_are_blocked_after_lucky_draw_announcement(self):
+    def test_overflow_refunds_are_blocked_after_period_pre_close(self):
         overflow = Overflow.objects.create(
             transaction=self.active_transaction,
             excess_amount=Decimal('30.00'),
             status=Overflow.STATUS_TCSO,
         )
-        LuckyDraw.objects.create(
-            period=self.active_period,
-            number='123456',
-            announced_by=self.approver,
-            announced_at=timezone.now(),
-        )
+        self.active_period.apply_pre_close(triggered_at=timezone.now(), acting_user=self.approver)
 
         response = self.client.post(
             f'/api/overflows/{overflow.id}/resolve/',
@@ -3054,7 +3076,7 @@ class PrivateWorkflowAPITests(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(response.data['detail'], 'Refunds are locked after the lucky draw is announced for this period.')
+        self.assertEqual(response.data['detail'], 'Refunds are locked after the pre-close time is reached for this period.')
 
     def test_ticket_total_amount_converts_refunded_spill_over_from_basis_amount(self):
         high_value_ticket = Ticket.objects.create(
@@ -3310,13 +3332,8 @@ class PrivateWorkflowAPITests(APITestCase):
         )
         self.assertEqual(adjustment.amount, Decimal('125.00'))
 
-    def test_direct_overkill_creation_is_blocked_after_lucky_draw_announcement(self):
-        LuckyDraw.objects.create(
-            period=self.active_period,
-            number='123456',
-            announced_by=self.approver,
-            announced_at=timezone.now(),
-        )
+    def test_direct_overkill_creation_is_blocked_after_period_pre_close(self):
+        self.active_period.apply_pre_close(triggered_at=timezone.now(), acting_user=self.approver)
 
         response = self.client.post(
             '/api/overflows/overkill/',
@@ -3329,7 +3346,7 @@ class PrivateWorkflowAPITests(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(response.data['detail'], 'Ticket creation is locked after the lucky draw is announced.')
+        self.assertEqual(response.data['detail'], 'Ticket creation is locked after the pre-close time is reached.')
 
     def test_returning_cso_overflow_moves_it_back_to_tcso(self):
         tx = Transaction.objects.create(
@@ -3622,7 +3639,7 @@ class PrivateWorkflowAPITests(APITestCase):
             ).exists()
         )
 
-    def test_lucky_draw_announcement_notifies_pending_overflow_auto_approval(self):
+    def test_period_pre_close_notifies_pending_overflow_auto_approval(self):
         seed_ticket = Ticket.objects.create(customer_name='Pending Draw Notice', created_by=self.approver)
         seed_transaction = Transaction.objects.create(
             ticket=seed_ticket,
@@ -3631,14 +3648,7 @@ class PrivateWorkflowAPITests(APITestCase):
             created_by=self.approver,
         )
         pending_overflow = Overflow.objects.get(transaction=seed_transaction, status=Overflow.STATUS_TCSO)
-
-        response = self.client.post(
-            f'/api/periods/{self.active_period.id}/lucky-draw/',
-            {'number': '123456'},
-            format='json',
-        )
-
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.active_period.apply_pre_close(triggered_at=timezone.now(), acting_user=self.approver)
         pending_overflow.refresh_from_db()
         self.assertEqual(pending_overflow.status, Overflow.STATUS_CSO)
         notification = UserNotification.objects.get(
@@ -3652,7 +3662,7 @@ class PrivateWorkflowAPITests(APITestCase):
         )
         self.assertEqual(notification.action_href, '/spill-over')
 
-    def test_lucky_draw_announcement_notifies_remaining_overkill(self):
+    def test_period_pre_close_notifies_remaining_overkill(self):
         overkill = Overflow.objects.create(
             transaction=None,
             identifier=self.identifier,
@@ -3666,13 +3676,7 @@ class PrivateWorkflowAPITests(APITestCase):
             resolution_type=Overflow.RESOLUTION_APPROVE,
         )
 
-        response = self.client.post(
-            f'/api/periods/{self.active_period.id}/lucky-draw/',
-            {'number': '123456'},
-            format='json',
-        )
-
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.active_period.apply_pre_close(triggered_at=timezone.now(), acting_user=self.approver)
         notification = UserNotification.objects.get(
             recipient=self.approver,
             source_key=f'lucky-draw:overkill-remaining:{self.active_period.id}:{overkill.id}',
@@ -3685,7 +3689,7 @@ class PrivateWorkflowAPITests(APITestCase):
         self.assertEqual(notification.action_href, '/spill-over')
         self.assertTrue(Overflow.objects.filter(id=overkill.id, status=Overflow.STATUS_OVERKILL).exists())
 
-    def test_lucky_draw_announcement_keeps_overkill_rows_unarchived(self):
+    def test_period_pre_close_keeps_overkill_rows_unarchived(self):
         third_identifier = Identifier.objects.create(number='398')
         seed_ticket = Ticket.objects.create(customer_name='Archive Overkill Seed', created_by=self.approver)
         seed_transaction = Transaction.objects.create(
