@@ -1336,6 +1336,12 @@ class PrivateWorkspaceTests(APITestCase):
         self.assertIsNone(self.period.pre_closed_at)
         self.assertTrue(self.user_one_ledger.is_active)
         self.assertIsNone(self.user_one_ledger.closed_at)
+        self.assertTrue(
+            UserNotification.objects.filter(
+                title='Period pre-close removed',
+                period=self.period,
+            ).exists()
+        )
 
     @patch('core.management.commands.close_expired_periods.timezone.now')
     def test_close_expired_periods_command_closes_ledgers_with_same_timestamp(self, mocked_now):
@@ -1944,6 +1950,47 @@ class PrivateWorkspaceTests(APITestCase):
         self.assertFalse(reserve_ledger.is_active)
         self.assertEqual(self.user_one_ledger.closed_at, triggered_at)
         self.assertEqual(reserve_ledger.closed_at, triggered_at)
+
+    @patch('core.views.timezone.now')
+    def test_fetch_periods_pre_close_creates_system_notifications(self, mocked_now):
+        mocked_now.return_value = timezone.make_aware(datetime(2028, 1, 1, 15, 31, 0))
+        self.period.end_date = timezone.make_aware(datetime(2028, 1, 1, 23, 0, 0))
+        self.period.pre_close_time = time(hour=15, minute=30)
+        self.period.save(update_fields=['end_date', 'pre_close_time'])
+
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.get('/api/periods/current/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            UserNotification.objects.filter(
+                title='Period pre-close activated',
+                period=self.period,
+            ).count(),
+            User.objects.filter(is_active=True).count(),
+        )
+
+    def test_lucky_draw_announcement_applies_pre_close_if_needed(self):
+        self.client.force_authenticate(user=self.admin_user)
+        self.assertIsNone(self.period.pre_closed_at)
+
+        response = self.client.post(
+            f'/api/periods/{self.period.id}/lucky-draw/',
+            {'number': '123456'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.period.refresh_from_db()
+        self.user_one_ledger.refresh_from_db()
+        self.assertIsNotNone(self.period.pre_closed_at)
+        self.assertFalse(self.user_one_ledger.is_active)
+        self.assertTrue(
+            UserNotification.objects.filter(
+                title='Period pre-close activated',
+                period=self.period,
+            ).exists()
+        )
 
     def test_period_and_ledger_changes_create_system_notifications(self):
         self.client.force_authenticate(user=self.admin_user)

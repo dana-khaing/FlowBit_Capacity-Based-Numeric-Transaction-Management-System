@@ -367,6 +367,18 @@ def notify_period_change(*, period, action_label, message, request_user, action_
         period=period,
     )
 
+def notify_period_pre_close_change(*, period, title, message, request_user, source_key, level=UserNotification.LEVEL_WARNING):
+    broadcast_user_notification(
+        title=title,
+        message=message,
+        category=UserNotification.CATEGORY_SYSTEM,
+        level=level,
+        action_href='/periods',
+        source_key=source_key,
+        created_by=request_user,
+        period=period,
+    )
+
 
 def notify_ledger_change(*, ledger, action_label, message, request_user, action_href='/ledgers'):
     broadcast_user_notification(
@@ -630,6 +642,13 @@ class PeriodViewSet(viewsets.ModelViewSet):
                     helper_name=helper_name_from_request(request),
                     acting_user=request.user if getattr(request, 'user', None) and request.user.is_authenticated else None,
                 )
+                notify_period_pre_close_change(
+                    period=period,
+                    title='Period pre-close activated',
+                    message=f"{period.name} reached its pre-close time. Active ledgers were closed and operations are now locked.",
+                    request_user=request.user if getattr(request, 'user', None) and request.user.is_authenticated else None,
+                    source_key=f'period:pre-close:{period.id}:{serialize_audit_value(period.pre_close_at)}',
+                )
                 pre_closed_periods.append({
                     'id': period.id,
                     'name': period.name,
@@ -714,6 +733,14 @@ class PeriodViewSet(viewsets.ModelViewSet):
             and not (lucky_draw and lucky_draw.announced_at)
         ):
             period.undo_pre_close()
+            notify_period_pre_close_change(
+                period=period,
+                title='Period pre-close removed',
+                message=f"{period.name} pre-close was moved later. Active ledgers and operations have been reopened.",
+                request_user=self.request.user,
+                source_key=f'period:pre-close-undone:{period.id}:{timezone.now().isoformat()}',
+                level=UserNotification.LEVEL_INFO,
+            )
         period.sync_reserve_ledgers()
         notify_period_change(
             period=period,
@@ -875,6 +902,19 @@ class PeriodViewSet(viewsets.ModelViewSet):
             period.lucky_draw_reveal_time = reveal_time
             period.save(update_fields=['lucky_draw_reveal_time'])
         announced_at = timezone.now()
+        if period.pre_closed_at is None:
+            period.apply_pre_close(
+                triggered_at=announced_at,
+                helper_name=request.user.username,
+                acting_user=request.user,
+            )
+            notify_period_pre_close_change(
+                period=period,
+                title='Period pre-close activated',
+                message=f"{period.name} was pre-closed when the lucky draw was announced. Active ledgers were closed and operations are now locked.",
+                request_user=request.user,
+                source_key=f'period:pre-close:{period.id}:{serialize_audit_value(announced_at)}',
+            )
         lucky_draw = serializer.save(
             period=period,
             announced_by=request.user,
