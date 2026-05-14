@@ -3219,6 +3219,27 @@ class PrivateWorkflowAPITests(APITestCase):
         )
         self.assertEqual(adjustment.amount, Decimal('125.00'))
 
+    def test_direct_overkill_creation_is_blocked_after_lucky_draw_announcement(self):
+        LuckyDraw.objects.create(
+            period=self.active_period,
+            number='123456',
+            announced_by=self.approver,
+            announced_at=timezone.now(),
+        )
+
+        response = self.client.post(
+            '/api/overflows/overkill/',
+            {
+                'identifier': self.second_identifier.id,
+                'amount': '125.00',
+                'collaborator_ids': [self.collaborator.id],
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['detail'], 'Ticket creation is locked after the lucky draw is announced.')
+
     def test_returning_cso_overflow_moves_it_back_to_tcso(self):
         tx = Transaction.objects.create(
             ticket=Ticket.objects.create(customer_name='Return CSO Ticket', created_by=self.approver),
