@@ -1111,6 +1111,20 @@ class LedgerViewSet(viewsets.ModelViewSet):
     serializer_class = LedgerSerializer
     permission_classes = [IsAuthenticated]
 
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        period = serializer.validated_data.get('period')
+        if ticket_creation_locked_for_period(period):
+            return Response(
+                {"detail": "Ledger creation is locked after the lucky draw is announced for this period."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
     def perform_create(self, serializer):
         ledger = serializer.save(owner=self.request.user)
         notify_ledger_change(
