@@ -803,11 +803,12 @@ class PeriodViewSet(viewsets.ModelViewSet):
         if reveal_time is not None and period.lucky_draw_reveal_time != reveal_time:
             period.lucky_draw_reveal_time = reveal_time
             period.save(update_fields=['lucky_draw_reveal_time'])
+        announced_at = timezone.now()
         reveal_at = period.lucky_draw_reveal_at
         lucky_draw = serializer.save(
             period=period,
             announced_by=request.user,
-            announced_at=reveal_at,
+            announced_at=announced_at,
         )
         period.ledgers.filter(is_active=True).update(
             is_active=False,
