@@ -1342,6 +1342,26 @@ class PrivateWorkspaceTests(APITestCase):
         self.assertEqual(response.data['priority'], 1)
         self.assertEqual(response.data['owner_username'], self.user_two.username)
 
+    def test_ledger_creation_is_blocked_after_lucky_draw_announcement_for_period(self):
+        LuckyDraw.objects.create(
+            period=self.period,
+            number='123456',
+            announced_by=self.admin_user,
+            announced_at=timezone.now(),
+        )
+        self.client.force_authenticate(user=self.user_one)
+
+        response = self.client.post('/api/ledgers/', {
+            'period': self.period.id,
+            'name': 'Locked Ledger',
+            'end_date': '2027-12-31',
+            'limit_per_identifier': '120.00',
+            'priority': 2,
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['detail'], 'Ledger creation is locked after the lucky draw is announced for this period.')
+
     def test_ticket_creation_uses_only_current_users_ledgers(self):
         self.client.force_authenticate(user=self.user_two)
 
