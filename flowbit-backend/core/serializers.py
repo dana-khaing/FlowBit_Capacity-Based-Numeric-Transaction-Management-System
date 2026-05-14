@@ -118,6 +118,7 @@ class PeriodSerializer(serializers.ModelSerializer):
             'end_date',
             'is_open',
             'closed_at',
+            'pre_closed_at',
             'created_at',
             'ledger_count',
             'lucky_draw_display',
