@@ -244,6 +244,13 @@ def helper_name_from_request(request):
     return DEFAULT_HELPER_NAME
 
 
+def ticket_creation_locked_for_period(period):
+    if period is None:
+        return False
+    lucky_draw = getattr(period, 'lucky_draw', None)
+    return bool(lucky_draw and lucky_draw.announced_at)
+
+
 def notification_action_href_for_recipient(recipient, action_href):
     if not action_href:
         return action_href
@@ -2106,6 +2113,11 @@ class TransactionViewSet(viewsets.ModelViewSet):
                 {"detail": "No open period available."},
                 status=status.HTTP_400_BAD_REQUEST
             )
+        if ticket_creation_locked_for_period(open_period):
+            return Response(
+                {"detail": "Ticket creation is locked after the lucky draw is announced."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -2184,6 +2196,11 @@ class TransactionViewSet(viewsets.ModelViewSet):
         if not open_period:
             return Response(
                 {"detail": "No open period available."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        if ticket_creation_locked_for_period(open_period):
+            return Response(
+                {"detail": "Ticket creation is locked after the lucky draw is announced."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -5207,6 +5224,11 @@ class CreateTicketWithTransactions(APIView):
         if not open_period:
             return Response(
                 {"detail": "No open period available."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        if ticket_creation_locked_for_period(open_period):
+            return Response(
+                {"detail": "Ticket creation is locked after the lucky draw is announced."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
