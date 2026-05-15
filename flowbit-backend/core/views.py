@@ -483,6 +483,12 @@ def notify_support_case_participants(
         )
 
 
+def notification_actor_label(user):
+    if is_admin_user(user):
+        return 'Admin'
+    return user.get_full_name().strip() or user.username
+
+
 def _ticket_refund_summary(ticket):
     transactions = list(ticket.transactions.all())
     visible_transactions = [transaction for transaction in transactions if not transaction.is_refunded]
@@ -3118,7 +3124,7 @@ class SupportCaseViewSet(viewsets.ModelViewSet):
             support_case.last_message_at = message.created_at
             support_case.save(update_fields=['last_message_at', 'updated_at'])
 
-        actor_label = request.user.get_full_name().strip() or request.user.username
+        actor_label = notification_actor_label(request.user)
         if is_admin_user(request.user):
             notify_support_case_participants(
                 support_case=support_case,
@@ -3152,7 +3158,7 @@ class SupportCaseViewSet(viewsets.ModelViewSet):
             return Response({'detail': 'Case is already closed.'}, status=status.HTTP_400_BAD_REQUEST)
 
         support_case.close(closed_by=request.user)
-        actor_label = request.user.get_full_name().strip() or request.user.username
+        actor_label = notification_actor_label(request.user)
         notify_support_case_participants(
             support_case=support_case,
             actor=request.user,
@@ -3177,7 +3183,7 @@ class SupportCaseViewSet(viewsets.ModelViewSet):
             return Response({'detail': 'Case is already open.'}, status=status.HTTP_400_BAD_REQUEST)
 
         support_case.reopen()
-        actor_label = request.user.get_full_name().strip() or request.user.username
+        actor_label = notification_actor_label(request.user)
         notify_support_case_participants(
             support_case=support_case,
             actor=request.user,

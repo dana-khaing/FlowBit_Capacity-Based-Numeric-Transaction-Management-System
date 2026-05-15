@@ -821,7 +821,7 @@ class OverflowNotificationSerializer(serializers.ModelSerializer):
 
 
 class UserNotificationSerializer(serializers.ModelSerializer):
-    created_by_username = serializers.CharField(source='created_by.username', read_only=True, allow_null=True)
+    created_by_display = serializers.SerializerMethodField()
     period_name = serializers.CharField(source='period.name', read_only=True, allow_null=True)
     is_read = serializers.SerializerMethodField()
 
@@ -835,7 +835,7 @@ class UserNotificationSerializer(serializers.ModelSerializer):
             'message',
             'action_href',
             'created_by',
-            'created_by_username',
+            'created_by_display',
             'period',
             'period_name',
             'read_at',
@@ -846,6 +846,17 @@ class UserNotificationSerializer(serializers.ModelSerializer):
 
     def get_is_read(self, obj):
         return obj.is_read
+
+    def get_created_by_display(self, obj):
+        created_by = getattr(obj, 'created_by', None)
+        if created_by is None:
+            return None
+
+        profile = getattr(created_by, 'profile', None)
+        if profile and profile.role == 'admin':
+            return 'Admin'
+
+        return created_by.get_full_name().strip() or created_by.username
 
 
 class NotificationBroadcastSerializer(serializers.Serializer):
