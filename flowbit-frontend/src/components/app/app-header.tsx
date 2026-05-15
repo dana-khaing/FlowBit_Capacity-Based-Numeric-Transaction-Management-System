@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -25,6 +25,7 @@ type AppHeaderProps = {
 
 export function AppHeader({ onMenuClick }: AppHeaderProps) {
   const router = useRouter();
+  const notificationPopoverRef = useRef<HTMLDivElement | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLogoutPending, setIsLogoutPending] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
@@ -59,6 +60,23 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
     window.addEventListener(FLOWBIT_NOTIFICATIONS_UPDATED_EVENT, refreshNotifications);
     return () => window.removeEventListener(FLOWBIT_NOTIFICATIONS_UPDATED_EVENT, refreshNotifications);
   }, []);
+
+  useEffect(() => {
+    function handlePointerDown(event: MouseEvent) {
+      if (!notificationPopoverRef.current) {
+        return;
+      }
+      if (!notificationPopoverRef.current.contains(event.target as Node)) {
+        setIsNotificationOpen(false);
+      }
+    }
+
+    if (isNotificationOpen) {
+      window.addEventListener("mousedown", handlePointerDown);
+    }
+
+    return () => window.removeEventListener("mousedown", handlePointerDown);
+  }, [isNotificationOpen]);
 
   async function handleLogout() {
     setIsLogoutPending(true);
@@ -128,7 +146,7 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
           <div className="hidden rounded-full border border-dashed border-stone-900/12 bg-stone-50 px-4 py-2 text-sm text-stone-500 sm:block">
             Period: {periodLabel}
           </div>
-          <div className="relative">
+          <div ref={notificationPopoverRef} className="relative">
             <Button
               variant="outline"
               className="h-12 w-12 rounded-[20px] p-0"
@@ -144,47 +162,47 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
             </Button>
 
             {isNotificationOpen ? (
-              <div className="absolute right-0 top-[calc(100%+12px)] z-50 w-[360px] rounded-[28px] border border-stone-900/10 bg-white p-4 shadow-[0_24px_80px_rgba(28,24,20,0.18)]">
-                <div className="flex items-center justify-between gap-3 px-1 pb-3">
+              <div className="absolute right-0 top-[calc(100%+12px)] z-50 w-[332px] rounded-[24px] border border-stone-900/10 bg-white p-3 shadow-[0_24px_80px_rgba(28,24,20,0.18)]">
+                <div className="flex items-center justify-between gap-3 px-1 pb-2">
                   <div>
                     <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Notifications</p>
-                    <p className="mt-1 text-sm text-stone-500">{notificationSummary.unread_count} unread</p>
+                    <p className="mt-0.5 text-xs text-stone-500">{notificationSummary.unread_count} unread</p>
                   </div>
                   <Link
                     href="/notifications"
                     onClick={() => setIsNotificationOpen(false)}
-                    className="text-sm font-semibold text-stone-700 transition hover:text-stone-950"
+                    className="text-xs font-semibold uppercase tracking-[0.12em] text-stone-700 transition hover:text-stone-950"
                   >
                     View all
                   </Link>
                 </div>
 
-                <div className="space-y-3">
+                <div className="space-y-2">
                   {notificationSummary.recent.length ? notificationSummary.recent.map((notification) => (
                     <button
                       key={notification.id}
                       type="button"
                       onClick={() => void handleNotificationClick(notification)}
-                      className={`flex w-full items-start gap-3 rounded-[22px] border px-4 py-4 text-left transition ${
+                      className={`flex w-full items-start gap-2.5 rounded-[18px] border px-3 py-3 text-left transition ${
                         notification.is_read
                           ? "border-stone-200 bg-stone-50"
                           : "border-stone-900/10 bg-white shadow-[0_6px_16px_rgba(28,24,20,0.04)]"
                       }`}
                     >
-                      <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-stone-100 text-stone-700">
-                        <FontAwesomeIcon icon={notificationIcon(notification)} className="h-4 w-4" />
+                      <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-stone-100 text-stone-700">
+                        <FontAwesomeIcon icon={notificationIcon(notification)} className="h-3.5 w-3.5" />
                       </span>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
-                          <p className="truncate text-sm font-semibold text-stone-950">{notification.title}</p>
+                          <p className="truncate text-[13px] font-semibold text-stone-950">{notification.title}</p>
                           {!notification.is_read ? (
-                            <span className="rounded-full bg-stone-950 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+                            <span className="rounded-full bg-stone-950 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-white">
                               New
                             </span>
                           ) : null}
                         </div>
-                        <p className="mt-1 line-clamp-2 text-sm leading-5 text-stone-500">{notification.message}</p>
-                        <p className="mt-2 text-xs font-medium text-stone-400">
+                        <p className="mt-0.5 line-clamp-2 text-[12px] leading-5 text-stone-500">{notification.message}</p>
+                        <p className="mt-1.5 text-[11px] font-medium text-stone-400">
                           {new Date(notification.created_at).toLocaleString("en-GB", {
                             day: "2-digit",
                             month: "short",
@@ -195,7 +213,7 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
                       </div>
                     </button>
                   )) : (
-                    <div className="rounded-[22px] border border-dashed border-stone-300 bg-stone-50 px-4 py-4 text-sm text-stone-500">
+                    <div className="rounded-[18px] border border-dashed border-stone-300 bg-stone-50 px-3 py-3 text-sm text-stone-500">
                       No recent notifications.
                     </div>
                   )}
