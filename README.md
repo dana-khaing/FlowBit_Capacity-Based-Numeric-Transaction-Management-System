@@ -1,142 +1,224 @@
-# Flowbit
+# FlowBit
 
-**Capacity-Based Numeric Transaction Management System**
+Capacity-based numeric transaction management system for identifiers `000`-`999`.
 
-Flowbit is a web-based application designed to manage numeric identifiers (**000–999**) with strict capacity constraints. It enables precise transaction logging, multi-ledger allocation, overflow handling with approval workflows, and real-time monitoring through dashboards.
+FlowBit manages:
+- period-based ledgers
+- ticket and transaction entry
+- spill-over approval workflows
+- reserve / overkill capacity
+- lucky draw period closure rules
+- live user notifications
 
----
+## Stack
 
-## 📌 Overview
+- Frontend: Next.js
+- Backend: Django REST Framework
+- Database: PostgreSQL
+- Realtime notifications: Django Channels + Redis
 
-Each numeric identifier represents an allocation space with a configurable capacity (default **100,000 units**). Users can log transactions, track utilization, manage overflows, and generate receipts while ensuring no invalid over-allocation occurs.
+## Main Features
 
-Flowbit is built for **accuracy, scalability, and production readiness**.
+### Periods
 
----
+- one active period at a time
+- configurable period close time
+- configurable `pre-close time`
+- reserve ledgers created automatically per user
+- reopen / close / delete controls with audit logging
 
-## 🧠 Key Features
+### Pre-close
 
-### Ledger Management
+When pre-close is reached:
+- active ledgers in that period close
+- ticket creation locks
+- transaction creation locks
+- allocation preview locks
+- direct overkill creation locks
+- ledger creation locks
+- ledger reopen locks
+- ticket refunds lock
+- spill-over refunds lock
 
-- Create ledgers for defined periods
-- Per-ledger capacity applied to all identifiers (000–999)
-- Priority-based allocation across ledgers
+If admin moves pre-close later before lucky draw is announced:
+- pre-close can be undone automatically
+- affected ledgers reopen
+- operations unlock again
 
-### Numeric Identifier Management
+### Ledgers
 
-- Identifiers: **000–999**
-- Tracks:
-  - Maximum capacity
-  - Current utilization
-  - Remaining capacity
-  - Transaction history
+- per-user ledgers
+- per-identifier capacity
+- priority-based allocation
+- reserve ledger support
+- ledger view with identifier usage / leftover
+- identifier freeze across one ledger or all standard ledgers
 
-### Transaction Input
+### Tickets
 
-- Simple format: `124 ← 3250`
-- Automatic:
-  - Validation
-  - Timestamp
-  - Transaction ID
-  - Receipt number (e.g., `FB-000123`)
-- Supports batch entry and multi-ledger allocation
+- create tickets with one or many entries
+- default and manual allocation
+- receipt preview, print, and PDF export
+- server-side ticket paging, filtering, sorting, and summaries
 
-### Overflow Management
+### Spill Over
 
-- Automatic detection of capacity overflow
-- States:
-  - **TCSO** (Pending – red)
-  - **CSO** (Approved – green)
-- Collaborator-based approval workflow
+States:
+- `TCSO` pending
+- `CSO` approved
+- `OVRK` overkill
 
-### Dashboard & Analytics
+Supports:
+- collaborator approval
+- extra approval into reserve capacity
+- direct overkill creation
+- refund / return flows
+- export and print
 
-- Total utilization
-- Per-identifier usage
-- Recent transactions
-- Overflow analytics
-- Period-based summaries
+### Lucky Draw
 
----
+- one shared lucky draw number per period
+- admin-only add / edit / remove
+- reveal time support
+- if lucky draw is announced before pre-close, pre-close is forced immediately
+- on lucky draw announcement:
+  - pending `TCSO` becomes `CSO`
+  - remaining `OVRK` stays overkill
+  - winner lookup checks tickets, approved spill over, and overkill
 
-## 🖥️ User Interface
+### Notifications
 
-Side Drawer Menu:
+- per-user notification inbox
+- admin broadcast announcements
+- navbar bell with latest items
+- live refresh through WebSocket
 
-1. Dashboard
-2. Entries
-3. Create Ledgers
-4. Entries History
-5. Ledger History
-6. Overflow
-7. Profile
+Notification events include:
+- period changes
+- ledger changes
+- refunds
+- lucky draw changes
+- pre-close changes
+- support case activity
 
----
+### Customer Service
 
-## 🏗️ System Architecture
+- user creates a support case
+- admin and user can reply
+- either side can close / reopen the case
 
-![Flowbit System Architecture](diagram.png)
+### Archive
 
-**Flow:**
+- closed periods
+- archived ledgers
+- archived tickets
+- archived spill over
+- lucky draw winners for archived periods
 
-1. User interacts with Next.js frontend
-2. API requests sent to Django REST backend
-3. Backend processes logic and updates PostgreSQL
-4. Data returned to frontend in real time
+## Project Structure
 
----
+```text
+FlowBit/
+├── flowbit-backend/
+└── flowbit-frontend/
+```
 
-## 🧩 Technology Stack
+## Local Run
 
-### Frontend
+### Requirements
 
-- **Next.js**
-  - Server-side rendering
-  - High performance
-  - Scalable UI
-
-### Backend
-
-- **Django REST Framework**
-  - Secure API development
-  - ORM-based data handling
-  - Admin interface
-
-### Database
-
-- **PostgreSQL**
-  - Transactional integrity
-  - Relational data modeling
-
-### Hosting
-
-- Frontend: **Vercel**
-- Backend: **Render / Railway / DigitalOcean**
-- Database: **Managed PostgreSQL**
-
----
-
-## 🚀 Getting Started
-
-### Prerequisites
-
+- Python 3.11+
 - Node.js
-- Python 3.10+
-- PostgreSQL
+- Redis
+- PostgreSQL access
 
-### Frontend
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-### Backend
+### Backend setup
 
 ```bash
-cd backend
-pip install -r requirements.txt
-python manage.py migrate
-python manage.py runserver
+cd flowbit-backend
+venv/bin/python -m pip install -r requirements.txt
+venv/bin/python manage.py migrate
 ```
+
+Backend `.env` should include at least:
+
+```env
+DATABASE_URL=postgresql://...
+GOOGLE_OAUTH_CLIENT_ID=...
+REDIS_URL=redis://127.0.0.1:6379/0
+```
+
+### Start Redis
+
+```bash
+redis-cli ping
+```
+
+Expected:
+
+```text
+PONG
+```
+
+### Start backend
+
+Use Daphne so websocket notifications work:
+
+```bash
+cd flowbit-backend
+venv/bin/python -m daphne -b 127.0.0.1 -p 8000 flowbit_backend.asgi:application
+```
+
+### Start frontend
+
+```bash
+cd flowbit-frontend
+pnpm install
+pnpm dev
+```
+
+Default frontend:
+
+```text
+http://localhost:3000
+```
+
+### Google sign-in
+
+If you use Google sign-in locally, add these authorized JavaScript origins in Google Cloud Console:
+
+```text
+http://localhost:3000
+http://127.0.0.1:3000
+```
+
+## Realtime Notes
+
+- WebSocket endpoint: `/ws/notifications/`
+- shared transport uses Django Channels
+- production multi-worker realtime requires Redis through `REDIS_URL`
+- without Redis, in-memory fallback is only suitable for single-process local use
+
+## Testing
+
+Backend:
+
+```bash
+cd flowbit-backend
+venv/bin/python manage.py test --settings=flowbit_backend.test_settings
+```
+
+Frontend:
+
+```bash
+cd flowbit-frontend
+pnpm build
+```
+
+## Current Branch Note
+
+Recent work includes:
+- pre-close schedule management
+- lucky draw operational locking
+- Channels + Redis notification realtime
+- notification inbox / dropdown polish
