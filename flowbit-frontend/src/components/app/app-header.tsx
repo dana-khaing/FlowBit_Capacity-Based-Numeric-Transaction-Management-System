@@ -9,13 +9,12 @@ import { AdminConfirmModal } from "@/components/admin/admin-confirm-modal";
 import { usePeriodState } from "@/components/period/use-period-state";
 import { Button } from "@/components/ui/button";
 import { ProfileAvatar } from "@/components/profile/profile-avatar";
-import { fetchCurrentUser, getStoredUser, logoutFromBackend, type AuthUser } from "@/lib/auth-client";
+import { useCurrentUserState } from "@/components/auth/current-user-context";
+import { logoutFromBackend } from "@/lib/auth-client";
+import { useNotificationSummaryState } from "@/components/notifications/notification-summary-context";
 import {
   dispatchNotificationsUpdated,
-  fetchNotificationSummary,
-  FLOWBIT_NOTIFICATIONS_UPDATED_EVENT,
   markNotificationRead,
-  startNotificationsLiveSync,
   type FlowBitNotification,
 } from "@/lib/notification-client";
 
@@ -26,40 +25,15 @@ type AppHeaderProps = {
 export function AppHeader({ onMenuClick }: AppHeaderProps) {
   const router = useRouter();
   const notificationPopoverRef = useRef<HTMLDivElement | null>(null);
-  const [user, setUser] = useState<AuthUser | null>(null);
   const [isLogoutPending, setIsLogoutPending] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
-  const [notificationSummary, setNotificationSummary] = useState<{ unread_count: number; recent: FlowBitNotification[] }>({
-    unread_count: 0,
-    recent: [],
-  });
+  const currentUserState = useCurrentUserState();
+  const notificationSummaryState = useNotificationSummaryState();
   const { activePeriod } = usePeriodState();
-
-  useEffect(() => {
-    setUser(getStoredUser());
-    fetchCurrentUser().then(setUser).catch(() => {
-      // SessionGuard handles redirect on invalid sessions.
-    });
-    fetchNotificationSummary().then(setNotificationSummary).catch(() => {
-      // Header can stay quiet if notification fetch fails.
-    });
-    return startNotificationsLiveSync();
-  }, []);
-
-  useEffect(() => {
-    async function refreshNotifications() {
-      try {
-        const nextSummary = await fetchNotificationSummary();
-        setNotificationSummary(nextSummary);
-      } catch {
-        // Header can stay quiet if notification fetch fails.
-      }
-    }
-
-    window.addEventListener(FLOWBIT_NOTIFICATIONS_UPDATED_EVENT, refreshNotifications);
-    return () => window.removeEventListener(FLOWBIT_NOTIFICATIONS_UPDATED_EVENT, refreshNotifications);
-  }, []);
+  const user = currentUserState?.user ?? null;
+  const notificationSummary = notificationSummaryState?.summary ?? { unread_count: 0, recent: [] };
+  const refreshNotificationSummary = notificationSummaryState?.refreshSummary;
 
   useEffect(() => {
     function handlePointerDown(event: MouseEvent) {
@@ -103,8 +77,7 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
     try {
       if (!notification.is_read) {
         await markNotificationRead(notification.id);
-        const nextSummary = await fetchNotificationSummary();
-        setNotificationSummary(nextSummary);
+        await refreshNotificationSummary?.();
         dispatchNotificationsUpdated();
       }
     } catch {
