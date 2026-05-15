@@ -1,33 +1,74 @@
 # FlowBit
 
-Capacity-based numeric transaction management system for identifiers `000`-`999`.
+FlowBit is a capacity-based numeric transaction management platform built around identifiers `000`-`999`. It combines period-based ledger control, ticket entry, spill-over approval workflows, reserve capacity, lucky draw rules, archive access, and live notifications in a single web application.
 
-FlowBit manages:
-- period-based ledgers
-- ticket and transaction entry
-- spill-over approval workflows
-- reserve / overkill capacity
-- lucky draw period closure rules
-- live user notifications
+## Overview
 
-## Stack
+FlowBit is designed for workflows where every identifier has a constrained allocation pool and transactions must be tracked precisely across time-bounded periods.
 
-- Frontend: Next.js
-- Backend: Django REST Framework
-- Database: PostgreSQL
-- Realtime notifications: Django Channels + Redis
+The system supports:
+- controlled capacity allocation across multiple ledgers
+- spill-over approval and reserve capacity handling
+- ticket receipt generation, printing, and export
+- period lifecycle control with pre-close and lucky draw rules
+- archived historical review
+- live user notifications and customer service cases
 
-## Main Features
+## Core Concepts
+
+### Identifiers
+
+- shared numeric pool from `000` to `999`
+- every identifier can consume capacity across one or more ledgers
+- capacity and usage are tracked per period and per user context where needed
 
 ### Periods
 
-- one active period at a time
-- configurable period close time
-- configurable `pre-close time`
-- reserve ledgers created automatically per user
-- reopen / close / delete controls with audit logging
+- only one period can remain open at a time
+- each period has:
+  - start date
+  - end date
+  - close time
+  - pre-close time
+  - lucky draw reveal time
+- reserve ledgers are created automatically for users inside the period
 
-### Pre-close
+### Ledgers
+
+- standard ledgers carry the normal identifier capacity
+- reserve ledgers support approved extra capacity and overkill usage
+- standard ledger allocations follow priority order unless manually assigned
+
+### Spill-over States
+
+- `TCSO`:
+  pending spill-over waiting for approval
+- `CSO`:
+  approved spill-over
+- `OVRK`:
+  detached overkill capacity that can be consumed later
+
+## Main Features
+
+### Dashboard
+
+- live current-period summary
+- next draw / lucky number panel
+- hot numbers
+- almost full numbers
+- full numbers
+- recent tickets
+- lucky winner display after announcement
+- drill-down popups with search and paging
+
+### Period Management
+
+- create, edit, close, reopen, and delete periods
+- configure pre-close time and lucky draw reveal time
+- audit logging for period actions
+- automatic reserve ledger synchronization
+
+### Pre-close Workflow
 
 When pre-close is reached:
 - active ledgers in that period close
@@ -40,60 +81,98 @@ When pre-close is reached:
 - ticket refunds lock
 - spill-over refunds lock
 
-If admin moves pre-close later before lucky draw is announced:
+If pre-close is moved later before lucky draw is announced:
 - pre-close can be undone automatically
 - affected ledgers reopen
 - operations unlock again
 
-### Ledgers
+If lucky draw is announced before pre-close happens:
+- pre-close is applied immediately
 
-- per-user ledgers
-- per-identifier capacity
+### Ledger Management
+
+- create and manage per-user ledgers
+- per-identifier capacity limits
 - priority-based allocation
+- dedicated ledger view page
+- active / closed ledger status
 - reserve ledger support
-- ledger view with identifier usage / leftover
-- identifier freeze across one ledger or all standard ledgers
+- archive paging and search
 
-### Tickets
+### Identifier Freeze Control
+
+- freeze one identifier in one ledger
+- freeze one identifier across all active standard ledgers
+- reserve ledger remains system-managed
+- freeze state affects allocation and dashboard fullness logic
+
+### Ticket Entry and Ticket History
 
 - create tickets with one or many entries
-- default and manual allocation
-- receipt preview, print, and PDF export
-- server-side ticket paging, filtering, sorting, and summaries
+- default allocation mode
+- manual allocation mode
+- capacity preview before submission
+- receipt preview on screen
+- POS-style print output
+- PDF receipt export
+- ticket history with:
+  - server-side paging
+  - server-side search
+  - server-side filtering
+  - server-side sorting
+  - server-side summary cards
 
-### Spill Over
+### Spill-over Management
 
-States:
-- `TCSO` pending
-- `CSO` approved
-- `OVRK` overkill
-
-Supports:
-- collaborator approval
+- pending, approved, and overkill tabs
+- collaborator-based approval flow
 - extra approval into reserve capacity
-- direct overkill creation
-- refund / return flows
-- export and print
+- detached overkill creation
+- refund / return handling
+- export and print flows
+- server-side paging and filtering
 
 ### Lucky Draw
 
 - one shared lucky draw number per period
-- admin-only add / edit / remove
-- reveal time support
-- if lucky draw is announced before pre-close, pre-close is forced immediately
-- on lucky draw announcement:
-  - pending `TCSO` becomes `CSO`
-  - remaining `OVRK` stays overkill
-  - winner lookup checks tickets, approved spill over, and overkill
+- admin-only create, edit, and remove
+- reveal-time based display
+- real announcement timestamp recorded
+- winner matching by lucky draw result
+
+When lucky draw is announced:
+- pending `TCSO` converts to `CSO`
+- remaining `OVRK` stays overkill
+- winner lookup checks:
+  - tickets
+  - approved spill-over
+  - overkill
+- operations for the announced period remain locked
+
+### Archive
+
+- closed period browser
+- archived ticket view
+- archived ledger view
+- archived spill-over review
+- archived lucky draw winners
+- read-only archive interaction
+
+### Export
+
+- ledger export
+- spill-over export
+- PDF and receipt-style print flows where supported
 
 ### Notifications
 
-- per-user notification inbox
+- per-user inbox
 - admin broadcast announcements
-- navbar bell with latest items
+- dropdown bell with recent items
+- full notification page
 - live refresh through WebSocket
 
-Notification events include:
+Notification coverage includes:
 - period changes
 - ledger changes
 - refunds
@@ -103,42 +182,77 @@ Notification events include:
 
 ### Customer Service
 
-- user creates a support case
+- user opens support case
 - admin and user can reply
-- either side can close / reopen the case
+- either side can close or reopen the case
+- conversation history is stored per case
 
-### Archive
+## User Roles
 
-- closed periods
-- archived ledgers
-- archived tickets
-- archived spill over
-- lucky draw winners for archived periods
+### Admin
+
+- manage periods
+- manage users and override codes
+- send announcements
+- manage lucky draw
+- view audit logs
+- access admin pages
+
+### Regular User
+
+- create tickets
+- manage own ledgers where allowed
+- review notifications
+- use spill-over workflow
+- open support cases
+- review archive data
+
+## Architecture
+
+### Frontend
+
+- Next.js application
+- workspace-based UI
+- receipt preview and export flows
+- live notification refresh through WebSocket
+
+### Backend
+
+- Django REST Framework
+- period, ledger, ticket, overflow, notification, archive, and support APIs
+- Django admin for operational oversight
+
+### Database
+
+- PostgreSQL
+
+### Realtime
+
+- Django Channels
+- Redis-backed channel layer for shared live notifications
 
 ## Project Structure
 
 ```text
 FlowBit/
 ├── flowbit-backend/
+│   ├── core/
+│   └── flowbit_backend/
 └── flowbit-frontend/
+    └── src/
 ```
 
-## Local Run
+## Local Development
 
 ### Requirements
 
 - Python 3.11+
 - Node.js
+- pnpm
 - Redis
 - PostgreSQL access
 
-### Backend setup
-
-```bash
-cd flowbit-backend
-venv/bin/python -m pip install -r requirements.txt
-venv/bin/python manage.py migrate
-```
+### Backend Environment
 
 Backend `.env` should include at least:
 
@@ -146,6 +260,14 @@ Backend `.env` should include at least:
 DATABASE_URL=postgresql://...
 GOOGLE_OAUTH_CLIENT_ID=...
 REDIS_URL=redis://127.0.0.1:6379/0
+```
+
+### Install Backend Dependencies
+
+```bash
+cd flowbit-backend
+venv/bin/python -m pip install -r requirements.txt
+venv/bin/python manage.py migrate
 ```
 
 ### Start Redis
@@ -160,16 +282,22 @@ Expected:
 PONG
 ```
 
-### Start backend
+### Start Backend
 
-Use Daphne so websocket notifications work:
+Use Daphne so WebSocket notifications are served correctly:
 
 ```bash
 cd flowbit-backend
 venv/bin/python -m daphne -b 127.0.0.1 -p 8000 flowbit_backend.asgi:application
 ```
 
-### Start frontend
+Backend base URL:
+
+```text
+http://127.0.0.1:8000
+```
+
+### Start Frontend
 
 ```bash
 cd flowbit-frontend
@@ -177,15 +305,15 @@ pnpm install
 pnpm dev
 ```
 
-Default frontend:
+Default frontend URL:
 
 ```text
 http://localhost:3000
 ```
 
-### Google sign-in
+### Google Sign-in for Local Development
 
-If you use Google sign-in locally, add these authorized JavaScript origins in Google Cloud Console:
+Add these authorized JavaScript origins in Google Cloud Console:
 
 ```text
 http://localhost:3000
@@ -194,31 +322,30 @@ http://127.0.0.1:3000
 
 ## Realtime Notes
 
-- WebSocket endpoint: `/ws/notifications/`
-- shared transport uses Django Channels
-- production multi-worker realtime requires Redis through `REDIS_URL`
-- without Redis, in-memory fallback is only suitable for single-process local use
+- WebSocket endpoint:
+  `/ws/notifications/`
+- production shared realtime depends on `REDIS_URL`
+- without Redis, only an in-memory single-process fallback is available
 
 ## Testing
 
-Backend:
+### Backend
 
 ```bash
 cd flowbit-backend
 venv/bin/python manage.py test --settings=flowbit_backend.test_settings
 ```
 
-Frontend:
+### Frontend
 
 ```bash
 cd flowbit-frontend
 pnpm build
 ```
 
-## Current Branch Note
+## Operational Notes
 
-Recent work includes:
-- pre-close schedule management
-- lucky draw operational locking
-- Channels + Redis notification realtime
-- notification inbox / dropdown polish
+- use Daphne for local websocket testing
+- keep Redis running for shared notification delivery
+- restart backend after changing `.env`
+- use the frontend origin registered in Google Cloud Console when testing Google sign-in
