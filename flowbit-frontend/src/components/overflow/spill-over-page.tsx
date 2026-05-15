@@ -11,6 +11,7 @@ import {
   faTriangleExclamation,
 } from "@fortawesome/free-solid-svg-icons";
 import { AdminActionToast } from "@/components/admin/admin-action-toast";
+import { notifyDashboardUpdated } from "@/components/app/workspace-events";
 import { AdminConfirmModal } from "@/components/admin/admin-confirm-modal";
 import { ActionLoadingModal } from "@/components/app/action-loading-modal";
 import { PeriodRequiredPage } from "@/components/period/period-required-page";
@@ -449,6 +450,7 @@ export function SpillOverPage() {
       setToast({ type: "success", message: response.message });
       resetOverkillDraft();
       await loadPageData();
+      notifyDashboardUpdated();
       setActiveTab("overkill");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Request failed.";
@@ -474,6 +476,7 @@ export function SpillOverPage() {
       setApproveTarget(null);
       setPendingExtraApproval(null);
       await loadPageData();
+      notifyDashboardUpdated();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Request failed.";
       setToast({ type: "error", message });
@@ -535,6 +538,7 @@ export function SpillOverPage() {
       setRefundTarget(null);
       setOverrideCode("");
       await loadPageData();
+      notifyDashboardUpdated();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Request failed.";
       setToast({ type: "error", message });
