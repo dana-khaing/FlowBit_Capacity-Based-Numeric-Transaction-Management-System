@@ -118,6 +118,19 @@ export function NotificationPage() {
     }, []);
   }, [notifications]);
 
+  const notificationViewSummary = useMemo(() => {
+    const unreadCount = notifications.filter((notification) => !notification.is_read).length;
+    const announcementCount = notifications.filter((notification) => notification.category === "ANNOUNCEMENT").length;
+    const systemCount = notifications.filter((notification) => notification.category === "SYSTEM").length;
+    const importantCount = notifications.filter((notification) => notification.level === "IMPORTANT").length;
+    return {
+      unreadCount,
+      announcementCount,
+      systemCount,
+      importantCount,
+    };
+  }, [notifications]);
+
   async function handleMarkAllRead() {
     setIsSubmitting(true);
     const readAt = new Date().toISOString();
@@ -378,17 +391,31 @@ export function NotificationPage() {
 
             <article className="rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6">
               <div className="flex items-center gap-3">
-                <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-amber-100 text-amber-800">
-                  <FontAwesomeIcon icon={faTriangleExclamation} className="h-4 w-4" />
+                <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-stone-100 text-stone-700">
+                  <FontAwesomeIcon icon={faBell} className="h-4 w-4" />
                 </span>
                 <div>
-                  <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Notes</p>
-                  <h2 className="mt-1 text-xl font-semibold text-stone-950">What shows here</h2>
+                  <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Overview</p>
+                  <h2 className="mt-1 text-xl font-semibold text-stone-950">Notification view</h2>
                 </div>
               </div>
-              <div className="mt-5 space-y-3 text-sm leading-6 text-stone-500">
-                <p>Important system notifications are kept per user, including pre-close spill-over reminders and lucky draw announcements.</p>
-                <p>Admin announcements are copied to every active user individually so each account has its own dated inbox.</p>
+              <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-[20px] border border-stone-900/8 bg-stone-50 px-4 py-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Unread</p>
+                  <p className="mt-2 text-3xl font-semibold text-stone-950">{notificationViewSummary.unreadCount}</p>
+                </div>
+                <div className="rounded-[20px] border border-stone-900/8 bg-stone-50 px-4 py-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Important</p>
+                  <p className="mt-2 text-3xl font-semibold text-stone-950">{notificationViewSummary.importantCount}</p>
+                </div>
+                <div className="rounded-[20px] border border-stone-900/8 bg-stone-50 px-4 py-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">System</p>
+                  <p className="mt-2 text-3xl font-semibold text-stone-950">{notificationViewSummary.systemCount}</p>
+                </div>
+                <div className="rounded-[20px] border border-stone-900/8 bg-stone-50 px-4 py-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Announcements</p>
+                  <p className="mt-2 text-3xl font-semibold text-stone-950">{notificationViewSummary.announcementCount}</p>
+                </div>
               </div>
             </article>
           </aside>
