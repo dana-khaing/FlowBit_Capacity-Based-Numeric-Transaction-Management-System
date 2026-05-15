@@ -39,9 +39,9 @@ export function AdminActionToast({ message, type, title, onClose }: AdminActionT
         type="button"
         onClick={onClose}
         aria-label="Dismiss toast"
-        className="text-[11px] font-semibold leading-none text-stone-400 transition hover:text-stone-700"
+        className="text-[10px] font-medium lowercase leading-none text-stone-400 transition hover:text-stone-700"
       >
-        X
+        x
       </button>
     </div>
   );
