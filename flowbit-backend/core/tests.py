@@ -1985,6 +1985,19 @@ class PrivateWorkspaceTests(APITestCase):
             User.objects.filter(is_active=True).count(),
         )
 
+    @patch('core.views.push_dashboard_refresh_for_users')
+    def test_period_update_triggers_dashboard_refresh_push(self, mocked_push):
+        self.client.force_authenticate(user=self.admin_user)
+
+        response = self.client.patch(
+            f'/api/periods/{self.period.id}/',
+            {'name': f'{self.period.name} Updated'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        mocked_push.assert_called_once()
+
     def test_notification_admin_identity_is_masked_for_users_but_visible_to_admins(self):
         other_admin = User.objects.create_user(username='admin_two', password='pass12345')
         other_admin.profile.role = 'admin'
@@ -3499,6 +3512,37 @@ class PrivateWorkflowAPITests(APITestCase):
             adjustment_type=IdentifierCapacityAdjustment.TYPE_APPROVAL_EXTRA,
         )
         self.assertEqual(adjustment.amount, Decimal('125.00'))
+
+    @patch('core.views.push_dashboard_refresh_for_user')
+    def test_direct_overkill_creation_triggers_dashboard_refresh_push(self, mocked_push):
+        response = self.client.post(
+            '/api/overflows/overkill/',
+            {
+                'identifier': self.second_identifier.id,
+                'amount': '125.00',
+                'collaborator_ids': [self.collaborator.id],
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        mocked_push.assert_called_once_with(self.approver.id)
+
+    @patch('core.views.push_dashboard_refresh_for_user')
+    def test_ticket_creation_triggers_dashboard_refresh_push(self, mocked_push):
+        response = self.client.post(
+            '/api/tickets/create-with-items/',
+            {
+                'customer_name': 'Realtime Customer',
+                'items': [
+                    {'identifier': self.second_identifier.id, 'amount': '50.00'},
+                ],
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        mocked_push.assert_called_once_with(self.approver.id)
 
     def test_direct_overkill_creation_is_blocked_after_period_pre_close(self):
         self.active_period.apply_pre_close(triggered_at=timezone.now(), acting_user=self.approver)
