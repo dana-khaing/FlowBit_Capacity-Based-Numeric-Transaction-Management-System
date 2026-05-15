@@ -642,7 +642,7 @@ export function PeriodPage() {
                 <p className="text-sm text-stone-400">{periods.length} total</p>
               </div>
 
-              <div className="mt-4 space-y-3">
+              <div className="thin-scrollbar mt-4 max-h-[480px] space-y-3 overflow-y-auto pr-1">
                 {isLoading ? (
                   <p className="text-sm text-stone-500">Loading period history...</p>
                 ) : periods.length ? (
