@@ -413,6 +413,14 @@ export function SpillOverPage() {
     });
   }
 
+  function resetOverkillDraft() {
+    setOverkillIdentifierNumber("");
+    setOverkillDraftAmount("");
+    setOverkillCollaboratorId("");
+    setPendingOverkillConfirmation(null);
+    setIsOverkillFormOpen(false);
+  }
+
   async function submitCreateOverkill() {
     const normalizedIdentifier = normalizeIdentifierNumber(overkillIdentifierNumber);
     const matchedIdentifier = identifierOptions.find(
@@ -439,11 +447,7 @@ export function SpillOverPage() {
         collaboratorIds: [collaboratorId],
       });
       setToast({ type: "success", message: response.message });
-      setOverkillIdentifierNumber("");
-      setOverkillDraftAmount("");
-      setOverkillCollaboratorId("");
-      setPendingOverkillConfirmation(null);
-      setIsOverkillFormOpen(false);
+      resetOverkillDraft();
       await loadPageData();
       setActiveTab("overkill");
     } catch (error) {
@@ -1154,7 +1158,7 @@ export function SpillOverPage() {
       {isOverkillFormOpen ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/30 px-4"
-          onClick={() => setIsOverkillFormOpen(false)}
+          onClick={resetOverkillDraft}
         >
           <div
             className="w-full max-w-2xl rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_18px_48px_rgba(24,24,24,0.18)] sm:p-6"
@@ -1208,7 +1212,7 @@ export function SpillOverPage() {
             </div>
 
             <div className="mt-5 flex justify-end gap-3">
-              <Button variant="outline" onClick={() => setIsOverkillFormOpen(false)}>
+              <Button variant="outline" onClick={resetOverkillDraft}>
                 Cancel
               </Button>
               <Button onClick={handleCreateOverkill}>

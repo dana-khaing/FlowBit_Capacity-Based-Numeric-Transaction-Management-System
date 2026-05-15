@@ -35,8 +35,13 @@ export function AdminActionToast({ message, type, title, onClose }: AdminActionT
         <p className="text-sm font-semibold text-stone-900">{heading}</p>
         <p className="mt-1 text-sm leading-6 text-stone-600">{message}</p>
       </div>
-      <button type="button" onClick={onClose} className="text-sm font-medium text-stone-400 hover:text-stone-700">
-        Close
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Dismiss toast"
+        className="text-[11px] font-semibold leading-none text-stone-400 transition hover:text-stone-700"
+      >
+        X
       </button>
     </div>
   );

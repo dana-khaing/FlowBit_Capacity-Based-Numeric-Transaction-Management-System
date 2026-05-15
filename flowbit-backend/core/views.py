@@ -58,6 +58,7 @@ from .models import (
     refund_transactions,
 )
 from .audit import record_audit_log, serialize_audit_value, snapshot_instance
+from .notification_realtime import push_notification_refresh_for_user
 from .permissions import (
     IsAdminRole,
     IsAuthenticatedReadOnlyOrAdminWrite,
@@ -244,6 +245,32 @@ def helper_name_from_request(request):
     return DEFAULT_HELPER_NAME
 
 
+def ticket_creation_locked_for_period(period):
+    if period is None:
+        return False
+    ensure_period_pre_close_state(period)
+    return period.pre_closed_at is not None
+
+
+def period_locked_after_lucky_draw(period):
+    return ticket_creation_locked_for_period(period)
+
+
+def ensure_period_pre_close_state(period, request=None):
+    if period is None or not period.is_open or period.pre_closed_at is not None:
+        return period
+
+    if timezone.now() < period.pre_close_at:
+        return period
+
+    period.apply_pre_close(
+        triggered_at=period.pre_close_at,
+        helper_name=helper_name_from_request(request) if request is not None else DEFAULT_HELPER_NAME,
+        acting_user=request.user if request is not None and getattr(request, 'user', None) and request.user.is_authenticated else None,
+    )
+    return period
+
+
 def notification_action_href_for_recipient(recipient, action_href):
     if not action_href:
         return action_href
@@ -337,6 +364,18 @@ def notify_period_change(*, period, action_label, message, request_user, action_
         level=UserNotification.LEVEL_IMPORTANT,
         action_href=action_href,
         source_key=f'period:{action_label}:{period.id}:{timezone.now().isoformat()}',
+        created_by=request_user,
+        period=period,
+    )
+
+def notify_period_pre_close_change(*, period, title, message, request_user, source_key, level=UserNotification.LEVEL_WARNING):
+    broadcast_user_notification(
+        title=title,
+        message=message,
+        category=UserNotification.CATEGORY_SYSTEM,
+        level=level,
+        action_href='/periods',
+        source_key=source_key,
         created_by=request_user,
         period=period,
     )
@@ -585,6 +624,45 @@ class PeriodViewSet(viewsets.ModelViewSet):
     serializer_class = PeriodSerializer
     permission_classes = [IsAuthenticatedReadOnlyOrAdminWrite]
 
+    def _auto_apply_due_pre_close_periods(self, request):
+        now = timezone.now()
+        due_periods = [
+            period
+            for period in Period.objects.filter(is_open=True, pre_closed_at__isnull=True).order_by('end_date', 'id')
+            if period.pre_close_at <= now
+        ]
+
+        if not due_periods:
+            return
+
+        pre_closed_periods = []
+        with db_transaction.atomic():
+            for period in due_periods:
+                period.apply_pre_close(
+                    triggered_at=period.pre_close_at,
+                    helper_name=helper_name_from_request(request),
+                    acting_user=request.user if getattr(request, 'user', None) and request.user.is_authenticated else None,
+                )
+                notify_period_pre_close_change(
+                    period=period,
+                    title='Period pre-close activated',
+                    message=f"{period.name} reached its pre-close time. Active ledgers were closed and operations are now locked.",
+                    request_user=request.user if getattr(request, 'user', None) and request.user.is_authenticated else None,
+                    source_key=f'period:pre-close:{period.id}:{serialize_audit_value(period.pre_close_at)}',
+                )
+                pre_closed_periods.append({
+                    'id': period.id,
+                    'name': period.name,
+                    'pre_closed_at': serialize_audit_value(period.pre_close_at),
+                })
+
+        record_audit_log(
+            request,
+            'period.pre_closed',
+            details=f"Applied pre-close to {len(pre_closed_periods)} period(s)",
+            changes={'pre_closed_periods': pre_closed_periods},
+        )
+
     def _auto_close_expired_periods(self, request):
         now = timezone.now()
         expired_periods = list(
@@ -645,7 +723,37 @@ class PeriodViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         before = snapshot_instance(self.get_object())
+        instance = self.get_object()
+        existing_lucky_draw = getattr(instance, 'lucky_draw', None)
+        requested_pre_close_time = self.request.data.get('pre_close_time')
+        if (
+            requested_pre_close_time not in (None, '')
+            and existing_lucky_draw is not None
+            and existing_lucky_draw.announced_at
+        ):
+            raise DRFValidationError({
+                'pre_close_time': 'Pre-close time cannot be changed after the lucky draw is announced.',
+            })
+        was_pre_closed = instance.pre_closed_at is not None
+        pre_close_undone = False
         period = serializer.save()
+        lucky_draw = getattr(period, 'lucky_draw', None)
+        if (
+            was_pre_closed
+            and period.pre_closed_at is not None
+            and timezone.now() < period.pre_close_at
+            and not (lucky_draw and lucky_draw.announced_at)
+        ):
+            period.undo_pre_close()
+            pre_close_undone = True
+            notify_period_pre_close_change(
+                period=period,
+                title='Period pre-close removed',
+                message=f"{period.name} pre-close was moved later. Active ledgers and operations have been reopened.",
+                request_user=self.request.user,
+                source_key=f'period:pre-close-undone:{period.id}:{timezone.now().isoformat()}',
+                level=UserNotification.LEVEL_INFO,
+            )
         period.sync_reserve_ledgers()
         notify_period_change(
             period=period,
@@ -660,6 +768,17 @@ class PeriodViewSet(viewsets.ModelViewSet):
             details=f"Updated period '{period.name}'",
             changes={'before': before, 'after': snapshot_instance(period)},
         )
+        if pre_close_undone:
+            record_audit_log(
+                self.request,
+                'period.pre_close_undone',
+                target=period,
+                details=f"Removed pre-close state for period '{period.name}' by moving pre-close time later",
+                changes={
+                    'before': before,
+                    'after': snapshot_instance(period),
+                },
+            )
 
     def perform_destroy(self, instance):
         try:
@@ -686,6 +805,7 @@ class PeriodViewSet(viewsets.ModelViewSet):
         )
 
     def get_queryset(self):
+        self._auto_apply_due_pre_close_periods(self.request)
         self._auto_close_expired_periods(self.request)
         queryset = super().get_queryset()
         section = (self.request.query_params.get('section') or '').strip().lower()
@@ -707,6 +827,7 @@ class PeriodViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='current')
     def current_period(self, request):
+        self._auto_apply_due_pre_close_periods(request)
         self._auto_close_expired_periods(request)
         period = Period.get_open_period()
         if not period:
@@ -720,6 +841,7 @@ class PeriodViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get', 'post', 'patch', 'delete'], url_path='lucky-draw')
     def lucky_draw(self, request, pk=None):
+        self._auto_apply_due_pre_close_periods(request)
         period = self.get_object()
         lucky_draw = getattr(period, 'lucky_draw', None)
 
@@ -803,11 +925,24 @@ class PeriodViewSet(viewsets.ModelViewSet):
         if reveal_time is not None and period.lucky_draw_reveal_time != reveal_time:
             period.lucky_draw_reveal_time = reveal_time
             period.save(update_fields=['lucky_draw_reveal_time'])
-        reveal_at = period.lucky_draw_reveal_at
+        announced_at = timezone.now()
+        if period.pre_closed_at is None:
+            period.apply_pre_close(
+                triggered_at=announced_at,
+                helper_name=request.user.username,
+                acting_user=request.user,
+            )
+            notify_period_pre_close_change(
+                period=period,
+                title='Period pre-close activated',
+                message=f"{period.name} was pre-closed when the lucky draw was announced. Active ledgers were closed and operations are now locked.",
+                request_user=request.user,
+                source_key=f'period:pre-close:{period.id}:{serialize_audit_value(announced_at)}',
+            )
         lucky_draw = serializer.save(
             period=period,
             announced_by=request.user,
-            announced_at=reveal_at,
+            announced_at=announced_at,
         )
         period.ledgers.filter(is_active=True).update(
             is_active=False,
@@ -1103,6 +1238,20 @@ class LedgerViewSet(viewsets.ModelViewSet):
     serializer_class = LedgerSerializer
     permission_classes = [IsAuthenticated]
 
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        period = serializer.validated_data.get('period')
+        if ticket_creation_locked_for_period(period):
+            return Response(
+                {"detail": "Ledger creation is locked after the pre-close time is reached for this period."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
     def perform_create(self, serializer):
         ledger = serializer.save(owner=self.request.user)
         notify_ledger_change(
@@ -1231,6 +1380,11 @@ class LedgerViewSet(viewsets.ModelViewSet):
             return Response(
                 {"detail": "Ledger is already active"},
                 status=status.HTTP_400_BAD_REQUEST
+            )
+        if period_locked_after_lucky_draw(ledger.period):
+            return Response(
+                {"detail": "Ledger reopen is locked after the pre-close time is reached for this period."},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         end_date_value = request.data.get('end_date')
@@ -2105,6 +2259,11 @@ class TransactionViewSet(viewsets.ModelViewSet):
                 {"detail": "No open period available."},
                 status=status.HTTP_400_BAD_REQUEST
             )
+        if ticket_creation_locked_for_period(open_period):
+            return Response(
+                {"detail": "Ticket creation is locked after the pre-close time is reached."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -2183,6 +2342,11 @@ class TransactionViewSet(viewsets.ModelViewSet):
         if not open_period:
             return Response(
                 {"detail": "No open period available."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        if ticket_creation_locked_for_period(open_period):
+            return Response(
+                {"detail": "Ticket creation is locked after the pre-close time is reached."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -2446,6 +2610,11 @@ class OverflowViewSet(viewsets.ModelViewSet):
         period = Period.get_open_period()
         if not period:
             return Response({"detail": "No open period available."}, status=status.HTTP_400_BAD_REQUEST)
+        if ticket_creation_locked_for_period(period):
+            return Response(
+                {"detail": "Ticket creation is locked after the pre-close time is reached."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         identifier_id = request.data.get('identifier')
         amount_str = request.data.get('amount')
@@ -2637,6 +2806,11 @@ class OverflowViewSet(viewsets.ModelViewSet):
             return self._approve_overflow(overflow, request)
 
         if action_name in {'refund_overflow_only', 'refund_transaction', 'refund_ticket'}:
+            if period_locked_after_lucky_draw(overflow.period):
+                return Response(
+                    {"detail": "Refunds are locked after the pre-close time is reached for this period."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             if not is_admin_user(request.user) and override_profile is None:
                 return Response(
                     {"detail": "Admin override code is required for refund actions."},
@@ -2824,6 +2998,7 @@ class UserNotificationViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=False, methods=['post'], url_path='mark-all-read')
     def mark_all_read(self, request):
         updated = self.get_queryset().filter(read_at__isnull=True).update(read_at=timezone.now())
+        push_notification_refresh_for_user(request.user.id)
         return Response({'message': 'Notifications marked as read.', 'updated_count': updated}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='mark-read')
@@ -4859,6 +5034,12 @@ class TicketRefundView(APIView):
         serializer = TicketRefundActionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         validated = serializer.validated_data
+        ticket_period = ticket.transactions.first().period if ticket.transactions.exists() else None
+        if period_locked_after_lucky_draw(ticket_period):
+            return Response(
+                {"detail": "Refunds are locked after the pre-close time is reached for this period."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         override_profile = get_request_admin_override_profile(request)
         if not is_admin_user(request.user) and override_profile is None:
@@ -5206,6 +5387,11 @@ class CreateTicketWithTransactions(APIView):
         if not open_period:
             return Response(
                 {"detail": "No open period available."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        if ticket_creation_locked_for_period(open_period):
+            return Response(
+                {"detail": "Ticket creation is locked after the pre-close time is reached."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 

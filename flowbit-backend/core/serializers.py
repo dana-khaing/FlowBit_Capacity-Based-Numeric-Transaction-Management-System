@@ -101,6 +101,8 @@ class PeriodSerializer(serializers.ModelSerializer):
     lucky_draw_display = serializers.SerializerMethodField()
     lucky_draw_revealed = serializers.SerializerMethodField()
     lucky_draw_announced_at = serializers.SerializerMethodField()
+    pre_close_at = serializers.SerializerMethodField()
+    pre_close_time = serializers.TimeField(required=False)
     lucky_draw_reveal_at = serializers.SerializerMethodField()
     lucky_draw_reveal_time = serializers.TimeField(required=False)
     start_date = FlexibleDateTimeField(default_time=time.min)
@@ -116,11 +118,14 @@ class PeriodSerializer(serializers.ModelSerializer):
             'end_date',
             'is_open',
             'closed_at',
+            'pre_closed_at',
             'created_at',
             'ledger_count',
             'lucky_draw_display',
             'lucky_draw_revealed',
             'lucky_draw_announced_at',
+            'pre_close_at',
+            'pre_close_time',
             'lucky_draw_reveal_at',
             'lucky_draw_reveal_time',
             'close_time',
@@ -146,12 +151,23 @@ class PeriodSerializer(serializers.ModelSerializer):
         lucky_draw = getattr(obj, 'lucky_draw', None)
         return lucky_draw.announced_at if lucky_draw is not None else None
 
+    def get_pre_close_at(self, obj):
+        return obj.pre_close_at
+
     def get_lucky_draw_reveal_at(self, obj):
         return obj.lucky_draw_reveal_at
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
         attrs.pop('close_time', None)
+        end_date = attrs.get('end_date', getattr(self.instance, 'end_date', None))
+        pre_close_time = attrs.get('pre_close_time', getattr(self.instance, 'pre_close_time', time(hour=15, minute=30)))
+        if end_date is not None and pre_close_time is not None:
+            period_close_time = end_date.astimezone(timezone.get_current_timezone()).time().replace(tzinfo=None)
+            if pre_close_time >= period_close_time:
+                raise serializers.ValidationError({
+                    'pre_close_time': ['Pre-close time must be earlier than the period close time.'],
+                })
         should_be_open = attrs.get('is_open', getattr(self.instance, 'is_open', True))
         if should_be_open and Period.objects.exclude(pk=getattr(self.instance, 'pk', None)).filter(is_open=True).exists():
             raise serializers.ValidationError({

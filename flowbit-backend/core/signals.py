@@ -1,8 +1,10 @@
+from django.db import transaction
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.contrib.auth.models import User
 
-from .models import Ledger, Identifier, Profile
+from .models import Ledger, Identifier, Profile, UserNotification
+from .notification_realtime import push_notification_event
 
 @receiver(post_save, sender=Ledger)
 def create_identifiers_on_first_ledger(sender, instance, created, **kwargs):
@@ -35,3 +37,8 @@ def create_identifiers_on_first_ledger(sender, instance, created, **kwargs):
 def create_profile_for_user(sender, instance, created, **kwargs):
     if created:
         Profile.objects.get_or_create(user=instance)
+
+
+@receiver(post_save, sender=UserNotification)
+def push_user_notification_realtime(sender, instance, **kwargs):
+    transaction.on_commit(lambda: push_notification_event(instance))
