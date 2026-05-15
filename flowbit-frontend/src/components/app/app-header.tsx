@@ -177,20 +177,20 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
                   </Link>
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   {notificationSummary.recent.length ? notificationSummary.recent.map((notification) => (
                     <button
                       key={notification.id}
                       type="button"
                       onClick={() => void handleNotificationClick(notification)}
-                      className={`flex w-full items-start gap-2.5 rounded-[18px] border px-3 py-3 text-left transition ${
+                      className={`flex w-full items-start gap-2 rounded-[16px] border px-3 py-2.5 text-left transition ${
                         notification.is_read
                           ? "border-stone-200 bg-stone-50"
                           : "border-stone-900/10 bg-white shadow-[0_6px_16px_rgba(28,24,20,0.04)]"
                       }`}
                     >
-                      <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-stone-100 text-stone-700">
-                        <FontAwesomeIcon icon={notificationIcon(notification)} className="h-3.5 w-3.5" />
+                      <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-stone-100 text-stone-700">
+                        <FontAwesomeIcon icon={notificationIcon(notification)} className="h-3 w-3" />
                       </span>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
@@ -201,8 +201,8 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
                             </span>
                           ) : null}
                         </div>
-                        <p className="mt-0.5 line-clamp-2 text-[12px] leading-5 text-stone-500">{notification.message}</p>
-                        <p className="mt-1.5 text-[11px] font-medium text-stone-400">
+                        <p className="mt-0.5 line-clamp-1 text-[12px] leading-4.5 text-stone-500">{notification.message}</p>
+                        <p className="mt-1 text-[10px] font-medium text-stone-400">
                           {new Date(notification.created_at).toLocaleString("en-GB", {
                             day: "2-digit",
                             month: "short",
@@ -213,7 +213,7 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
                       </div>
                     </button>
                   )) : (
-                    <div className="rounded-[18px] border border-dashed border-stone-300 bg-stone-50 px-3 py-3 text-sm text-stone-500">
+                    <div className="rounded-[16px] border border-dashed border-stone-300 bg-stone-50 px-3 py-2.5 text-sm text-stone-500">
                       No recent notifications.
                     </div>
                   )}
