@@ -17,6 +17,7 @@ import { AdminConfirmModal } from "@/components/admin/admin-confirm-modal";
 import { AdminActionToast } from "@/components/admin/admin-action-toast";
 import { WorkspaceShell } from "@/components/app/workspace-shell";
 import { ActionLoadingModal } from "@/components/app/action-loading-modal";
+import { notifyDashboardUpdated } from "@/components/app/workspace-events";
 import { usePeriodState } from "@/components/period/use-period-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -329,6 +330,7 @@ export function LedgerPage() {
       setPendingAction(null);
       setOverrideCode("");
       await loadPageData();
+      notifyDashboardUpdated();
     } catch (actionError) {
       setToast({
         type: "error",

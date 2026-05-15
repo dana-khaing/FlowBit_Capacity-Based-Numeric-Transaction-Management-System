@@ -16,8 +16,10 @@ import {
   faXmark,
 } from "@fortawesome/free-solid-svg-icons";
 import { AppSectionPage } from "@/components/app/app-section-page";
-import { TICKETS_UPDATED_EVENT } from "@/components/app/workspace-events";
+import { DASHBOARD_UPDATED_EVENT, startWorkspaceLiveSync } from "@/components/app/workspace-events";
 import { usePeriodState } from "@/components/period/use-period-state";
+import { fetchCurrentUser, getStoredUser, type AuthUser } from "@/lib/auth-client";
+import { FLOWBIT_NOTIFICATIONS_UPDATED_EVENT, startNotificationsLiveSync } from "@/lib/notification-client";
 import {
   fetchDashboardAlmostFull,
   fetchDashboardHotNumbers,
@@ -144,6 +146,7 @@ function barWidth(progress: number) {
 type DashboardDrilldownKind = "hot" | "almost" | "full";
 
 export default function Home() {
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(getStoredUser());
   const [report, setReport] = useState<FlowBitDashboardReport | null>(null);
   const [pendingOverflows, setPendingOverflows] = useState<FlowBitOverflow[]>([]);
   const [approvedOverflows, setApprovedOverflows] = useState<FlowBitOverflow[]>([]);
@@ -164,6 +167,12 @@ export default function Home() {
   const [isWinnerTicketLoading, setIsWinnerTicketLoading] = useState(false);
 
   const { activePeriod, hasActivePeriod, isLoading: isPeriodLoading, error: periodError } = usePeriodState();
+
+  useEffect(() => {
+    fetchCurrentUser().then(setCurrentUser).catch(() => {
+      // Session guard handles invalid sessions.
+    });
+  }, []);
 
   const refreshDashboard = useCallback(async (background = false) => {
     if (isPeriodLoading) {
@@ -230,7 +239,10 @@ export default function Home() {
   }, [refreshDashboard]);
 
   useEffect(() => {
-    function handleTicketUpdate() {
+    const stopWorkspaceSync = startWorkspaceLiveSync();
+    const stopNotificationSync = startNotificationsLiveSync();
+
+    function handleDashboardUpdate() {
       void refreshDashboard(true);
     }
 
@@ -244,11 +256,15 @@ export default function Home() {
       }
     }
 
-    window.addEventListener(TICKETS_UPDATED_EVENT, handleTicketUpdate);
+    window.addEventListener(DASHBOARD_UPDATED_EVENT, handleDashboardUpdate);
+    window.addEventListener(FLOWBIT_NOTIFICATIONS_UPDATED_EVENT, handleDashboardUpdate);
     window.addEventListener("focus", handleFocus);
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
-      window.removeEventListener(TICKETS_UPDATED_EVENT, handleTicketUpdate);
+      stopWorkspaceSync();
+      stopNotificationSync();
+      window.removeEventListener(DASHBOARD_UPDATED_EVENT, handleDashboardUpdate);
+      window.removeEventListener(FLOWBIT_NOTIFICATIONS_UPDATED_EVENT, handleDashboardUpdate);
       window.removeEventListener("focus", handleFocus);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
@@ -471,7 +487,9 @@ export default function Home() {
         </div>
       ) : !hasActivePeriod ? (
         <div className="rounded-[24px] border border-dashed border-amber-300 bg-amber-50 px-5 py-5 text-sm text-amber-800">
-          Open a period first before using the live dashboard.
+          {currentUser?.role === "admin"
+            ? "Open a period first before using the live dashboard."
+            : "There is no active period right now. Please wait for admin to open the next period."}
         </div>
       ) : dashboardError ? (
         <div className="rounded-[24px] border border-rose-200 bg-rose-50 px-5 py-5 text-sm text-rose-700">

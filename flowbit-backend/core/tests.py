@@ -1985,6 +1985,53 @@ class PrivateWorkspaceTests(APITestCase):
             User.objects.filter(is_active=True).count(),
         )
 
+    @patch('core.views.push_dashboard_refresh_for_users')
+    def test_period_update_triggers_dashboard_refresh_push(self, mocked_push):
+        self.client.force_authenticate(user=self.admin_user)
+
+        response = self.client.patch(
+            f'/api/periods/{self.period.id}/',
+            {'name': f'{self.period.name} Updated'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        mocked_push.assert_called_once()
+
+    def test_notification_admin_identity_is_masked_for_users_but_visible_to_admins(self):
+        other_admin = User.objects.create_user(username='admin_two', password='pass12345')
+        other_admin.profile.role = 'admin'
+        other_admin.profile.save(update_fields=['role'])
+
+        user_notification = UserNotification.objects.create(
+            recipient=self.user_one,
+            category=UserNotification.CATEGORY_ANNOUNCEMENT,
+            level=UserNotification.LEVEL_INFO,
+            title='Admin update',
+            message='Notice for regular user.',
+            created_by=self.admin_user,
+        )
+        admin_notification = UserNotification.objects.create(
+            recipient=other_admin,
+            category=UserNotification.CATEGORY_ANNOUNCEMENT,
+            level=UserNotification.LEVEL_INFO,
+            title='Admin update',
+            message='Notice for admin.',
+            created_by=self.admin_user,
+        )
+
+        self.client.force_authenticate(user=self.user_one)
+        user_response = self.client.get('/api/notifications/')
+        self.assertEqual(user_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(user_response.data[0]['id'], user_notification.id)
+        self.assertEqual(user_response.data[0]['created_by_display'], 'Admin')
+
+        self.client.force_authenticate(user=other_admin)
+        admin_response = self.client.get('/api/notifications/')
+        self.assertEqual(admin_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(admin_response.data[0]['id'], admin_notification.id)
+        self.assertEqual(admin_response.data[0]['created_by_display'], self.admin_user.username)
+
     def test_lucky_draw_announcement_creates_system_notifications(self):
         self.client.force_authenticate(user=self.admin_user)
         response = self.client.post(
@@ -3465,6 +3512,37 @@ class PrivateWorkflowAPITests(APITestCase):
             adjustment_type=IdentifierCapacityAdjustment.TYPE_APPROVAL_EXTRA,
         )
         self.assertEqual(adjustment.amount, Decimal('125.00'))
+
+    @patch('core.views.push_dashboard_refresh_for_user')
+    def test_direct_overkill_creation_triggers_dashboard_refresh_push(self, mocked_push):
+        response = self.client.post(
+            '/api/overflows/overkill/',
+            {
+                'identifier': self.second_identifier.id,
+                'amount': '125.00',
+                'collaborator_ids': [self.collaborator.id],
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        mocked_push.assert_called_once_with(self.approver.id)
+
+    @patch('core.views.push_dashboard_refresh_for_user')
+    def test_ticket_creation_triggers_dashboard_refresh_push(self, mocked_push):
+        response = self.client.post(
+            '/api/tickets/create-with-items/',
+            {
+                'customer_name': 'Realtime Customer',
+                'items': [
+                    {'identifier': self.second_identifier.id, 'amount': '50.00'},
+                ],
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        mocked_push.assert_called_once_with(self.approver.id)
 
     def test_direct_overkill_creation_is_blocked_after_period_pre_close(self):
         self.active_period.apply_pre_close(triggered_at=timezone.now(), acting_user=self.approver)

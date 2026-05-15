@@ -17,6 +17,7 @@ import {
   faUser,
 } from "@fortawesome/free-solid-svg-icons";
 import { AppSectionPage } from "@/components/app/app-section-page";
+import { notifyDashboardUpdated } from "@/components/app/workspace-events";
 import { AdminActionToast } from "@/components/admin/admin-action-toast";
 import { TicketRefundModal } from "@/components/tickets/ticket-refund-modal";
 import {
@@ -281,6 +282,7 @@ export function TicketHistoryPage() {
       });
       setShowRefundModal(false);
       setAdminOverrideCode("");
+      notifyDashboardUpdated();
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Request failed.";
@@ -325,6 +327,7 @@ export function TicketHistoryPage() {
       });
       setShowRefundModal(false);
       setAdminOverrideCode("");
+      notifyDashboardUpdated();
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Request failed.";

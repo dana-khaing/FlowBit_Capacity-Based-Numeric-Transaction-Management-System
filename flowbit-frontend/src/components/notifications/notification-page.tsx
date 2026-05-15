@@ -279,10 +279,10 @@ export function NotificationPage() {
                                   <span>{notification.category === "ANNOUNCEMENT" ? "Admin announcement" : "System notification"}</span>
                                   <span>•</span>
                                   <span>{formatDateTime(notification.created_at)}</span>
-                                  {notification.created_by_username ? (
+                                  {notification.created_by_display ? (
                                     <>
                                       <span>•</span>
-                                      <span>{notification.created_by_username}</span>
+                                      <span>{notification.created_by_display}</span>
                                     </>
                                   ) : null}
                                   {notification.period_name ? (
