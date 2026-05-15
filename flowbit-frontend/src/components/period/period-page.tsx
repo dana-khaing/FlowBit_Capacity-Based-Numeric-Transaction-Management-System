@@ -35,6 +35,7 @@ type PeriodFormState = {
   start_date: string;
   end_date: string;
   close_time: string;
+  pre_close_time: string;
 };
 
 type PeriodAction = "create" | "update" | "close" | "reopen" | "delete" | null;
@@ -63,6 +64,7 @@ function buildDefaultPeriodFormState(): PeriodFormState {
     start_date: formatDateFieldValue(today),
     end_date: formatDateFieldValue(endDate),
     close_time: "23:00",
+    pre_close_time: "15:30",
   };
 }
 
@@ -90,6 +92,13 @@ function formatTimeValue(value: string) {
   return `${String(parsed.getHours()).padStart(2, "0")}:${String(parsed.getMinutes()).padStart(2, "0")}`;
 }
 
+function formatClockValue(value?: string | null) {
+  if (!value) {
+    return "--:--";
+  }
+  return value.slice(0, 5);
+}
+
 function formatDateInputValue(value: string) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
@@ -102,6 +111,10 @@ function comparePeriods(left: FlowBitPeriod, right: FlowBitPeriod) {
   return new Date(right.start_date).getTime() - new Date(left.start_date).getTime();
 }
 
+function isPreCloseTimeValid(preCloseTime: string, closeTime: string) {
+  return preCloseTime < closeTime;
+}
+
 export function PeriodPage() {
   const [user, setUser] = useState<AuthUser | null>(getStoredUser());
   const [periods, setPeriods] = useState<FlowBitPeriod[]>([]);
@@ -109,7 +122,7 @@ export function PeriodPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [toast, setToast] = useState<ToastState>(null);
   const [form, setForm] = useState<PeriodFormState>(buildDefaultPeriodFormState);
-  const [activePeriodForm, setActivePeriodForm] = useState({ end_date: "", close_time: "23:00" });
+  const [activePeriodForm, setActivePeriodForm] = useState({ end_date: "", close_time: "23:00", pre_close_time: "15:30" });
   const [reopenForm, setReopenForm] = useState({ end_date: "", close_time: "23:00" });
   const [showActionConfirm, setShowActionConfirm] = useState(false);
   const [pendingAction, setPendingAction] = useState<PeriodAction>(null);
@@ -161,7 +174,7 @@ export function PeriodPage() {
 
   useEffect(() => {
     if (!activePeriod) {
-      setActivePeriodForm({ end_date: "", close_time: "23:00" });
+      setActivePeriodForm({ end_date: "", close_time: "23:00", pre_close_time: "15:30" });
       setLuckyDraw(null);
       setLuckyDrawNumber("");
       setLuckyDrawRevealTime("15:30");
@@ -171,6 +184,7 @@ export function PeriodPage() {
     setActivePeriodForm({
       end_date: formatDateInputValue(activePeriod.end_date),
       close_time: formatTimeValue(activePeriod.end_date),
+      pre_close_time: (activePeriod.pre_close_time ?? "15:30").slice(0, 5),
     });
   }, [activePeriod]);
 
@@ -225,6 +239,11 @@ export function PeriodPage() {
       return;
     }
 
+    if (!isPreCloseTimeValid(form.pre_close_time || "15:30", form.close_time || "23:00")) {
+      setToast({ type: "error", message: "Pre-close time must be earlier than the period close time." });
+      return;
+    }
+
     setPendingAction("create");
     setIsSaving(true);
     try {
@@ -233,6 +252,7 @@ export function PeriodPage() {
         start_date: form.start_date,
         end_date: form.end_date,
         close_time: form.close_time || "23:00",
+        pre_close_time: form.pre_close_time || "15:30",
         is_open: true,
       });
       setForm(buildDefaultPeriodFormState());
@@ -273,6 +293,15 @@ export function PeriodPage() {
       return;
     }
 
+    if (
+      pendingAction === "update" &&
+      !isPreCloseTimeValid(activePeriodForm.pre_close_time || "15:30", activePeriodForm.close_time || "23:00")
+    ) {
+      setToast({ type: "error", message: "Pre-close time must be earlier than the period close time." });
+      setShowActionConfirm(false);
+      return;
+    }
+
     if (pendingAction === "reopen" && !reopenForm.end_date) {
       setToast({ type: "error", message: "End date is required to reopen the period." });
       setShowActionConfirm(false);
@@ -285,6 +314,7 @@ export function PeriodPage() {
         await updatePeriod(activePeriod.id, {
           end_date: activePeriodForm.end_date,
           close_time: activePeriodForm.close_time || "23:00",
+          pre_close_time: activePeriodForm.pre_close_time || "15:30",
         });
         setToast({ type: "success", message: "Period updated successfully." });
       } else if (pendingAction === "close" && activePeriod) {
@@ -502,10 +532,14 @@ export function PeriodPage() {
                 <h2 className="mt-2 text-2xl font-semibold text-stone-950">Current period</h2>
               </div>
               <span className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] ${
-                activePeriod ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+                activePeriod
+                  ? activePeriod.pre_closed_at
+                    ? "bg-amber-100 text-amber-800"
+                    : "bg-emerald-100 text-emerald-700"
+                  : "bg-amber-100 text-amber-700"
               }`}>
                 <FontAwesomeIcon icon={activePeriod ? faCircleDot : faLock} className="h-3 w-3" />
-                {activePeriod ? "Active" : "Locked"}
+                {activePeriod ? (activePeriod.pre_closed_at ? "Pre-closed" : "Active") : "Locked"}
               </span>
             </div>
 
@@ -527,7 +561,16 @@ export function PeriodPage() {
                       <FontAwesomeIcon icon={faClock} className="h-3.5 w-3.5" />
                       Close time {formatTimeValue(activePeriod.end_date)}
                     </span>
+                    <span className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-2">
+                      <FontAwesomeIcon icon={faClock} className="h-3.5 w-3.5" />
+                      Pre-close {formatClockValue(activePeriod.pre_close_time)}
+                    </span>
                   </div>
+                  {activePeriod.pre_closed_at ? (
+                    <p className="text-sm text-stone-500">
+                      Pre-close applied {new Date(activePeriod.pre_closed_at).toLocaleString("en-GB")}
+                    </p>
+                  ) : null}
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -688,6 +731,16 @@ export function PeriodPage() {
                   />
                 </label>
 
+                <label className="block space-y-2">
+                  <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Pre-close time</span>
+                  <Input
+                    type="time"
+                    value={form.pre_close_time}
+                    onChange={(event) => setForm((current) => ({ ...current, pre_close_time: event.target.value }))}
+                    disabled={isSaving}
+                  />
+                </label>
+
                 <Button type="submit" className="w-full" disabled={isSaving}>
                   {isSaving ? "Creating period..." : "Create period"}
                 </Button>
@@ -707,7 +760,7 @@ export function PeriodPage() {
                 <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Active period actions</p>
                 <h3 className="mt-2 text-xl font-semibold text-stone-950">Edit end date and close time</h3>
                 <p className="mt-3 text-sm leading-6 text-stone-500">
-                  Update the active period end date or close the period now from this panel.
+                  Update the active period end date, pre-close time, or close the period now from this panel.
                 </p>
 
                 <div className="mt-5 space-y-4">
@@ -730,6 +783,18 @@ export function PeriodPage() {
                       value={activePeriodForm.close_time}
                       onChange={(event) =>
                         setActivePeriodForm((current) => ({ ...current, close_time: event.target.value }))
+                      }
+                      disabled={isSaving}
+                    />
+                  </label>
+
+                  <label className="block space-y-2">
+                    <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Pre-close time</span>
+                    <Input
+                      type="time"
+                      value={activePeriodForm.pre_close_time}
+                      onChange={(event) =>
+                        setActivePeriodForm((current) => ({ ...current, pre_close_time: event.target.value }))
                       }
                       disabled={isSaving}
                     />

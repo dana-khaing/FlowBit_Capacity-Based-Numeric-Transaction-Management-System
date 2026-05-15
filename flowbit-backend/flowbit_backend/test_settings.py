@@ -8,3 +8,9 @@ DATABASES = {
         'NAME': BASE_DIR / 'test_db.sqlite3',  # noqa: F405
     }
 }
+
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer",
+    },
+}

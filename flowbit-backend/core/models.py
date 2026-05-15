@@ -19,8 +19,10 @@ class Period(models.Model):
     name = models.CharField(max_length=100, unique=True)
     start_date = models.DateTimeField()
     end_date = models.DateTimeField()
+    pre_close_time = models.TimeField(default=time(hour=15, minute=30))
     lucky_draw_reveal_time = models.TimeField(default=time(hour=15, minute=30))
     is_open = models.BooleanField(default=True)
+    pre_closed_at = models.DateTimeField(null=True, blank=True)
     closed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -44,6 +46,10 @@ class Period(models.Model):
         if self.is_open and Period.objects.exclude(pk=self.pk).filter(is_open=True).exists():
             raise ValidationError("Only one period can remain open at a time.")
 
+        period_close_time = self.end_date.astimezone(timezone.get_current_timezone()).time().replace(tzinfo=None)
+        if self.pre_close_time >= period_close_time:
+            raise ValidationError("Period pre_close_time must be earlier than the period close time.")
+
     def save(self, *args, **kwargs):
         self.full_clean()
         super().save(*args, **kwargs)
@@ -66,6 +72,38 @@ class Period(models.Model):
                 is_active=False,
                 closed_at=closed_at,
             )
+
+        return self
+
+    def apply_pre_close(self, triggered_at=None, save=True, helper_name=DEFAULT_HELPER_NAME, acting_user=None):
+        if self.pre_closed_at is not None:
+            return self
+
+        triggered_at = triggered_at or self.pre_close_at
+
+        with transaction.atomic():
+            self.ledgers.filter(is_active=True).update(
+                is_active=False,
+                closed_at=triggered_at,
+            )
+            self.pre_closed_at = triggered_at
+            if save:
+                self.save(update_fields=['pre_closed_at'])
+
+        return self
+
+    def undo_pre_close(self, save=True):
+        if self.pre_closed_at is None:
+            return self
+
+        with transaction.atomic():
+            self.ledgers.filter(closed_at=self.pre_closed_at).update(
+                is_active=True,
+                closed_at=None,
+            )
+            self.pre_closed_at = None
+            if save:
+                self.save(update_fields=['pre_closed_at'])
 
         return self
 
@@ -93,10 +131,11 @@ class Period(models.Model):
 
         with transaction.atomic():
             self.is_open = True
+            self.pre_closed_at = None
             self.closed_at = None
 
             if save:
-                self.save(update_fields=['is_open', 'closed_at'])
+                self.save(update_fields=['is_open', 'pre_closed_at', 'closed_at'])
 
             self.ledgers.filter(is_capacity_reserve=True).update(
                 end_date=self.end_date,
@@ -124,6 +163,11 @@ class Period(models.Model):
     def lucky_draw_reveal_at(self):
         reveal_datetime = datetime.combine(self.end_date.date(), self.lucky_draw_reveal_time)
         return timezone.make_aware(reveal_datetime, timezone.get_current_timezone())
+
+    @property
+    def pre_close_at(self):
+        pre_close_datetime = datetime.combine(self.end_date.date(), self.pre_close_time)
+        return timezone.make_aware(pre_close_datetime, timezone.get_current_timezone())
 
 
 class LuckyDraw(models.Model):

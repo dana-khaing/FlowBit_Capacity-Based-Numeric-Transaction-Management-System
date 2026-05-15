@@ -359,6 +359,7 @@ export default function Home() {
 
   const luckyDrawDisplay = activePeriod?.lucky_draw_display || "***-***";
   const winningIdentifier = luckyDrawWinners?.lucky_draw.winning_identifiers[0] ?? null;
+  const isPreClosed = Boolean(activePeriod?.pre_closed_at);
 
   async function openWinnerTicket(ticketNumber: string) {
     setSelectedWinnerTicketNumber(ticketNumber);
@@ -501,6 +502,15 @@ export default function Home() {
               ) : null}
             </div>
           </section>
+
+          {isPreClosed ? (
+            <section className="rounded-[24px] border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">
+              <p className="font-semibold uppercase tracking-[0.14em]">Pre-close active</p>
+              <p className="mt-2">
+                This period was pre-closed on {formatDateTime(activePeriod?.pre_closed_at ?? "")}. Active ledgers are closed and ticket operations are locked until lucky draw or a later pre-close update reopens the period.
+              </p>
+            </section>
+          ) : null}
 
           <section className="grid gap-4 lg:grid-cols-4">
             {summaryCards.map((card) => (
