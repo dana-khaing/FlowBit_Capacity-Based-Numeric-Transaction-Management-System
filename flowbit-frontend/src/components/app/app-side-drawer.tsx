@@ -9,6 +9,11 @@ import { primaryNavItems } from "@/components/app/app-nav";
 import { usePeriodState } from "@/components/period/use-period-state";
 import { Button } from "@/components/ui/button";
 import { fetchCurrentUser, getStoredUser, type AuthUser } from "@/lib/auth-client";
+import {
+  fetchNotificationSummary,
+  FLOWBIT_NOTIFICATIONS_UPDATED_EVENT,
+  startNotificationsLiveSync,
+} from "@/lib/notification-client";
 
 type AppSideDrawerProps = {
   open: boolean;
@@ -18,6 +23,7 @@ type AppSideDrawerProps = {
 export function AppSideDrawer({ open, onClose }: AppSideDrawerProps) {
   const pathname = usePathname();
   const [user, setUser] = useState<AuthUser | null>(getStoredUser());
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const { hasActivePeriod } = usePeriodState();
   const periodLockedRoutes = new Set(["/tickets/create", "/ledgers", "/spill-over", "/tickets"]);
   const visibleNavItems = primaryNavItems.filter(
@@ -29,6 +35,25 @@ export function AppSideDrawer({ open, onClose }: AppSideDrawerProps) {
     fetchCurrentUser().then(setUser).catch(() => {
       // Session guard handles invalid sessions.
     });
+  }, []);
+
+  useEffect(() => {
+    async function refreshNotifications() {
+      try {
+        const summary = await fetchNotificationSummary();
+        setUnreadNotificationCount(summary.unread_count);
+      } catch {
+        // Side nav can stay quiet if notification fetch fails.
+      }
+    }
+
+    void refreshNotifications();
+    const stopLiveSync = startNotificationsLiveSync();
+    window.addEventListener(FLOWBIT_NOTIFICATIONS_UPDATED_EVENT, refreshNotifications);
+    return () => {
+      stopLiveSync();
+      window.removeEventListener(FLOWBIT_NOTIFICATIONS_UPDATED_EVENT, refreshNotifications);
+    };
   }, []);
 
   const activeHref = visibleNavItems
@@ -79,6 +104,11 @@ export function AppSideDrawer({ open, onClose }: AppSideDrawerProps) {
                   <FontAwesomeIcon icon={item.icon} className="h-4 w-4" />
                 </span>
                 <span className="flex-1">{item.label}</span>
+                {item.href === "/notifications" && unreadNotificationCount ? (
+                  <span className="inline-flex min-w-[22px] items-center justify-center rounded-full bg-rose-600 px-1.5 py-1 text-[10px] font-semibold text-white">
+                    {unreadNotificationCount > 99 ? "99+" : unreadNotificationCount}
+                  </span>
+                ) : null}
                 {isLocked ? <FontAwesomeIcon icon={faLock} className="h-3.5 w-3.5 text-stone-400" /> : null}
               </>
             );

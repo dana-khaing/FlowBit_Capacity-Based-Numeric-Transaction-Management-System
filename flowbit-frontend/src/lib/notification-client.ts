@@ -1,5 +1,6 @@
 import { apiRequest, getApiBaseUrl } from "@/lib/api";
 import { getStoredToken } from "@/lib/auth-client";
+import { DASHBOARD_UPDATED_EVENT } from "@/components/app/workspace-events";
 
 export type FlowBitNotification = {
   id: number;
@@ -9,7 +10,7 @@ export type FlowBitNotification = {
   message: string;
   action_href: string;
   created_by: number | null;
-  created_by_username: string | null;
+  created_by_display: string | null;
   period: number | null;
   period_name: string | null;
   read_at: string | null;
@@ -91,6 +92,13 @@ export function dispatchNotificationsUpdated() {
   window.dispatchEvent(new Event(FLOWBIT_NOTIFICATIONS_UPDATED_EVENT));
 }
 
+function dispatchDashboardUpdated() {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.dispatchEvent(new Event(DASHBOARD_UPDATED_EVENT));
+}
+
 function getNotificationWebSocketUrl() {
   const token = getStoredToken();
   if (!token) {
@@ -115,7 +123,17 @@ function connectNotificationSocket() {
 
   notificationSocket = new WebSocket(socketUrl);
 
-  notificationSocket.onmessage = () => {
+  notificationSocket.onmessage = (event) => {
+    try {
+      const payload = JSON.parse(event.data) as { type?: string };
+      if (payload.type === "dashboard.refresh") {
+        dispatchDashboardUpdated();
+        return;
+      }
+    } catch {
+      // Fall through to the default notification refresh behavior.
+    }
+
     dispatchNotificationsUpdated();
   };
 
