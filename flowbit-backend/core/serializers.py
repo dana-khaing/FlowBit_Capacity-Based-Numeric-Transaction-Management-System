@@ -852,6 +852,12 @@ class UserNotificationSerializer(serializers.ModelSerializer):
         if created_by is None:
             return None
 
+        request = self.context.get('request')
+        viewer = getattr(request, 'user', None)
+        viewer_profile = getattr(viewer, 'profile', None)
+        if viewer_profile and viewer_profile.role == 'admin':
+            return created_by.get_full_name().strip() or created_by.username
+
         profile = getattr(created_by, 'profile', None)
         if profile and profile.role == 'admin':
             return 'Admin'
