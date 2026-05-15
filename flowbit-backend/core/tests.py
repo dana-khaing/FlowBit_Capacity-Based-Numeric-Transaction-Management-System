@@ -1985,6 +1985,40 @@ class PrivateWorkspaceTests(APITestCase):
             User.objects.filter(is_active=True).count(),
         )
 
+    def test_notification_admin_identity_is_masked_for_users_but_visible_to_admins(self):
+        other_admin = User.objects.create_user(username='admin_two', password='pass12345')
+        other_admin.profile.role = 'admin'
+        other_admin.profile.save(update_fields=['role'])
+
+        user_notification = UserNotification.objects.create(
+            recipient=self.user_one,
+            category=UserNotification.CATEGORY_ANNOUNCEMENT,
+            level=UserNotification.LEVEL_INFO,
+            title='Admin update',
+            message='Notice for regular user.',
+            created_by=self.admin_user,
+        )
+        admin_notification = UserNotification.objects.create(
+            recipient=other_admin,
+            category=UserNotification.CATEGORY_ANNOUNCEMENT,
+            level=UserNotification.LEVEL_INFO,
+            title='Admin update',
+            message='Notice for admin.',
+            created_by=self.admin_user,
+        )
+
+        self.client.force_authenticate(user=self.user_one)
+        user_response = self.client.get('/api/notifications/')
+        self.assertEqual(user_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(user_response.data[0]['id'], user_notification.id)
+        self.assertEqual(user_response.data[0]['created_by_display'], 'Admin')
+
+        self.client.force_authenticate(user=other_admin)
+        admin_response = self.client.get('/api/notifications/')
+        self.assertEqual(admin_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(admin_response.data[0]['id'], admin_notification.id)
+        self.assertEqual(admin_response.data[0]['created_by_display'], self.admin_user.username)
+
     def test_lucky_draw_announcement_creates_system_notifications(self):
         self.client.force_authenticate(user=self.admin_user)
         response = self.client.post(

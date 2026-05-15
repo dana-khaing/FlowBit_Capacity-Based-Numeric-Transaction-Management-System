@@ -2998,7 +2998,7 @@ class UserNotificationViewSet(viewsets.ReadOnlyModelViewSet):
         unread_count = queryset.filter(read_at__isnull=True).count()
         return Response({
             'unread_count': unread_count,
-            'recent': UserNotificationSerializer(recent, many=True).data,
+            'recent': UserNotificationSerializer(recent, many=True, context={'request': request}).data,
         }, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['post'], url_path='mark-all-read')
@@ -3011,7 +3011,7 @@ class UserNotificationViewSet(viewsets.ReadOnlyModelViewSet):
     def mark_read(self, request, pk=None):
         notification = self.get_object()
         notification.mark_read()
-        return Response(UserNotificationSerializer(notification).data, status=status.HTTP_200_OK)
+        return Response(UserNotificationSerializer(notification, context={'request': request}).data, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['post'], url_path='broadcast', permission_classes=[IsAdminRole])
     def broadcast(self, request):
