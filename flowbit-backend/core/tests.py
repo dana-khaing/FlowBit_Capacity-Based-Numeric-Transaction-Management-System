@@ -2079,6 +2079,15 @@ class PrivateWorkspaceTests(APITestCase):
             User.objects.filter(is_active=True).count(),
         )
 
+    def test_current_period_returns_null_when_no_open_period_exists(self):
+        self.period.close(closed_at=timezone.now(), closing_user=self.admin_user)
+        self.client.force_authenticate(user=self.admin_user)
+
+        response = self.client.get('/api/periods/current/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, {'period': None})
+
     def test_lucky_draw_announcement_applies_pre_close_if_needed(self):
         self.client.force_authenticate(user=self.admin_user)
         self.assertIsNone(self.period.pre_closed_at)
