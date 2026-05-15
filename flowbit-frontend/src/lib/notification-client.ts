@@ -9,7 +9,7 @@ export type FlowBitNotification = {
   message: string;
   action_href: string;
   created_by: number | null;
-  created_by_username: string | null;
+  created_by_display: string | null;
   period: number | null;
   period_name: string | null;
   read_at: string | null;
