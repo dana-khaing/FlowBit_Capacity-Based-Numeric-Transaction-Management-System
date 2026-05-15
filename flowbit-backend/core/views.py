@@ -58,7 +58,11 @@ from .models import (
     refund_transactions,
 )
 from .audit import record_audit_log, serialize_audit_value, snapshot_instance
-from .notification_realtime import push_notification_refresh_for_user
+from .notification_realtime import (
+    push_dashboard_refresh_for_user,
+    push_dashboard_refresh_for_users,
+    push_notification_refresh_for_user,
+)
 from .permissions import (
     IsAdminRole,
     IsAuthenticatedReadOnlyOrAdminWrite,
@@ -489,6 +493,21 @@ def notification_actor_label(user):
     return user.get_full_name().strip() or user.username
 
 
+def refresh_dashboard_for_user(user):
+    if user and getattr(user, 'id', None):
+        push_dashboard_refresh_for_user(user.id)
+
+
+def refresh_dashboard_for_users(users):
+    push_dashboard_refresh_for_users(
+        [user.id for user in users if user and getattr(user, 'id', None)]
+    )
+
+
+def refresh_dashboard_for_all_active_users():
+    refresh_dashboard_for_users(User.objects.filter(is_active=True).only('id'))
+
+
 def _ticket_refund_summary(ticket):
     transactions = list(ticket.transactions.all())
     visible_transactions = [transaction for transaction in transactions if not transaction.is_refunded]
@@ -668,6 +687,7 @@ class PeriodViewSet(viewsets.ModelViewSet):
             details=f"Applied pre-close to {len(pre_closed_periods)} period(s)",
             changes={'pre_closed_periods': pre_closed_periods},
         )
+        refresh_dashboard_for_all_active_users()
 
     def _auto_close_expired_periods(self, request):
         now = timezone.now()
@@ -708,6 +728,7 @@ class PeriodViewSet(viewsets.ModelViewSet):
             details=f"Auto-closed {len(closed_periods)} expired period(s)",
             changes={'closed_periods': closed_periods},
         )
+        refresh_dashboard_for_all_active_users()
 
     def perform_create(self, serializer):
         period = serializer.save()
@@ -726,6 +747,7 @@ class PeriodViewSet(viewsets.ModelViewSet):
             details=f"Created period '{period.name}'",
             changes={'after': snapshot_instance(period)},
         )
+        refresh_dashboard_for_all_active_users()
 
     def perform_update(self, serializer):
         before = snapshot_instance(self.get_object())
@@ -785,6 +807,7 @@ class PeriodViewSet(viewsets.ModelViewSet):
                     'after': snapshot_instance(period),
                 },
             )
+        refresh_dashboard_for_all_active_users()
 
     def perform_destroy(self, instance):
         try:
@@ -809,6 +832,7 @@ class PeriodViewSet(viewsets.ModelViewSet):
             details=f"Deleted period '{period_name}'",
             changes={'before': before},
         )
+        refresh_dashboard_for_all_active_users()
 
     def get_queryset(self):
         self._auto_apply_due_pre_close_periods(self.request)
@@ -911,6 +935,7 @@ class PeriodViewSet(viewsets.ModelViewSet):
                 details=f"Deleted lucky draw for period '{period.name}'",
                 changes={'before': before},
             )
+            refresh_dashboard_for_all_active_users()
             return Response(status=status.HTTP_204_NO_CONTENT)
 
         reveal_time = parse_time_value(request.data.get('reveal_time'))
@@ -985,6 +1010,7 @@ class PeriodViewSet(viewsets.ModelViewSet):
                 'after': snapshot_instance(lucky_draw),
             },
         )
+        refresh_dashboard_for_all_active_users()
         return Response(
             LuckyDrawSerializer(lucky_draw, context={'request': request}).data,
             status=status.HTTP_200_OK if before else status.HTTP_201_CREATED,
@@ -1116,6 +1142,7 @@ class PeriodViewSet(viewsets.ModelViewSet):
                 'closed_ledgers': period.ledgers.filter(is_capacity_reserve=False).count(),
             },
         )
+        refresh_dashboard_for_all_active_users()
 
         serializer = self.get_serializer(period)
         return Response({
@@ -1176,6 +1203,7 @@ class PeriodViewSet(viewsets.ModelViewSet):
                 'reactivated_reserve_ledgers': period.ledgers.filter(is_capacity_reserve=True, is_active=True).count(),
             },
         )
+        refresh_dashboard_for_all_active_users()
 
         serializer = self.get_serializer(period)
         return Response({
@@ -1273,6 +1301,7 @@ class LedgerViewSet(viewsets.ModelViewSet):
             details=f"Created ledger '{ledger.name}'",
             changes={'after': snapshot_instance(ledger)},
         )
+        refresh_dashboard_for_user(ledger.owner)
 
     def perform_update(self, serializer):
         before = snapshot_instance(self.get_object())
@@ -1290,6 +1319,7 @@ class LedgerViewSet(viewsets.ModelViewSet):
             details=f"Updated ledger '{ledger.name}'",
             changes={'before': before, 'after': snapshot_instance(ledger)},
         )
+        refresh_dashboard_for_user(ledger.owner)
 
     def perform_destroy(self, instance):
         try:
@@ -1313,6 +1343,7 @@ class LedgerViewSet(viewsets.ModelViewSet):
             details=f"Deleted ledger '{ledger_name}'",
             changes={'before': before},
         )
+        refresh_dashboard_for_user(instance.owner)
 
     def get_queryset(self):
         period_id = self.request.query_params.get('period_id')
@@ -1366,6 +1397,7 @@ class LedgerViewSet(viewsets.ModelViewSet):
             details=f"Closed ledger '{ledger.name}'",
             changes={'after': snapshot_instance(ledger)},
         )
+        refresh_dashboard_for_user(ledger.owner)
         
         serializer = self.get_serializer(ledger)
         return Response({
@@ -1436,6 +1468,7 @@ class LedgerViewSet(viewsets.ModelViewSet):
             details=f"Reopened ledger '{ledger.name}'",
             changes={'after': snapshot_instance(ledger)},
         )
+        refresh_dashboard_for_user(ledger.owner)
 
         serializer = self.get_serializer(ledger)
         return Response({
@@ -2339,6 +2372,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
                 'allocation_preview': response_payload.get('allocation_preview', {}),
             },
         )
+        refresh_dashboard_for_user(transaction_obj.created_by)
         headers = self.get_success_headers(response_payload)
         return Response(response_payload, status=status.HTTP_201_CREATED, headers=headers)
 
@@ -2685,6 +2719,7 @@ class OverflowViewSet(viewsets.ModelViewSet):
                 'collaborator_ids': [collaborator.id for collaborator in collaborators],
             },
         )
+        refresh_dashboard_for_user(request.user)
         return Response(
             {
                 'message': f"Overkill created for identifier '{identifier.number}'.",
@@ -2789,6 +2824,7 @@ class OverflowViewSet(viewsets.ModelViewSet):
                 'collaborator_ids': [collaborator.id for collaborator in collaborators],
             },
         )
+        refresh_dashboard_for_user(overflow.owner or overflow.transaction.created_by)
         
         serializer = self.get_serializer(overflow)
         return Response({
@@ -2876,6 +2912,7 @@ class OverflowViewSet(viewsets.ModelViewSet):
                     source_key=f'refund:overflow:{overflow_id}:{timezone.now().isoformat()}',
                     period=overflow.period,
                 )
+                refresh_dashboard_for_user(overflow.owner)
             return Response({
                 "message": "Overflow refunded successfully",
                 "overflow": serializer_data,
@@ -2912,6 +2949,7 @@ class OverflowViewSet(viewsets.ModelViewSet):
                 source_key=f'refund:transaction:{overflow.transaction.id}:{timezone.now().isoformat()}',
                 period=overflow.period,
             )
+            refresh_dashboard_for_user(overflow.transaction.created_by)
             return Response({
                 "message": f"Transaction '{overflow.transaction.order_number}' refunded successfully",
             }, status=status.HTTP_200_OK)
@@ -2950,6 +2988,7 @@ class OverflowViewSet(viewsets.ModelViewSet):
                 source_key=f'refund:ticket:{ticket.id}:{timezone.now().isoformat()}',
                 period=ticket.transactions.first().allocations.first().ledger.period if ticket.transactions.exists() and ticket.transactions.first().allocations.exists() else None,
             )
+            refresh_dashboard_for_user(ticket.created_by)
             return Response({
                 "message": f"Ticket '{ticket.ticket_number}' refunded successfully",
             }, status=status.HTTP_200_OK)
@@ -5092,6 +5131,7 @@ class TicketRefundView(APIView):
                 source_key=f'ticket-refund:{ticket.id}:{timezone.now().isoformat()}',
                 period=ticket.transactions.first().overflows.first().period if ticket.transactions.exists() and ticket.transactions.first().overflows.exists() else None,
             )
+            refresh_dashboard_for_user(ticket.created_by)
             return Response({
                 "message": f"Ticket '{ticket.ticket_number}' refunded successfully",
             }, status=status.HTTP_200_OK)
@@ -5138,6 +5178,7 @@ class TicketRefundView(APIView):
             source_key=f'ticket-transaction-refund:{transaction_obj.id}:{timezone.now().isoformat()}',
             period=transaction_obj.overflows.first().period if transaction_obj.overflows.exists() else None,
         )
+        refresh_dashboard_for_user(ticket.created_by)
         return Response({
             "message": f"Transaction '{transaction_obj.order_number}' refunded successfully",
         }, status=status.HTTP_200_OK)
@@ -5571,6 +5612,7 @@ class CreateTicketWithTransactions(APIView):
                 'transaction_count': ticket.transaction_count,
             },
         )
+        refresh_dashboard_for_user(ticket.created_by)
         return Response({
             "message": "Ticket and all transactions created successfully",
             "ticket": TicketSerializer(ticket).data,
