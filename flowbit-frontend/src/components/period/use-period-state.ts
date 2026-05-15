@@ -1,15 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { notifyPeriodsUpdated, PERIODS_UPDATED_EVENT, startWorkspaceLiveSync } from "@/components/app/workspace-events";
 import { fetchCurrentPeriod, type FlowBitPeriod } from "@/lib/period-client";
 
-const PERIODS_UPDATED_EVENT = "flowbit:periods-updated";
-
-export function notifyPeriodsUpdated() {
-  if (typeof window !== "undefined") {
-    window.dispatchEvent(new Event(PERIODS_UPDATED_EVENT));
-  }
-}
+export { notifyPeriodsUpdated };
 
 export function usePeriodState() {
   const [activePeriod, setActivePeriod] = useState<FlowBitPeriod | null>(null);
@@ -32,13 +27,17 @@ export function usePeriodState() {
 
   useEffect(() => {
     refresh();
+    const stopWorkspaceSync = startWorkspaceLiveSync();
 
     function handlePeriodsUpdated() {
       refresh();
     }
 
     window.addEventListener(PERIODS_UPDATED_EVENT, handlePeriodsUpdated);
-    return () => window.removeEventListener(PERIODS_UPDATED_EVENT, handlePeriodsUpdated);
+    return () => {
+      stopWorkspaceSync();
+      window.removeEventListener(PERIODS_UPDATED_EVENT, handlePeriodsUpdated);
+    };
   }, [refresh]);
 
   return {
