@@ -6,16 +6,15 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faBell, faBullhorn, faCheckDouble, faTriangleExclamation } from "@fortawesome/free-solid-svg-icons";
 import { AppSectionPage } from "@/components/app/app-section-page";
 import { AdminActionToast } from "@/components/admin/admin-action-toast";
+import { useCurrentUserState } from "@/components/auth/current-user-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { fetchCurrentUser, getStoredUser, type AuthUser } from "@/lib/auth-client";
 import {
   dispatchNotificationsUpdated,
   broadcastNotification,
   fetchNotifications,
   FLOWBIT_NOTIFICATIONS_UPDATED_EVENT,
   markAllNotificationsRead,
-  startNotificationsLiveSync,
   type FlowBitNotification,
 } from "@/lib/notification-client";
 
@@ -23,6 +22,13 @@ type ToastState = {
   type: "success" | "error";
   message: string;
 } | null;
+
+type NotificationPageCache = {
+  unreadOnly: boolean;
+  notifications: FlowBitNotification[];
+};
+
+let notificationPageCache: NotificationPageCache | null = null;
 
 function formatDateLabel(value: string) {
   return new Date(value).toLocaleDateString("en-GB", {
@@ -52,9 +58,9 @@ function levelStyles(level: FlowBitNotification["level"]) {
 }
 
 export function NotificationPage() {
-  const [user, setUser] = useState<AuthUser | null>(getStoredUser());
-  const [notifications, setNotifications] = useState<FlowBitNotification[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const currentUserState = useCurrentUserState();
+  const [notifications, setNotifications] = useState<FlowBitNotification[]>(notificationPageCache?.notifications ?? []);
+  const [isLoading, setIsLoading] = useState(notificationPageCache === null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [toast, setToast] = useState<ToastState>(null);
   const [showUnreadOnly, setShowUnreadOnly] = useState(false);
@@ -64,15 +70,18 @@ export function NotificationPage() {
     action_href: "",
     level: "INFO" as "INFO" | "WARNING" | "IMPORTANT",
   });
+  const user = currentUserState?.user ?? null;
 
-  async function loadNotifications(unreadOnly = showUnreadOnly) {
-    setIsLoading(true);
+  async function loadNotifications(unreadOnly = showUnreadOnly, background = false) {
+    if (!background) {
+      setIsLoading(notificationPageCache === null);
+    }
     try {
-      const [nextUser, nextNotifications] = await Promise.all([
-        fetchCurrentUser(),
-        fetchNotifications({ unreadOnly }),
-      ]);
-      setUser(nextUser);
+      const nextNotifications = await fetchNotifications({ unreadOnly });
+      notificationPageCache = {
+        unreadOnly,
+        notifications: nextNotifications,
+      };
       setNotifications(nextNotifications);
     } catch (error) {
       setToast({
@@ -85,23 +94,22 @@ export function NotificationPage() {
   }
 
   useEffect(() => {
-    void loadNotifications();
-  }, []);
-
-  useEffect(() => {
+    if (notificationPageCache?.unreadOnly === showUnreadOnly) {
+      setNotifications(notificationPageCache.notifications);
+      setIsLoading(false);
+      return;
+    }
     void loadNotifications(showUnreadOnly);
   }, [showUnreadOnly]);
 
   useEffect(() => {
-    const stopLiveSync = startNotificationsLiveSync();
     function handleNotificationsUpdated() {
-      void loadNotifications(showUnreadOnly);
+      void loadNotifications(showUnreadOnly, true);
     }
 
     window.addEventListener(FLOWBIT_NOTIFICATIONS_UPDATED_EVENT, handleNotificationsUpdated);
     return () => {
       window.removeEventListener(FLOWBIT_NOTIFICATIONS_UPDATED_EVENT, handleNotificationsUpdated);
-      stopLiveSync();
     };
   }, [showUnreadOnly]);
 

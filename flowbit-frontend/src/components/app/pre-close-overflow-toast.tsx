@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { AdminActionToast } from "@/components/admin/admin-action-toast";
+import { usePeriodState } from "@/components/period/use-period-state";
 import { fetchPendingOverflowPage } from "@/lib/overflow-client";
-import { fetchCurrentPeriod } from "@/lib/period-client";
 
 type ToastState = {
   title: string;
@@ -19,13 +19,14 @@ function buildStorageKey(periodId: number, endDate: string, pendingCount: number
 
 export function PreCloseOverflowToast() {
   const [toast, setToast] = useState<ToastState>(null);
+  const { activePeriod } = usePeriodState();
 
   useEffect(() => {
     let cancelled = false;
 
     async function checkPreCloseOverflow() {
       try {
-        const period = await fetchCurrentPeriod();
+        const period = activePeriod;
         if (!period || cancelled) {
           return;
         }
@@ -76,7 +77,7 @@ export function PreCloseOverflowToast() {
       window.clearInterval(intervalId);
       window.removeEventListener("focus", checkPreCloseOverflow);
     };
-  }, []);
+  }, [activePeriod]);
 
   if (!toast) {
     return null;
