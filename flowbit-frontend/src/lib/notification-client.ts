@@ -97,9 +97,10 @@ function getNotificationWebSocketUrl() {
     return null;
   }
   const baseUrl = getApiBaseUrl();
-  const wsBase = baseUrl.startsWith("https://")
-    ? baseUrl.replace(/^https:\/\//, "wss://")
-    : baseUrl.replace(/^http:\/\//, "ws://");
+  const origin = baseUrl.replace(/\/api$/, "");
+  const wsBase = origin.startsWith("https://")
+    ? origin.replace(/^https:\/\//, "wss://")
+    : origin.replace(/^http:\/\//, "ws://");
   return `${wsBase}/ws/notifications/?token=${encodeURIComponent(token)}`;
 }
 
