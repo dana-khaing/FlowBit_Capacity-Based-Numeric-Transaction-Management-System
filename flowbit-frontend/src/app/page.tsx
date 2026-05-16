@@ -143,6 +143,23 @@ function barWidth(progress: number) {
   return `${Math.max(0, Math.min(progress, 100))}%`;
 }
 
+function buildLuckyDrawRevealDate(endDate?: string | null, revealTime?: string | null) {
+  if (!endDate || !revealTime) {
+    return null;
+  }
+  const datePart = endDate.split("T")[0];
+  const timePart = revealTime.slice(0, 5);
+  if (!datePart || !timePart) {
+    return null;
+  }
+  const [year, month, day] = datePart.split("-").map(Number);
+  const [hours, minutes] = timePart.split(":").map(Number);
+  if ([year, month, day, hours, minutes].some((value) => Number.isNaN(value))) {
+    return null;
+  }
+  return new Date(year, month - 1, day, hours, minutes, 0, 0);
+}
+
 type DashboardDrilldownKind = "hot" | "almost" | "full";
 
 export default function Home() {
@@ -321,6 +338,16 @@ export default function Home() {
   }, [report]);
 
   const luckyDrawRevealLabel = useMemo(() => {
+    const localRevealDate = buildLuckyDrawRevealDate(activePeriod?.end_date, activePeriod?.lucky_draw_reveal_time);
+    if (localRevealDate) {
+      return localRevealDate.toLocaleString("en-GB", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      });
+    }
     if (!activePeriod?.lucky_draw_reveal_at) {
       return "No active draw";
     }
@@ -335,13 +362,18 @@ export default function Home() {
       hour: "numeric",
       minute: "2-digit",
     });
-  }, [activePeriod?.lucky_draw_reveal_at]);
+  }, [activePeriod?.end_date, activePeriod?.lucky_draw_reveal_at, activePeriod?.lucky_draw_reveal_time]);
 
   const nextDrawCountdown = useMemo(() => {
-    if (!activePeriod?.lucky_draw_reveal_at || activePeriod?.lucky_draw_revealed) {
+    if (activePeriod?.lucky_draw_revealed) {
       return "No countdown";
     }
-    const target = new Date(activePeriod.lucky_draw_reveal_at).getTime();
+    const localRevealDate = buildLuckyDrawRevealDate(activePeriod?.end_date, activePeriod?.lucky_draw_reveal_time);
+    const target = localRevealDate
+      ? localRevealDate.getTime()
+      : activePeriod?.lucky_draw_reveal_at
+        ? new Date(activePeriod.lucky_draw_reveal_at).getTime()
+        : Number.NaN;
     if (Number.isNaN(target)) {
       return "No countdown";
     }
@@ -353,7 +385,7 @@ export default function Home() {
       return "Draw due now";
     }
     return `Draw in ${days}d ${hours}h`;
-  }, [activePeriod?.lucky_draw_reveal_at, activePeriod?.lucky_draw_revealed]);
+  }, [activePeriod?.end_date, activePeriod?.lucky_draw_reveal_at, activePeriod?.lucky_draw_reveal_time, activePeriod?.lucky_draw_revealed]);
 
   const isCloseToPeriodEndWithPendingOverflow = useMemo(() => {
     if (!activePeriod?.end_date || !report?.pending_overflow_count) {
