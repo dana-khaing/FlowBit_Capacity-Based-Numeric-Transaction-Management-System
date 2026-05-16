@@ -32,6 +32,7 @@ import {
   savePeriodLuckyDraw,
   type FlowBitLuckyDraw,
   type FlowBitPeriod,
+  updatePeriod,
 } from "@/lib/period-client";
 import { fetchSupportCases } from "@/lib/support-client";
 
@@ -135,7 +136,9 @@ export function AdminPanelPage() {
   });
   const [luckyDraw, setLuckyDraw] = useState<FlowBitLuckyDraw | null>(null);
   const [luckyDrawNumber, setLuckyDrawNumber] = useState("");
+  const [luckyDrawRevealTime, setLuckyDrawRevealTime] = useState("15:30");
   const [isLuckyDrawModalOpen, setIsLuckyDrawModalOpen] = useState(false);
+  const [isLuckyDrawTimeModalOpen, setIsLuckyDrawTimeModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [toast, setToast] = useState<ToastState>(null);
   const luckyDrawDigitRefs = useRef<Array<HTMLInputElement | null>>([]);
@@ -188,6 +191,7 @@ export function AdminPanelPage() {
         if (!openPeriod) {
           setLuckyDraw(null);
           setLuckyDrawNumber("");
+          setLuckyDrawRevealTime("15:30");
           return;
         }
 
@@ -198,12 +202,14 @@ export function AdminPanelPage() {
           }
           setLuckyDraw(nextLuckyDraw);
           setLuckyDrawNumber(nextLuckyDraw.number ?? "");
+          setLuckyDrawRevealTime((nextLuckyDraw.reveal_time ?? openPeriod.lucky_draw_reveal_time ?? "15:30").slice(0, 5));
         } catch {
           if (!isMounted) {
             return;
           }
           setLuckyDraw(null);
           setLuckyDrawNumber("");
+          setLuckyDrawRevealTime((openPeriod.lucky_draw_reveal_time ?? "15:30").slice(0, 5));
         }
       } catch (error) {
         if (!isMounted) {
@@ -266,6 +272,34 @@ export function AdminPanelPage() {
       setLuckyDrawNumber("");
       setToast({ type: "success", message: "Lucky number removed successfully." });
       setIsLuckyDrawModalOpen(false);
+    } catch (error) {
+      setToast({
+        type: "error",
+        message: error instanceof Error ? error.message : "Request failed.",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function handleSaveLuckyDrawRevealTime(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!activePeriod) {
+      setToast({ type: "error", message: "Open a period first before changing the reveal time." });
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const updatedPeriod = await updatePeriod(activePeriod.id, {
+        lucky_draw_reveal_time: luckyDrawRevealTime || "15:30",
+      });
+      setPeriods((current) =>
+        current.map((period) => (period.id === updatedPeriod.id ? updatedPeriod : period)),
+      );
+      setLuckyDrawRevealTime((updatedPeriod.lucky_draw_reveal_time ?? luckyDrawRevealTime ?? "15:30").slice(0, 5));
+      setToast({ type: "success", message: "Lucky draw reveal time updated successfully." });
+      setIsLuckyDrawTimeModalOpen(false);
     } catch (error) {
       setToast({
         type: "error",
@@ -345,6 +379,15 @@ export function AdminPanelPage() {
                   <h2 className="mt-2 text-2xl font-semibold text-stone-950">
                     {activePeriod?.name ?? "No active period"}
                   </h2>
+                  <div className="mt-4 flex flex-wrap gap-3">
+                    <Button
+                      variant="outline"
+                      onClick={() => setIsLuckyDrawTimeModalOpen(true)}
+                      disabled={!activePeriod || isSaving}
+                    >
+                      Edit reveal time
+                    </Button>
+                  </div>
                   <div className="mt-5 grid gap-3 sm:grid-cols-2">
                     <div className="rounded-[22px] border border-stone-900/8 bg-[#f5f1ea] px-4 py-4">
                       <p className="text-[11px] uppercase tracking-[0.16em] text-stone-500">Status</p>
@@ -518,6 +561,55 @@ export function AdminPanelPage() {
                     </Button>
                     <Button type="submit" className="flex-1" disabled={isSaving || !activePeriod}>
                       {luckyDraw?.id ? "Save" : "Add"}
+                    </Button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          ) : null}
+
+          {isLuckyDrawTimeModalOpen ? (
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/40 px-4 py-6"
+              onClick={() => {
+                if (!isSaving) {
+                  setIsLuckyDrawTimeModalOpen(false);
+                }
+              }}
+            >
+              <div
+                className="w-full max-w-md rounded-[28px] border border-stone-900/8 bg-white p-6 shadow-[0_18px_60px_rgba(28,24,20,0.24)]"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Lucky draw</p>
+                <h3 className="mt-2 text-2xl font-semibold text-stone-950">Edit reveal time</h3>
+                <p className="mt-3 text-sm leading-6 text-stone-500">
+                  This controls when the active period lucky number changes from masked to visible on the dashboard.
+                </p>
+
+                <form className="mt-6 space-y-4" onSubmit={handleSaveLuckyDrawRevealTime}>
+                  <label className="block space-y-2">
+                    <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Reveal time</span>
+                    <Input
+                      type="time"
+                      value={luckyDrawRevealTime}
+                      onChange={(event) => setLuckyDrawRevealTime(event.target.value)}
+                      disabled={isSaving || !activePeriod}
+                    />
+                  </label>
+
+                  <div className="flex gap-3">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="flex-1"
+                      onClick={() => setIsLuckyDrawTimeModalOpen(false)}
+                      disabled={isSaving}
+                    >
+                      Cancel
+                    </Button>
+                    <Button type="submit" className="flex-1" disabled={isSaving || !activePeriod}>
+                      Save
                     </Button>
                   </div>
                 </form>
