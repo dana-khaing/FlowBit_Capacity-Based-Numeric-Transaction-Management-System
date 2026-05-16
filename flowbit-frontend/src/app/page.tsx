@@ -16,10 +16,10 @@ import {
   faXmark,
 } from "@fortawesome/free-solid-svg-icons";
 import { AppSectionPage } from "@/components/app/app-section-page";
-import { DASHBOARD_UPDATED_EVENT, startWorkspaceLiveSync } from "@/components/app/workspace-events";
+import { DASHBOARD_UPDATED_EVENT } from "@/components/app/workspace-events";
+import { useCurrentUserState } from "@/components/auth/current-user-context";
 import { usePeriodState } from "@/components/period/use-period-state";
-import { fetchCurrentUser, getStoredUser, type AuthUser } from "@/lib/auth-client";
-import { FLOWBIT_NOTIFICATIONS_UPDATED_EVENT, startNotificationsLiveSync } from "@/lib/notification-client";
+import { FLOWBIT_NOTIFICATIONS_UPDATED_EVENT } from "@/lib/notification-client";
 import {
   fetchDashboardAlmostFull,
   fetchDashboardHotNumbers,
@@ -146,7 +146,7 @@ function barWidth(progress: number) {
 type DashboardDrilldownKind = "hot" | "almost" | "full";
 
 export default function Home() {
-  const [currentUser, setCurrentUser] = useState<AuthUser | null>(getStoredUser());
+  const currentUserState = useCurrentUserState();
   const [report, setReport] = useState<FlowBitDashboardReport | null>(null);
   const [pendingOverflows, setPendingOverflows] = useState<FlowBitOverflow[]>([]);
   const [approvedOverflows, setApprovedOverflows] = useState<FlowBitOverflow[]>([]);
@@ -167,12 +167,7 @@ export default function Home() {
   const [isWinnerTicketLoading, setIsWinnerTicketLoading] = useState(false);
 
   const { activePeriod, hasActivePeriod, isLoading: isPeriodLoading, error: periodError } = usePeriodState();
-
-  useEffect(() => {
-    fetchCurrentUser().then(setCurrentUser).catch(() => {
-      // Session guard handles invalid sessions.
-    });
-  }, []);
+  const currentUser = currentUserState?.user ?? null;
 
   const refreshDashboard = useCallback(async (background = false) => {
     if (isPeriodLoading) {
@@ -239,9 +234,6 @@ export default function Home() {
   }, [refreshDashboard]);
 
   useEffect(() => {
-    const stopWorkspaceSync = startWorkspaceLiveSync();
-    const stopNotificationSync = startNotificationsLiveSync();
-
     function handleDashboardUpdate() {
       void refreshDashboard(true);
     }
@@ -261,8 +253,6 @@ export default function Home() {
     window.addEventListener("focus", handleFocus);
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
-      stopWorkspaceSync();
-      stopNotificationSync();
       window.removeEventListener(DASHBOARD_UPDATED_EVENT, handleDashboardUpdate);
       window.removeEventListener(FLOWBIT_NOTIFICATIONS_UPDATED_EVENT, handleDashboardUpdate);
       window.removeEventListener("focus", handleFocus);

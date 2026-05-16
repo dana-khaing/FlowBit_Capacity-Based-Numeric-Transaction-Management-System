@@ -1,18 +1,24 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { notifyPeriodsUpdated, PERIODS_UPDATED_EVENT, startWorkspaceLiveSync } from "@/components/app/workspace-events";
-import { usePeriodStateContext } from "@/components/period/period-state-context";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { PERIODS_UPDATED_EVENT, startWorkspaceLiveSync } from "@/components/app/workspace-events";
 import { fetchCurrentPeriod, type FlowBitPeriod } from "@/lib/period-client";
 
-export { notifyPeriodsUpdated };
+type PeriodStateContextValue = {
+  activePeriod: FlowBitPeriod | null;
+  hasActivePeriod: boolean;
+  isLoading: boolean;
+  error: string | null;
+  refresh: () => Promise<void>;
+};
 
-export function usePeriodState() {
-  const sharedState = usePeriodStateContext();
-  if (sharedState) {
-    return sharedState;
-  }
+const PeriodStateContext = createContext<PeriodStateContextValue | null>(null);
 
+type PeriodStateProviderProps = {
+  children: ReactNode;
+};
+
+export function PeriodStateProvider({ children }: PeriodStateProviderProps) {
   const [activePeriod, setActivePeriod] = useState<FlowBitPeriod | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -32,11 +38,11 @@ export function usePeriodState() {
   }, []);
 
   useEffect(() => {
-    refresh();
+    void refresh();
     const stopWorkspaceSync = startWorkspaceLiveSync();
 
     function handlePeriodsUpdated() {
-      refresh();
+      void refresh();
     }
 
     window.addEventListener(PERIODS_UPDATED_EVENT, handlePeriodsUpdated);
@@ -46,11 +52,17 @@ export function usePeriodState() {
     };
   }, [refresh]);
 
-  return {
+  const value = useMemo<PeriodStateContextValue>(() => ({
     activePeriod,
     hasActivePeriod: Boolean(activePeriod),
     isLoading,
     error,
     refresh,
-  };
+  }), [activePeriod, error, isLoading, refresh]);
+
+  return <PeriodStateContext.Provider value={value}>{children}</PeriodStateContext.Provider>;
+}
+
+export function usePeriodStateContext() {
+  return useContext(PeriodStateContext);
 }
