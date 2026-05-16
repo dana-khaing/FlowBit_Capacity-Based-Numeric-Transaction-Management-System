@@ -1,4 +1,5 @@
 import {
+  faAddressCard,
   faArrowTrendUp,
   faBoxArchive,
   faFileInvoice,
@@ -21,6 +22,7 @@ export const primaryNavItems = [
   { label: "Tickets", href: "/tickets", icon: faFileInvoice },
   { label: "Notifications", href: "/notifications", icon: faBell },
   { label: "Profile", href: "/profile", icon: faIdBadge },
+  { label: "Admin Panel", href: "/admin", icon: faAddressCard },
   { label: "Export", href: "/export-ledger", icon: faFolderOpen },
   { label: "Archive", href: "/archive", icon: faBoxArchive },
   { label: "Customer Service", href: "/contact-support", icon: faHeadset },
