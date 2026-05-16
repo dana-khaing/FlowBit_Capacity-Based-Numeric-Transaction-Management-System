@@ -891,7 +891,7 @@ export function PeriodPage() {
                       onChange={(event) => handleLuckyDrawDigitChange(index, event.target.value)}
                       onKeyDown={(event) => handleLuckyDrawDigitKeyDown(index, event)}
                       onPaste={handleLuckyDrawPaste}
-                      placeholder="0"
+                      placeholder="*"
                       disabled={isSaving}
                       className="h-14 rounded-[18px] px-0 text-center text-xl font-semibold tracking-[0.18em]"
                     />
