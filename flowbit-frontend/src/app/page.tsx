@@ -107,6 +107,25 @@ const footerGroups = [
   },
 ];
 
+function getVisibleFooterGroups(isAdmin: boolean) {
+  return footerGroups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => {
+        if (
+          item.href === "/periods" ||
+          item.href === "/admin/users" ||
+          item.href === "/admin/override-codes" ||
+          item.href === "/admin/audit-logs"
+        ) {
+          return isAdmin;
+        }
+        return true;
+      }),
+    }))
+    .filter((group) => group.items.length > 0);
+}
+
 function formatAmount(value: string | number) {
   const amount = Number(value);
   if (Number.isNaN(amount)) {
@@ -398,6 +417,7 @@ export default function Home() {
   const luckyDrawDisplay = activePeriod?.lucky_draw_display || "***-***";
   const winningIdentifier = luckyDrawWinners?.lucky_draw.winning_identifiers[0] ?? null;
   const isPreClosed = Boolean(activePeriod?.pre_closed_at);
+  const visibleFooterGroups = useMemo(() => getVisibleFooterGroups(currentUser?.role === "admin"), [currentUser?.role]);
 
   async function openWinnerTicket(ticketNumber: string) {
     setSelectedWinnerTicketNumber(ticketNumber);
@@ -872,7 +892,7 @@ export default function Home() {
 
           <section className="rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6">
             <div className="grid gap-8 md:grid-cols-2 xl:grid-cols-4">
-              {footerGroups.map((group) => (
+              {visibleFooterGroups.map((group) => (
                 <div key={group.title}>
                   <h3 className="text-[15px] font-semibold uppercase tracking-[0.14em] text-stone-500">
                     {group.title}
