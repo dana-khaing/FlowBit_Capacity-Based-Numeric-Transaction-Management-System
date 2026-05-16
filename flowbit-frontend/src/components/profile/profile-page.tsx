@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { WorkspaceShell } from "@/components/app/workspace-shell";
-import { useCurrentUserState } from "@/components/auth/current-user-context";
+import { dispatchCurrentUserUpdated } from "@/components/auth/current-user-context";
 import { ProfileAvatarCard } from "@/components/profile/profile-avatar-card";
 import { ProfileAdminActionsCard } from "@/components/profile/profile-admin-actions-card";
 import { ProfileDangerZoneCard } from "@/components/profile/profile-danger-zone-card";
@@ -14,10 +14,8 @@ import { ProfileToast } from "@/components/profile/profile-toast";
 import { fetchCurrentUser, getStoredUser, type AuthUser } from "@/lib/auth-client";
 
 export function ProfilePage() {
-  const currentUserState = useCurrentUserState();
   const [user, setUser] = useState<AuthUser | null>(getStoredUser());
   const [toastMessage, setToastMessage] = useState("");
-  const applyUser = currentUserState?.applyUser;
 
   useEffect(() => {
     fetchCurrentUser().then(setUser).catch(() => {
@@ -25,15 +23,9 @@ export function ProfilePage() {
     });
   }, []);
 
-  useEffect(() => {
-    if (currentUserState?.user) {
-      setUser(currentUserState.user);
-    }
-  }, [currentUserState?.user]);
-
   function handleUserChange(nextUser: AuthUser) {
     setUser(nextUser);
-    applyUser?.(nextUser);
+    dispatchCurrentUserUpdated(nextUser);
   }
 
   if (!user) {
