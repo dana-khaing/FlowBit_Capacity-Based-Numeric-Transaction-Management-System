@@ -1122,10 +1122,12 @@ class UserProfileSerializer(serializers.ModelSerializer):
         avatar = getattr(profile, 'avatar', None)
         if not avatar:
             return None
+        version = getattr(profile, 'updated_at', None)
+        version_suffix = f"?v={int(version.timestamp())}" if version else ""
         request = self.context.get('request')
         if request is not None:
-            return request.build_absolute_uri(avatar.url)
-        return avatar.url
+            return request.build_absolute_uri(f"{avatar.url}{version_suffix}")
+        return f"{avatar.url}{version_suffix}"
 
 
 class UserProfileUpdateSerializer(serializers.Serializer):
