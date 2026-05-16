@@ -7,6 +7,7 @@ import {
   faCalendarDays,
   faFileLines,
   faGear,
+  faTicket,
   faShieldHalved,
   faUsersGear,
 } from "@fortawesome/free-solid-svg-icons";
@@ -45,6 +46,13 @@ const buildAdminLinks = () => {
       description: "Open, adjust, pre-close, and review period control settings.",
       href: "/periods",
       icon: faCalendarDays,
+      external: false,
+    },
+    {
+      title: "Lucky Number Announce",
+      description: "Open the period workspace to set reveal time, announce the lucky number, or review winner state.",
+      href: "/periods",
+      icon: faTicket,
       external: false,
     },
     {
