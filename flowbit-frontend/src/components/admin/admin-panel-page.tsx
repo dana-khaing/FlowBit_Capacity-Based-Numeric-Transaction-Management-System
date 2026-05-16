@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -96,6 +96,7 @@ export function AdminPanelPage() {
   const [isLuckyDrawModalOpen, setIsLuckyDrawModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [toast, setToast] = useState<ToastState>(null);
+  const luckyDrawDigitRefs = useRef<Array<HTMLInputElement | null>>([]);
 
   const activePeriod = useMemo(
     () => periods.find((period) => period.is_open) ?? null,
@@ -204,6 +205,43 @@ export function AdminPanelPage() {
     }
   }
 
+  function handleLuckyDrawDigitChange(index: number, value: string) {
+    const nextDigit = value.replace(/\D/g, "").slice(-1);
+    const digits = luckyDrawNumber.padEnd(6, " ").split("");
+    digits[index] = nextDigit || "";
+    const nextValue = digits.join("").replace(/\s/g, "");
+    setLuckyDrawNumber(nextValue);
+
+    if (nextDigit && index < 5) {
+      luckyDrawDigitRefs.current[index + 1]?.focus();
+    }
+  }
+
+  function handleLuckyDrawDigitKeyDown(index: number, event: React.KeyboardEvent<HTMLInputElement>) {
+    if (event.key === "Backspace" && !luckyDrawNumber[index] && index > 0) {
+      luckyDrawDigitRefs.current[index - 1]?.focus();
+    }
+    if (event.key === "ArrowLeft" && index > 0) {
+      event.preventDefault();
+      luckyDrawDigitRefs.current[index - 1]?.focus();
+    }
+    if (event.key === "ArrowRight" && index < 5) {
+      event.preventDefault();
+      luckyDrawDigitRefs.current[index + 1]?.focus();
+    }
+  }
+
+  function handleLuckyDrawPaste(event: React.ClipboardEvent<HTMLInputElement>) {
+    const pasted = event.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
+    if (!pasted) {
+      return;
+    }
+    event.preventDefault();
+    setLuckyDrawNumber(pasted);
+    const focusIndex = Math.min(pasted.length, 5);
+    luckyDrawDigitRefs.current[focusIndex]?.focus();
+  }
+
   return (
     <AdminAccessGuard>
       {(user) => (
@@ -301,14 +339,25 @@ export function AdminPanelPage() {
                 <form className="mt-6 space-y-4" onSubmit={handleSaveLuckyDraw}>
                   <label className="block space-y-2">
                     <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Lucky draw number</span>
-                    <Input
-                      inputMode="numeric"
-                      maxLength={6}
-                      value={luckyDrawNumber}
-                      onChange={(event) => setLuckyDrawNumber(event.target.value.replace(/\D/g, "").slice(0, 6))}
-                      placeholder="123456"
-                      disabled={isSaving || !activePeriod}
-                    />
+                    <div className="grid grid-cols-6 gap-2">
+                      {Array.from({ length: 6 }, (_, index) => (
+                        <Input
+                          key={index}
+                          ref={(element) => {
+                            luckyDrawDigitRefs.current[index] = element;
+                          }}
+                          inputMode="numeric"
+                          maxLength={1}
+                          value={luckyDrawNumber[index] ?? ""}
+                          onChange={(event) => handleLuckyDrawDigitChange(index, event.target.value)}
+                          onKeyDown={(event) => handleLuckyDrawDigitKeyDown(index, event)}
+                          onPaste={handleLuckyDrawPaste}
+                          placeholder="0"
+                          disabled={isSaving || !activePeriod}
+                          className="h-14 rounded-[18px] px-0 text-center text-xl font-semibold tracking-[0.18em]"
+                        />
+                      ))}
+                    </div>
                   </label>
 
                   <div className="flex gap-3">
