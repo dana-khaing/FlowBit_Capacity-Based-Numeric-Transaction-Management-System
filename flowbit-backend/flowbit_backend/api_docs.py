@@ -17,7 +17,18 @@ class DocsAccessPermission(BasePermission):
 
 schema_view = get_schema_view(
     title="FlowBit API",
-    description="OpenAPI schema for FlowBit backend endpoints.",
+    description="""
+FlowBit backend API for periods, ledgers, tickets, spill-over, archive, lucky draw, notifications, support, and admin workflows.
+
+Authentication:
+- Most endpoints require `Authorization: Token <token>`
+- Use `/api/auth/login/` or `/api/auth/google/` to obtain a token
+
+Operational notes:
+- `GET /api/periods/current/` returns `{ "period": null }` when no active period exists
+- Realtime notifications are delivered over `/ws/notifications/`
+- Admin-only routes remain protected outside `DEBUG`
+""".strip(),
     version="1.0.0",
     public=True,
     permission_classes=[DocsAccessPermission],
@@ -47,6 +58,10 @@ def swagger_ui_view(request):
       deepLinking: true,
       displayRequestDuration: true,
       persistAuthorization: true,
+      docExpansion: 'list',
+      defaultModelsExpandDepth: 1,
+      tagsSorter: 'alpha',
+      operationsSorter: 'alpha',
     }});
   </script>
 </body>
