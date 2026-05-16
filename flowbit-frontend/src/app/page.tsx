@@ -107,6 +107,25 @@ const footerGroups = [
   },
 ];
 
+function getVisibleFooterGroups(isAdmin: boolean) {
+  return footerGroups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => {
+        if (
+          item.href === "/periods" ||
+          item.href === "/admin/users" ||
+          item.href === "/admin/override-codes" ||
+          item.href === "/admin/audit-logs"
+        ) {
+          return isAdmin;
+        }
+        return true;
+      }),
+    }))
+    .filter((group) => group.items.length > 0);
+}
+
 function formatAmount(value: string | number) {
   const amount = Number(value);
   if (Number.isNaN(amount)) {
@@ -141,6 +160,23 @@ function getRecentTicketCustomerName(value: string) {
 
 function barWidth(progress: number) {
   return `${Math.max(0, Math.min(progress, 100))}%`;
+}
+
+function buildLuckyDrawRevealDate(endDate?: string | null, revealTime?: string | null) {
+  if (!endDate || !revealTime) {
+    return null;
+  }
+  const datePart = endDate.split("T")[0];
+  const timePart = revealTime.slice(0, 5);
+  if (!datePart || !timePart) {
+    return null;
+  }
+  const [year, month, day] = datePart.split("-").map(Number);
+  const [hours, minutes] = timePart.split(":").map(Number);
+  if ([year, month, day, hours, minutes].some((value) => Number.isNaN(value))) {
+    return null;
+  }
+  return new Date(year, month - 1, day, hours, minutes, 0, 0);
 }
 
 type DashboardDrilldownKind = "hot" | "almost" | "full";
@@ -321,6 +357,16 @@ export default function Home() {
   }, [report]);
 
   const luckyDrawRevealLabel = useMemo(() => {
+    const localRevealDate = buildLuckyDrawRevealDate(activePeriod?.end_date, activePeriod?.lucky_draw_reveal_time);
+    if (localRevealDate) {
+      return localRevealDate.toLocaleString("en-GB", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      });
+    }
     if (!activePeriod?.lucky_draw_reveal_at) {
       return "No active draw";
     }
@@ -335,13 +381,18 @@ export default function Home() {
       hour: "numeric",
       minute: "2-digit",
     });
-  }, [activePeriod?.lucky_draw_reveal_at]);
+  }, [activePeriod?.end_date, activePeriod?.lucky_draw_reveal_at, activePeriod?.lucky_draw_reveal_time]);
 
   const nextDrawCountdown = useMemo(() => {
-    if (!activePeriod?.lucky_draw_reveal_at || activePeriod?.lucky_draw_revealed) {
+    if (activePeriod?.lucky_draw_revealed) {
       return "No countdown";
     }
-    const target = new Date(activePeriod.lucky_draw_reveal_at).getTime();
+    const localRevealDate = buildLuckyDrawRevealDate(activePeriod?.end_date, activePeriod?.lucky_draw_reveal_time);
+    const target = localRevealDate
+      ? localRevealDate.getTime()
+      : activePeriod?.lucky_draw_reveal_at
+        ? new Date(activePeriod.lucky_draw_reveal_at).getTime()
+        : Number.NaN;
     if (Number.isNaN(target)) {
       return "No countdown";
     }
@@ -353,7 +404,7 @@ export default function Home() {
       return "Draw due now";
     }
     return `Draw in ${days}d ${hours}h`;
-  }, [activePeriod?.lucky_draw_reveal_at, activePeriod?.lucky_draw_revealed]);
+  }, [activePeriod?.end_date, activePeriod?.lucky_draw_reveal_at, activePeriod?.lucky_draw_reveal_time, activePeriod?.lucky_draw_revealed]);
 
   const isCloseToPeriodEndWithPendingOverflow = useMemo(() => {
     if (!activePeriod?.end_date || !report?.pending_overflow_count) {
@@ -366,6 +417,7 @@ export default function Home() {
   const luckyDrawDisplay = activePeriod?.lucky_draw_display || "***-***";
   const winningIdentifier = luckyDrawWinners?.lucky_draw.winning_identifiers[0] ?? null;
   const isPreClosed = Boolean(activePeriod?.pre_closed_at);
+  const visibleFooterGroups = useMemo(() => getVisibleFooterGroups(currentUser?.role === "admin"), [currentUser?.role]);
 
   async function openWinnerTicket(ticketNumber: string) {
     setSelectedWinnerTicketNumber(ticketNumber);
@@ -840,7 +892,7 @@ export default function Home() {
 
           <section className="rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6">
             <div className="grid gap-8 md:grid-cols-2 xl:grid-cols-4">
-              {footerGroups.map((group) => (
+              {visibleFooterGroups.map((group) => (
                 <div key={group.title}>
                   <h3 className="text-[15px] font-semibold uppercase tracking-[0.14em] text-stone-500">
                     {group.title}

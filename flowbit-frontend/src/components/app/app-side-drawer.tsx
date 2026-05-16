@@ -24,7 +24,12 @@ export function AppSideDrawer({ open, onClose }: AppSideDrawerProps) {
   const { hasActivePeriod } = usePeriodState();
   const periodLockedRoutes = new Set(["/tickets/create", "/ledgers", "/spill-over", "/tickets"]);
   const visibleNavItems = primaryNavItems.filter(
-    (item) => item.href !== "/periods" || user?.role === "admin",
+    (item) => {
+      if (item.href === "/periods" || item.href === "/admin") {
+        return user?.role === "admin";
+      }
+      return true;
+    },
   );
 
   const activeHref = visibleNavItems

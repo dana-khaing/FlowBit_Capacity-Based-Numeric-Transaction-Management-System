@@ -208,11 +208,15 @@ class ApiDocumentationTests(APITestCase):
     @override_settings(DEBUG=True)
     def test_openapi_schema_endpoint_returns_json(self):
         response = self.client.get('/api/schema/')
+        schema = response.json()
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response['Content-Type'], 'application/vnd.oai.openapi+json')
-        self.assertIn('openapi', response.json())
-        self.assertIn('/api/auth/login/', response.json()['paths'])
+        self.assertIn('openapi', schema)
+        self.assertIn('/api/auth/login/', schema['paths'])
+        self.assertEqual(schema['paths']['/api/auth/login/']['post']['tags'], ['Authentication'])
+        self.assertEqual(schema['paths']['/api/tickets/']['get']['tags'], ['Tickets'])
+        self.assertIn('Authorization: Token <token>', schema['info']['description'])
 
     @override_settings(DEBUG=True)
     def test_swagger_ui_page_renders(self):
@@ -423,6 +427,7 @@ class AuthAPITests(APITestCase):
         self.user.refresh_from_db()
         self.assertTrue(bool(self.user.profile.avatar))
         self.assertIsNotNone(response.data['user']['avatar_url'])
+        self.assertIn('?v=', response.data['user']['avatar_url'])
         self.assertTrue(AuditLog.objects.filter(action='auth.avatar_updated', target_id=self.user.id).exists())
 
     def test_regular_user_cannot_delete_account_without_admin_override_code(self):
