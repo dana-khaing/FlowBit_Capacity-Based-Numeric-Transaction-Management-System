@@ -587,7 +587,7 @@ export function PeriodPage() {
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Lucky draw</p>
-                    <h3 className="mt-2 text-xl font-semibold text-stone-950">Shared period number</h3>
+                    <h3 className="mt-2 text-xl font-semibold text-stone-950">Announce Lucky Number</h3>
                     <p className="mt-3 text-sm leading-6 text-stone-500">
                       Only admin users can add or edit the 6-digit lucky draw number, and it locks automatically after the period ends.
                     </p>
@@ -642,7 +642,7 @@ export function PeriodPage() {
                 <p className="text-sm text-stone-400">{periods.length} total</p>
               </div>
 
-              <div className="mt-4 space-y-3">
+              <div className="thin-scrollbar mt-4 max-h-[480px] space-y-3 overflow-y-auto pr-1">
                 {isLoading ? (
                   <p className="text-sm text-stone-500">Loading period history...</p>
                 ) : periods.length ? (

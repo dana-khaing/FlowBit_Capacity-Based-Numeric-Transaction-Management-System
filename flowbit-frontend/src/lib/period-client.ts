@@ -61,7 +61,9 @@ export type FlowBitLuckyDrawWinners = {
   }>;
 };
 
-type CurrentPeriodResponse = FlowBitPeriod;
+type CurrentPeriodResponse = {
+  period: FlowBitPeriod | null;
+};
 
 function authHeaders() {
   const token = getStoredToken();
@@ -87,16 +89,12 @@ export async function fetchCurrentPeriod() {
     },
   });
 
-  if (response.status === 404) {
-    return null;
-  }
-
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new Error(typeof data?.detail === "string" ? data.detail : "Request failed.");
   }
 
-  return data as CurrentPeriodResponse;
+  return (data as CurrentPeriodResponse).period ?? null;
 }
 
 export async function createPeriod(payload: {

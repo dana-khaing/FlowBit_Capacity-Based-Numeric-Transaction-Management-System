@@ -861,13 +861,10 @@ class PeriodViewSet(viewsets.ModelViewSet):
         self._auto_close_expired_periods(request)
         period = Period.get_open_period()
         if not period:
-            return Response(
-                {"detail": "No open period found"},
-                status=status.HTTP_404_NOT_FOUND
-            )
+            return Response({"period": None}, status=status.HTTP_200_OK)
 
         serializer = self.get_serializer(period)
-        return Response(serializer.data)
+        return Response({"period": serializer.data}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get', 'post', 'patch', 'delete'], url_path='lucky-draw')
     def lucky_draw(self, request, pk=None):

@@ -1,19 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faLock, faXmark } from "@fortawesome/free-solid-svg-icons";
 import { primaryNavItems } from "@/components/app/app-nav";
 import { usePeriodState } from "@/components/period/use-period-state";
 import { Button } from "@/components/ui/button";
-import { fetchCurrentUser, getStoredUser, type AuthUser } from "@/lib/auth-client";
-import {
-  fetchNotificationSummary,
-  FLOWBIT_NOTIFICATIONS_UPDATED_EVENT,
-  startNotificationsLiveSync,
-} from "@/lib/notification-client";
+import { useCurrentUserState } from "@/components/auth/current-user-context";
+import { useNotificationSummaryState } from "@/components/notifications/notification-summary-context";
 
 type AppSideDrawerProps = {
   open: boolean;
@@ -22,39 +17,15 @@ type AppSideDrawerProps = {
 
 export function AppSideDrawer({ open, onClose }: AppSideDrawerProps) {
   const pathname = usePathname();
-  const [user, setUser] = useState<AuthUser | null>(getStoredUser());
-  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+  const currentUserState = useCurrentUserState();
+  const notificationSummaryState = useNotificationSummaryState();
+  const user = currentUserState?.user ?? null;
+  const unreadNotificationCount = notificationSummaryState?.summary.unread_count ?? 0;
   const { hasActivePeriod } = usePeriodState();
   const periodLockedRoutes = new Set(["/tickets/create", "/ledgers", "/spill-over", "/tickets"]);
   const visibleNavItems = primaryNavItems.filter(
     (item) => item.href !== "/periods" || user?.role === "admin",
   );
-
-  useEffect(() => {
-    setUser(getStoredUser());
-    fetchCurrentUser().then(setUser).catch(() => {
-      // Session guard handles invalid sessions.
-    });
-  }, []);
-
-  useEffect(() => {
-    async function refreshNotifications() {
-      try {
-        const summary = await fetchNotificationSummary();
-        setUnreadNotificationCount(summary.unread_count);
-      } catch {
-        // Side nav can stay quiet if notification fetch fails.
-      }
-    }
-
-    void refreshNotifications();
-    const stopLiveSync = startNotificationsLiveSync();
-    window.addEventListener(FLOWBIT_NOTIFICATIONS_UPDATED_EVENT, refreshNotifications);
-    return () => {
-      stopLiveSync();
-      window.removeEventListener(FLOWBIT_NOTIFICATIONS_UPDATED_EVENT, refreshNotifications);
-    };
-  }, []);
 
   const activeHref = visibleNavItems
     .filter((item) => {
