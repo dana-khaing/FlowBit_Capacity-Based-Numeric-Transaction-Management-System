@@ -22,7 +22,7 @@ import { AdminAccessGuard } from "@/components/admin/admin-access-guard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getApiBaseUrl } from "@/lib/api";
-import { fetchManagedUsers } from "@/lib/admin-client";
+import { fetchAuditLogs, fetchManagedUsers, type AuditLogEntry } from "@/lib/admin-client";
 import { fetchLedgers } from "@/lib/ledger-client";
 import { fetchPendingOverflowPage } from "@/lib/overflow-client";
 import {
@@ -34,7 +34,7 @@ import {
   type FlowBitPeriod,
   updatePeriod,
 } from "@/lib/period-client";
-import { fetchSupportCases } from "@/lib/support-client";
+import { fetchSupportCases, type FlowBitSupportCase } from "@/lib/support-client";
 
 type ToastState = {
   type: "success" | "error";
@@ -128,12 +128,14 @@ const buildAdminLinks = () => {
 
 export function AdminPanelPage() {
   const [periods, setPeriods] = useState<FlowBitPeriod[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [stats, setStats] = useState<AdminPanelStats>({
     userCount: 0,
     pendingOverflowCount: 0,
     activeLedgerCount: 0,
     openSupportCaseCount: 0,
   });
+  const [supportCases, setSupportCases] = useState<FlowBitSupportCase[]>([]);
   const [luckyDraw, setLuckyDraw] = useState<FlowBitLuckyDraw | null>(null);
   const [luckyDrawNumber, setLuckyDrawNumber] = useState("");
   const [luckyDrawRevealTime, setLuckyDrawRevealTime] = useState("15:30");
@@ -188,6 +190,8 @@ export function AdminPanelPage() {
           activeLedgerCount: ledgers.filter((ledger) => ledger.is_active && !ledger.is_capacity_reserve).length,
           openSupportCaseCount: supportCases.filter((supportCase) => supportCase.status === "OPEN").length,
         });
+        setSupportCases(supportCases);
+        setAuditLogs(await fetchAuditLogs());
         if (!openPeriod) {
           setLuckyDraw(null);
           setLuckyDrawNumber("");
@@ -440,6 +444,57 @@ export function AdminPanelPage() {
                 <article className="rounded-[24px] border border-stone-900/8 bg-[#f6f3ed] px-5 py-5 shadow-[0_4px_14px_rgba(28,24,20,0.03)]">
                   <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-stone-500">Open support cases</p>
                   <p className="mt-3 text-4xl font-light text-stone-950">{stats.openSupportCaseCount}</p>
+                </article>
+              </section>
+
+              <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                <article className="rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Audit</p>
+                      <h2 className="mt-2 text-2xl font-semibold text-stone-950">Recent activity</h2>
+                    </div>
+                    <Link href="/admin/audit-logs" className="text-sm font-semibold text-stone-500 transition hover:text-stone-900">
+                      View all
+                    </Link>
+                  </div>
+
+                  <div className="thin-scrollbar mt-5 max-h-[320px] space-y-3 overflow-y-auto pr-1">
+                    {auditLogs.length ? auditLogs.slice(0, 5).map((entry) => (
+                      <div key={entry.id} className="rounded-[20px] border border-stone-900/8 bg-[#f5f1ea] px-4 py-4">
+                        <p className="text-sm font-semibold text-stone-900">{entry.action}</p>
+                        <p className="mt-1 text-sm leading-6 text-stone-500">{entry.details || entry.target_model}</p>
+                      </div>
+                    )) : (
+                      <p className="text-sm text-stone-500">No audit activity yet.</p>
+                    )}
+                  </div>
+                </article>
+
+                <article className="rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Support</p>
+                      <h2 className="mt-2 text-2xl font-semibold text-stone-950">Open cases</h2>
+                    </div>
+                    <Link href="/contact-support" className="text-sm font-semibold text-stone-500 transition hover:text-stone-900">
+                      Open inbox
+                    </Link>
+                  </div>
+
+                  <div className="thin-scrollbar mt-5 max-h-[320px] space-y-3 overflow-y-auto pr-1">
+                    {supportCases.filter((supportCase) => supportCase.status === "OPEN").length ? supportCases
+                      .filter((supportCase) => supportCase.status === "OPEN")
+                      .slice(0, 5)
+                      .map((supportCase) => (
+                        <div key={supportCase.id} className="rounded-[20px] border border-stone-900/8 bg-[#f5f1ea] px-4 py-4">
+                          <p className="text-sm font-semibold text-stone-900">{supportCase.subject}</p>
+                          <p className="mt-1 text-sm leading-6 text-stone-500">{supportCase.created_by_full_name}</p>
+                        </div>
+                      )) : (
+                      <p className="text-sm text-stone-500">No open support cases.</p>
+                    )}
+                  </div>
                 </article>
               </section>
 
