@@ -4,10 +4,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
+  faBell,
   faArrowUpRightFromSquare,
   faCalendarDays,
+  faHeadset,
   faFileLines,
   faGear,
+  faLayerGroup,
+  faTriangleExclamation,
   faTicket,
   faShieldHalved,
   faUsersGear,
@@ -18,6 +22,9 @@ import { AdminAccessGuard } from "@/components/admin/admin-access-guard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getApiBaseUrl } from "@/lib/api";
+import { fetchManagedUsers } from "@/lib/admin-client";
+import { fetchLedgers } from "@/lib/ledger-client";
+import { fetchPendingOverflowPage } from "@/lib/overflow-client";
 import {
   deletePeriodLuckyDraw,
   fetchPeriodLuckyDraw,
@@ -26,11 +33,40 @@ import {
   type FlowBitLuckyDraw,
   type FlowBitPeriod,
 } from "@/lib/period-client";
+import { fetchSupportCases } from "@/lib/support-client";
 
 type ToastState = {
   type: "success" | "error";
   message: string;
 } | null;
+
+type AdminPanelStats = {
+  userCount: number;
+  pendingOverflowCount: number;
+  activeLedgerCount: number;
+  openSupportCaseCount: number;
+};
+
+const quickWorkflowLinks = [
+  {
+    label: "Spill over queue",
+    description: "Open pending and approved spill-over workflows.",
+    href: "/spill-over",
+    icon: faTriangleExclamation,
+  },
+  {
+    label: "Customer service",
+    description: "Open the support inbox and active customer cases.",
+    href: "/contact-support",
+    icon: faHeadset,
+  },
+  {
+    label: "Send notification",
+    description: "Open notifications to broadcast an admin announcement.",
+    href: "/notifications",
+    icon: faBell,
+  },
+];
 
 const buildAdminLinks = () => {
   const apiBaseUrl = getApiBaseUrl();
@@ -91,6 +127,12 @@ const buildAdminLinks = () => {
 
 export function AdminPanelPage() {
   const [periods, setPeriods] = useState<FlowBitPeriod[]>([]);
+  const [stats, setStats] = useState<AdminPanelStats>({
+    userCount: 0,
+    pendingOverflowCount: 0,
+    activeLedgerCount: 0,
+    openSupportCaseCount: 0,
+  });
   const [luckyDraw, setLuckyDraw] = useState<FlowBitLuckyDraw | null>(null);
   const [luckyDrawNumber, setLuckyDrawNumber] = useState("");
   const [isLuckyDrawModalOpen, setIsLuckyDrawModalOpen] = useState(false);
@@ -102,6 +144,13 @@ export function AdminPanelPage() {
     () => periods.find((period) => period.is_open) ?? null,
     [periods],
   );
+  const activePeriodStatusLabel = activePeriod
+    ? activePeriod.lucky_draw_revealed
+      ? "Lucky draw announced"
+      : activePeriod.pre_closed_at
+        ? "Pre-closed"
+        : "Active"
+    : "No active period";
 
   useEffect(() => {
     let isMounted = true;
@@ -114,6 +163,28 @@ export function AdminPanelPage() {
         }
         setPeriods(nextPeriods);
         const openPeriod = nextPeriods.find((period) => period.is_open);
+        const [users, supportCases] = await Promise.all([
+          fetchManagedUsers(),
+          fetchSupportCases(),
+        ]);
+        if (!isMounted) {
+          return;
+        }
+        const pendingOverflowCount = openPeriod
+          ? (await fetchPendingOverflowPage({ periodId: openPeriod.id, page: 1, pageSize: 1 })).count
+          : 0;
+        const ledgers = openPeriod
+          ? await fetchLedgers({ period_id: openPeriod.id })
+          : [];
+        if (!isMounted) {
+          return;
+        }
+        setStats({
+          userCount: users.length,
+          pendingOverflowCount,
+          activeLedgerCount: ledgers.filter((ledger) => ledger.is_active && !ledger.is_capacity_reserve).length,
+          openSupportCaseCount: supportCases.filter((supportCase) => supportCase.status === "OPEN").length,
+        });
         if (!openPeriod) {
           setLuckyDraw(null);
           setLuckyDrawNumber("");
@@ -262,7 +333,71 @@ export function AdminPanelPage() {
                   <span className="inline-flex items-center gap-2 rounded-full bg-[#f5f1ea] px-3 py-2">
                     Administrator access
                   </span>
+                  <span className="inline-flex items-center gap-2 rounded-full bg-[#f5f1ea] px-3 py-2">
+                    {activePeriodStatusLabel}
+                  </span>
                 </div>
+              </section>
+
+              <section className="grid gap-5 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+                <article className="rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6">
+                  <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Current period</p>
+                  <h2 className="mt-2 text-2xl font-semibold text-stone-950">
+                    {activePeriod?.name ?? "No active period"}
+                  </h2>
+                  <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-[22px] border border-stone-900/8 bg-[#f5f1ea] px-4 py-4">
+                      <p className="text-[11px] uppercase tracking-[0.16em] text-stone-500">Status</p>
+                      <p className="mt-2 text-base font-medium text-stone-900">{activePeriodStatusLabel}</p>
+                    </div>
+                    <div className="rounded-[22px] border border-stone-900/8 bg-[#f5f1ea] px-4 py-4">
+                      <p className="text-[11px] uppercase tracking-[0.16em] text-stone-500">Reveal time</p>
+                      <p className="mt-2 text-base font-medium text-stone-900">{activePeriod?.lucky_draw_reveal_time?.slice(0, 5) ?? "--:--"}</p>
+                    </div>
+                  </div>
+                </article>
+
+                <article className="rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6">
+                  <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Quick actions</p>
+                  <div className="mt-5 grid gap-3">
+                    {quickWorkflowLinks.map((item) => (
+                      <Link
+                        key={item.label}
+                        href={item.href}
+                        className="rounded-[22px] border border-stone-900/8 bg-[#f5f1ea] px-4 py-4 transition hover:bg-stone-100"
+                      >
+                        <div className="flex items-start gap-3">
+                          <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-stone-700">
+                            <FontAwesomeIcon icon={item.icon} className="h-4 w-4" />
+                          </span>
+                          <div>
+                            <p className="text-base font-semibold text-stone-900">{item.label}</p>
+                            <p className="mt-1 text-sm leading-6 text-stone-500">{item.description}</p>
+                          </div>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                </article>
+              </section>
+
+              <section className="grid gap-4 lg:grid-cols-4">
+                <article className="rounded-[24px] border border-stone-900/8 bg-[#f6f3ed] px-5 py-5 shadow-[0_4px_14px_rgba(28,24,20,0.03)]">
+                  <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-stone-500">Users</p>
+                  <p className="mt-3 text-4xl font-light text-stone-950">{stats.userCount}</p>
+                </article>
+                <article className="rounded-[24px] border border-stone-900/8 bg-[#f6f3ed] px-5 py-5 shadow-[0_4px_14px_rgba(28,24,20,0.03)]">
+                  <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-stone-500">Pending spill over</p>
+                  <p className="mt-3 text-4xl font-light text-stone-950">{stats.pendingOverflowCount}</p>
+                </article>
+                <article className="rounded-[24px] border border-stone-900/8 bg-[#f6f3ed] px-5 py-5 shadow-[0_4px_14px_rgba(28,24,20,0.03)]">
+                  <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-stone-500">Active ledgers</p>
+                  <p className="mt-3 text-4xl font-light text-stone-950">{stats.activeLedgerCount}</p>
+                </article>
+                <article className="rounded-[24px] border border-stone-900/8 bg-[#f6f3ed] px-5 py-5 shadow-[0_4px_14px_rgba(28,24,20,0.03)]">
+                  <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-stone-500">Open support cases</p>
+                  <p className="mt-3 text-4xl font-light text-stone-950">{stats.openSupportCaseCount}</p>
+                </article>
               </section>
 
               <section className="grid gap-5 lg:grid-cols-2 xl:grid-cols-3">
