@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { WorkspaceShell } from "@/components/app/workspace-shell";
+import { useCurrentUserState } from "@/components/auth/current-user-context";
 import { ProfileAvatarCard } from "@/components/profile/profile-avatar-card";
 import { ProfileAdminActionsCard } from "@/components/profile/profile-admin-actions-card";
 import { ProfileDangerZoneCard } from "@/components/profile/profile-danger-zone-card";
@@ -13,14 +14,27 @@ import { ProfileToast } from "@/components/profile/profile-toast";
 import { fetchCurrentUser, getStoredUser, type AuthUser } from "@/lib/auth-client";
 
 export function ProfilePage() {
+  const currentUserState = useCurrentUserState();
   const [user, setUser] = useState<AuthUser | null>(getStoredUser());
   const [toastMessage, setToastMessage] = useState("");
+  const applyUser = currentUserState?.applyUser;
 
   useEffect(() => {
     fetchCurrentUser().then(setUser).catch(() => {
       // SessionGuard handles invalid sessions.
     });
   }, []);
+
+  useEffect(() => {
+    if (currentUserState?.user) {
+      setUser(currentUserState.user);
+    }
+  }, [currentUserState?.user]);
+
+  function handleUserChange(nextUser: AuthUser) {
+    setUser(nextUser);
+    applyUser?.(nextUser);
+  }
 
   if (!user) {
     return (
@@ -40,8 +54,8 @@ export function ProfilePage() {
 
         <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(320px,0.9fr)]">
           <div className="space-y-5">
-            <ProfileAvatarCard user={user} onUserChange={setUser} onNotify={setToastMessage} />
-            <ProfileDetailsCard user={user} onUserChange={setUser} onNotify={setToastMessage} />
+            <ProfileAvatarCard user={user} onUserChange={handleUserChange} onNotify={setToastMessage} />
+            <ProfileDetailsCard user={user} onUserChange={handleUserChange} onNotify={setToastMessage} />
           </div>
           <div className="space-y-5">
             <ProfilePasswordCard onNotify={setToastMessage} />
