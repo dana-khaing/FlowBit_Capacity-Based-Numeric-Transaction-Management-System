@@ -11,6 +11,26 @@ type CurrentUserContextValue = {
 };
 
 const CurrentUserContext = createContext<CurrentUserContextValue | null>(null);
+export const CURRENT_USER_UPDATED_EVENT = "flowbit:current-user-updated";
+
+function persistUser(nextUser: AuthUser | null) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  if (nextUser) {
+    window.localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(nextUser));
+    return;
+  }
+  window.localStorage.removeItem(AUTH_USER_STORAGE_KEY);
+}
+
+export function dispatchCurrentUserUpdated(nextUser: AuthUser | null) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  persistUser(nextUser);
+  window.dispatchEvent(new CustomEvent<AuthUser | null>(CURRENT_USER_UPDATED_EVENT, { detail: nextUser }));
+}
 
 type CurrentUserProviderProps = {
   children: ReactNode;
@@ -21,14 +41,7 @@ export function CurrentUserProvider({ children }: CurrentUserProviderProps) {
 
   const applyUser = useCallback((nextUser: AuthUser | null) => {
     setUser(nextUser);
-    if (typeof window === "undefined") {
-      return;
-    }
-    if (nextUser) {
-      window.localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(nextUser));
-      return;
-    }
-    window.localStorage.removeItem(AUTH_USER_STORAGE_KEY);
+    persistUser(nextUser);
   }, []);
 
   const refreshUser = useCallback(async () => {
@@ -48,6 +61,16 @@ export function CurrentUserProvider({ children }: CurrentUserProviderProps) {
       void refreshUser();
     }
   }, [applyUser, refreshUser]);
+
+  useEffect(() => {
+    function handleCurrentUserUpdated(event: Event) {
+      const customEvent = event as CustomEvent<AuthUser | null>;
+      applyUser(customEvent.detail ?? null);
+    }
+
+    window.addEventListener(CURRENT_USER_UPDATED_EVENT, handleCurrentUserUpdated);
+    return () => window.removeEventListener(CURRENT_USER_UPDATED_EVENT, handleCurrentUserUpdated);
+  }, [applyUser]);
 
   const value = useMemo<CurrentUserContextValue>(() => ({
     user,
