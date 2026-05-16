@@ -60,6 +60,29 @@ The system supports:
 - recent tickets
 - lucky winner display after announcement
 - drill-down popups with search and paging
+- live refresh across tabs, browsers, and devices for capacity-changing actions
+
+### Admin Panel
+
+- admin-only workspace in the side navigation
+- active period overview with pre-close and lucky draw status
+- quick counts for:
+  - users
+  - pending spill over
+  - active ledgers
+  - open support cases
+- direct shortcuts to:
+  - users
+  - override codes
+  - audit logs
+  - periods
+  - spill-over queue
+  - customer service
+  - notification broadcast
+- lucky number announce popup with OTP-style entry
+- reveal time edit popup
+- recent audit activity preview
+- open support case preview
 
 ### Period Management
 
@@ -171,6 +194,7 @@ When lucky draw is announced:
 - dropdown bell with recent items
 - full notification page
 - live refresh through WebSocket
+- unread count in the side navigation
 
 Notification coverage includes:
 - period changes
@@ -230,6 +254,7 @@ Notification coverage includes:
 
 - Django Channels
 - Redis-backed channel layer for shared live notifications
+- cross-device dashboard refresh events for capacity-changing actions
 
 ## Project Structure
 
@@ -326,6 +351,7 @@ http://127.0.0.1:3000
   `/ws/notifications/`
 - production shared realtime depends on `REDIS_URL`
 - without Redis, only an in-memory single-process fallback is available
+- dashboard and notification state can refresh live across sessions when Redis-backed realtime is active
 
 ## Testing
 
