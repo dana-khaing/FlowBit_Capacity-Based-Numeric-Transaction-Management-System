@@ -410,3 +410,36 @@ Required backend environment variables:
 - `GOOGLE_OAUTH_CLIENT_ID`
 - `FRONTEND_PASSWORD_RESET_URL`
 - `DEFAULT_FROM_EMAIL`
+
+### Supabase Storage for Profile Avatars
+
+FlowBit can use Supabase Storage for uploaded profile avatars while keeping local media storage for development.
+
+Supabase setup:
+- create a public bucket for avatars
+- generate S3 access keys from the Supabase Storage S3 settings page
+- use the Supabase S3 endpoint and public object base URL for that bucket
+
+Backend environment variables for Supabase Storage:
+- `SUPABASE_STORAGE_BUCKET`
+- `SUPABASE_STORAGE_S3_ENDPOINT`
+- `SUPABASE_STORAGE_S3_REGION`
+- `SUPABASE_STORAGE_ACCESS_KEY_ID`
+- `SUPABASE_STORAGE_SECRET_ACCESS_KEY`
+- `SUPABASE_STORAGE_PUBLIC_BASE_URL`
+
+Expected value shape:
+
+```env
+SUPABASE_STORAGE_BUCKET=profile-avatars
+SUPABASE_STORAGE_S3_ENDPOINT=https://<project-ref>.storage.supabase.co/storage/v1/s3
+SUPABASE_STORAGE_S3_REGION=<project-region>
+SUPABASE_STORAGE_ACCESS_KEY_ID=<supabase-s3-access-key-id>
+SUPABASE_STORAGE_SECRET_ACCESS_KEY=<supabase-s3-secret-access-key>
+SUPABASE_STORAGE_PUBLIC_BASE_URL=https://<project-ref>.supabase.co/storage/v1/object/public/profile-avatars
+```
+
+When all six variables are present:
+- Django media uploads switch from local disk to Supabase Storage
+- avatar URLs resolve from Supabase public storage
+- local development still keeps working when these variables are not set
