@@ -19,10 +19,12 @@ from django.contrib import admin
 from django.conf import settings
 from django.conf.urls.static import static
 from django.urls import path, include
+from django.http import JsonResponse
 from .api_docs import redoc_view, schema_view, swagger_ui_view
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('healthz/', lambda request: JsonResponse({'ok': True}), name='healthz'),
     path('api/schema/', schema_view, name='api-schema'),
     path('api/docs/', swagger_ui_view, name='api-docs'),
     path('api/redoc/', redoc_view, name='api-redoc'),
