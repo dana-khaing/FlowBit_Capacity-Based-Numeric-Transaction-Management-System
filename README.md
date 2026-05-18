@@ -5,6 +5,10 @@ FlowBit is a capacity-based numeric transaction management platform built around
 Current release:
 - `0.1.0-beta`
 
+## About
+
+FlowBit is an operational web application for managing identifier-based capacity, ticket entry, spill-over approvals, period controls, lucky draw workflows, archive review, notifications, and customer support in one system.
+
 ## Overview
 
 FlowBit is designed for workflows where every identifier has a constrained allocation pool and transactions must be tracked precisely across time-bounded periods.
