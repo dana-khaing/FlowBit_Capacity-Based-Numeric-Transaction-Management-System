@@ -398,6 +398,8 @@ Render backend notes:
   - `python -m daphne -b 0.0.0.0 -p $PORT flowbit_backend.asgi:application`
 - health check path:
   - `/healthz/`
+- on Render free tier, run migrations manually after the first deploy:
+  - `python manage.py migrate`
 
 Required backend environment variables:
 - `SECRET_KEY`
