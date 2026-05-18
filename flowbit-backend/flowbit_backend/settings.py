@@ -148,6 +148,39 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
+SUPABASE_STORAGE_BUCKET = config('SUPABASE_STORAGE_BUCKET', default='')
+SUPABASE_STORAGE_S3_ENDPOINT = config('SUPABASE_STORAGE_S3_ENDPOINT', default='')
+SUPABASE_STORAGE_S3_REGION = config('SUPABASE_STORAGE_S3_REGION', default='')
+SUPABASE_STORAGE_ACCESS_KEY_ID = config('SUPABASE_STORAGE_ACCESS_KEY_ID', default='')
+SUPABASE_STORAGE_SECRET_ACCESS_KEY = config('SUPABASE_STORAGE_SECRET_ACCESS_KEY', default='')
+SUPABASE_STORAGE_PUBLIC_BASE_URL = config('SUPABASE_STORAGE_PUBLIC_BASE_URL', default='')
+
+if all([
+    SUPABASE_STORAGE_BUCKET,
+    SUPABASE_STORAGE_S3_ENDPOINT,
+    SUPABASE_STORAGE_S3_REGION,
+    SUPABASE_STORAGE_ACCESS_KEY_ID,
+    SUPABASE_STORAGE_SECRET_ACCESS_KEY,
+    SUPABASE_STORAGE_PUBLIC_BASE_URL,
+]):
+    STORAGES = {
+        "default": {
+            "BACKEND": "flowbit_backend.storage_backends.PublicMediaStorage",
+            "OPTIONS": {
+                "bucket_name": SUPABASE_STORAGE_BUCKET,
+                "endpoint_url": SUPABASE_STORAGE_S3_ENDPOINT,
+                "region_name": SUPABASE_STORAGE_S3_REGION,
+                "access_key": SUPABASE_STORAGE_ACCESS_KEY_ID,
+                "secret_key": SUPABASE_STORAGE_SECRET_ACCESS_KEY,
+                "custom_domain": SUPABASE_STORAGE_PUBLIC_BASE_URL.replace("https://", "").replace("http://", "").rstrip("/"),
+                "addressing_style": "path",
+            },
+        },
+        "staticfiles": {
+            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+        },
+    }
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
