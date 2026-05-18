@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: flowbit-backend
+    runtime: python
+    rootDir: flowbit-backend
+    plan: starter
+    buildCommand: |
+      pip install -r requirements.txt
+      python manage.py collectstatic --noinput
+    preDeployCommand: python manage.py migrate
+    startCommand: python -m daphne -b 0.0.0.0 -p $PORT flowbit_backend.asgi:application
+    healthCheckPath: /healthz/
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.11
+      - key: DEBUG
+        value: "False"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ALLOWED_HOSTS
+        sync: false
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      - key: CSRF_TRUSTED_ORIGINS
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: GOOGLE_OAUTH_CLIENT_ID
+        sync: false
+      - key: DEFAULT_FROM_EMAIL
+        value: noreply@flowbit.app
+      - key: FRONTEND_PASSWORD_RESET_URL
+        sync: false

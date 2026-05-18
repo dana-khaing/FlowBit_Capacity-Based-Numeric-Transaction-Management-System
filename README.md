@@ -382,3 +382,31 @@ pnpm build
 - keep Redis running for shared notification delivery
 - restart backend after changing `.env`
 - use the frontend origin registered in Google Cloud Console when testing Google sign-in
+
+## Backend Deployment
+
+Recommended beta setup:
+- frontend on Vercel
+- backend on Render
+- PostgreSQL through your production `DATABASE_URL`
+- Redis for shared realtime notifications and dashboard refresh
+
+Render backend notes:
+- repository root includes `render.yaml`
+- service root directory is `flowbit-backend`
+- start command uses Daphne / ASGI:
+  - `python -m daphne -b 0.0.0.0 -p $PORT flowbit_backend.asgi:application`
+- health check path:
+  - `/healthz/`
+
+Required backend environment variables:
+- `SECRET_KEY`
+- `DEBUG=False`
+- `ALLOWED_HOSTS`
+- `CORS_ALLOWED_ORIGINS`
+- `CSRF_TRUSTED_ORIGINS`
+- `DATABASE_URL`
+- `REDIS_URL`
+- `GOOGLE_OAUTH_CLIENT_ID`
+- `FRONTEND_PASSWORD_RESET_URL`
+- `DEFAULT_FROM_EMAIL`
