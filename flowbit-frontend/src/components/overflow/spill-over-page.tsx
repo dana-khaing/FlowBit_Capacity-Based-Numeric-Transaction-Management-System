@@ -235,7 +235,8 @@ export function SpillOverPage() {
     collaboratorName: string;
   } | null>(null);
 
-  const requiresOverride = currentUserState?.user?.role !== "admin";
+  const effectiveUserRole = currentUserState?.user?.role ?? user?.role ?? "";
+  const requiresOverride = effectiveUserRole !== "admin";
 
   useEffect(() => {
     setUser(getStoredUser());
