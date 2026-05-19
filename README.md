@@ -1,130 +1,113 @@
-# FlowBit
+<div align="center">
 
-FlowBit is a realtime operations platform for managing capacity-based numeric transactions across identifiers `000`-`999`. It brings ticket entry, ledger control, spill-over workflows, lucky draw operations, reporting, notifications, and customer support into one connected workspace.
+![Header](https://capsule-render.vercel.app/api?type=waving&color=0:0f172a,35:1d4ed8,70:0ea5e9,100:14b8a6&height=220&section=header&text=FlowBit&fontSize=48&fontColor=ffffff&fontAlignY=38&desc=Realtime%20Numeric%20Transaction%20Operations%20Platform&descAlignY=58&animation=fadeIn)
 
-## Release Status
+[![Release](https://img.shields.io/badge/Release-v0.1.0--beta-0ea5e9?style=for-the-badge)](https://github.com/dana-khaing/FlowBit_Capacity-Based-Numeric-Transaction-Management-System/releases/tag/v0.1.0-beta)
+[![Status](https://img.shields.io/badge/Status-Deployed_Beta-0f766e?style=for-the-badge)](https://flowbitdev.vercel.app)
+[![License](https://img.shields.io/badge/License-Proprietary-111827?style=for-the-badge)](./LICENSE)
+[![Frontend](https://img.shields.io/badge/Frontend-Next.js-111827?style=for-the-badge&logo=nextdotjs&logoColor=white)](https://nextjs.org/)
+[![Backend](https://img.shields.io/badge/Backend-Django-092E20?style=for-the-badge&logo=django&logoColor=white)](https://www.djangoproject.com/)
 
-- current release: `0.1.0-beta`
-- status: deployed beta
-- license: proprietary, all rights reserved
-- delivery model:
-  - browser-based production app
+[![Live App](https://img.shields.io/badge/Live_App-flowbitdev.vercel.app-2563eb?style=for-the-badge&logo=vercel&logoColor=white)](https://flowbitdev.vercel.app)
+[![API Docs](https://img.shields.io/badge/API_Docs-DRF_Schema-0ea5e9?style=for-the-badge&logo=swagger&logoColor=white)](https://flowbit-backend-bcgo.onrender.com/api/docs/)
+[![Repository](https://img.shields.io/badge/GitHub-FlowBit-111827?style=for-the-badge&logo=github&logoColor=white)](https://github.com/dana-khaing/FlowBit_Capacity-Based-Numeric-Transaction-Management-System)
+
+</div>
+
+## About FlowBit
+
+FlowBit is a realtime operations platform for managing capacity-based numeric transactions across identifiers `000`-`999`. It brings ticket entry, ledger control, spill-over workflows, lucky draw operations, notifications, reporting, and customer support into one connected product workflow.
+
+The system is designed for teams that need live visibility over constrained identifier capacity, structured period control, and operational guardrails without splitting work across multiple tools.
+
+## Product Snapshot
+
+- Current release: `0.1.0-beta`
+- Status: deployed beta
+- Delivery model:
+  - browser-based production application
   - desktop icon source prepared for later desktop packaging
+- License: proprietary, all rights reserved
 
-## About
+## Core Highlights
 
-FlowBit is built as a day-to-day operations product for teams that need live control over numeric capacity, transactional workflows, period scheduling, lucky draw handling, support cases, and admin oversight without splitting work across multiple tools.
+- Realtime dashboard updates across tabs, browsers, and devices
+- Period lifecycle management with pre-close and lucky draw scheduling
+- Ticket entry, receipt generation, PDF export, and print workflows
+- Spill-over approval, reserve capacity, and overkill handling
+- Admin panel for operational shortcuts, audit review, and announcements
+- Per-user notifications with WebSocket delivery
+- Customer service case management between users and admins
 
-## Overview
-
-FlowBit is designed for workflows where every identifier has a constrained allocation pool and transactions must be tracked precisely across time-bounded periods.
-
-The system supports:
-- controlled capacity allocation across multiple ledgers
-- spill-over approval and reserve capacity handling
-- ticket receipt generation, printing, and export
-- period lifecycle control with pre-close and lucky draw rules
-- archived historical review
-- live user notifications and customer service cases
-
-## Production Deployment
-
-FlowBit beta is designed to run with:
-- frontend on Vercel
-- backend on Render
-- PostgreSQL as the primary application database
-- Redis for shared realtime notifications and dashboard refresh
-- Supabase Storage for profile avatar uploads
-
-## Core Concepts
-
-### Identifiers
-
-- shared numeric pool from `000` to `999`
-- every identifier can consume capacity across one or more ledgers
-- capacity and usage are tracked per period and per user context where needed
-
-### Periods
-
-- only one period can remain open at a time
-- each period has:
-  - start date
-  - end date
-  - close time
-  - pre-close time
-  - lucky draw reveal time
-- reserve ledgers are created automatically for users inside the period
-
-### Ledgers
-
-- standard ledgers carry the normal identifier capacity
-- reserve ledgers support approved extra capacity and overkill usage
-- standard ledger allocations follow priority order unless manually assigned
-
-### Spill-over States
-
-- `TCSO`:
-  pending spill-over waiting for approval
-- `CSO`:
-  approved spill-over
-- `OVRK`:
-  detached overkill capacity that can be consumed later
-
-## Main Features
+## Platform Capabilities
 
 ### Dashboard
 
 - live current-period summary
-- next draw / lucky number panel
-- hot numbers
-- almost full numbers
-- full numbers
-- recent tickets
-- lucky winner display after announcement
-- drill-down popups with search and paging
-- live refresh across tabs, browsers, and devices for capacity-changing actions
+- hot numbers, almost full numbers, and full numbers
+- recent ticket visibility
+- lucky number and winner presentation
+- live capacity refresh after operational changes
 
-### Admin Panel
+### Ticket And Capacity Operations
 
-- admin-only workspace in the side navigation
-- active period overview with pre-close and lucky draw status
-- quick counts for:
-  - users
-  - pending spill over
-  - active ledgers
-  - open support cases
-- direct shortcuts to:
-  - users
-  - override codes
-  - audit logs
-  - periods
-  - spill-over queue
-  - customer service
-  - notification broadcast
-- lucky number announce popup with OTP-style entry
-- reveal time edit popup
+- multi-entry ticket creation
+- allocation preview before submission
+- manual and default allocation flows
+- reserve capacity support
+- receipt preview, export, and print output
+
+### Spill-over And Overkill
+
+- pending `TCSO`, approved `CSO`, and detached `OVRK` workflows
+- collaborator-based approval handling
+- spill-over refund support
+- direct overkill creation with operational controls
+
+### Period And Ledger Control
+
+- period create, update, close, reopen, and delete
+- pre-close time and lucky draw reveal scheduling
+- ledger priority management
+- ledger archive review
+- identifier freeze controls
+
+### Lucky Draw Workflow
+
+- one shared lucky number per period
+- admin create, edit, remove, and announce flows
+- winner lookup across tickets, approved spill-over, and overkill
+- operational lock rules after pre-close and lucky draw announcement
+
+### Notifications And Support
+
+- per-user inbox with unread tracking
+- admin broadcast announcements
+- realtime notification refresh through WebSocket
+- support case creation, reply, close, and reopen workflows
+
+## Admin Experience
+
+FlowBit includes a dedicated admin workspace for operational oversight and quick action routing.
+
+Admin features include:
+- active period summary with pre-close and lucky draw status
+- quick links to users, override codes, audit logs, periods, spill-over, and customer service
+- lucky number popup with OTP-style entry
 - recent audit activity preview
-- open support case preview
+- support case preview
+- notification broadcast tools
 
-### Period Management
-
-- create, edit, close, reopen, and delete periods
-- configure pre-close time and lucky draw reveal time
-- audit logging for period actions
-- automatic reserve ledger synchronization
-
-### Pre-close Workflow
+## Pre-close And Lucky Draw Rules
 
 When pre-close is reached:
-- active ledgers in that period close
+- active ledgers in the period close
 - ticket creation locks
 - transaction creation locks
 - allocation preview locks
 - direct overkill creation locks
-- ledger creation locks
-- ledger reopen locks
-- ticket refunds lock
-- spill-over refunds lock
+- ledger creation and ledger reopen lock
+- ticket and spill-over refunds lock
 
 If pre-close is moved later before lucky draw is announced:
 - pre-close can be undone automatically
@@ -134,152 +117,43 @@ If pre-close is moved later before lucky draw is announced:
 If lucky draw is announced before pre-close happens:
 - pre-close is applied immediately
 
-### Ledger Management
-
-- create and manage per-user ledgers
-- per-identifier capacity limits
-- priority-based allocation
-- dedicated ledger view page
-- active / closed ledger status
-- reserve ledger support
-- archive paging and search
-
-### Identifier Freeze Control
-
-- freeze one identifier in one ledger
-- freeze one identifier across all active standard ledgers
-- reserve ledger remains system-managed
-- freeze state affects allocation and dashboard fullness logic
-
-### Ticket Entry and Ticket History
-
-- create tickets with one or many entries
-- default allocation mode
-- manual allocation mode
-- capacity preview before submission
-- receipt preview on screen
-- POS-style print output
-- PDF receipt export
-- ticket history with:
-  - server-side paging
-  - server-side search
-  - server-side filtering
-  - server-side sorting
-  - server-side summary cards
-
-### Spill-over Management
-
-- pending, approved, and overkill tabs
-- collaborator-based approval flow
-- extra approval into reserve capacity
-- detached overkill creation
-- refund / return handling
-- export and print flows
-- server-side paging and filtering
-
-### Lucky Draw
-
-- one shared lucky draw number per period
-- admin-only create, edit, and remove
-- reveal-time based display
-- real announcement timestamp recorded
-- winner matching by lucky draw result
-
 When lucky draw is announced:
 - pending `TCSO` converts to `CSO`
-- remaining `OVRK` stays overkill
-- winner lookup checks:
-  - tickets
-  - approved spill-over
-  - overkill
+- remaining `OVRK` stays as overkill
+- winner lookup checks tickets, approved spill-over, and overkill
 - operations for the announced period remain locked
 
-### Archive
+## Tech Stack
 
-- closed period browser
-- archived ticket view
-- archived ledger view
-- archived spill-over review
-- archived lucky draw winners
-- read-only archive interaction
+### Frontend
+![Next.js](https://img.shields.io/badge/Next.js-111827?style=flat-square&logo=nextdotjs&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white)
+![React](https://img.shields.io/badge/React-20232A?style=flat-square&logo=react&logoColor=61DAFB)
+![shadcn/ui](https://img.shields.io/badge/shadcn%2Fui-18181B?style=flat-square&logo=radixui&logoColor=white)
 
-### Export
+### Backend
+![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white)
+![Django](https://img.shields.io/badge/Django-092E20?style=flat-square&logo=django&logoColor=white)
+![Django REST Framework](https://img.shields.io/badge/DRF-A30000?style=flat-square&logo=django&logoColor=white)
+![Django Channels](https://img.shields.io/badge/Django_Channels-0F172A?style=flat-square&logo=django&logoColor=white)
 
-- ledger export
-- spill-over export
-- PDF and receipt-style print flows where supported
+### Data And Realtime
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-336791?style=flat-square&logo=postgresql&logoColor=white)
+![Redis](https://img.shields.io/badge/Redis-DC382D?style=flat-square&logo=redis&logoColor=white)
+![Supabase Storage](https://img.shields.io/badge/Supabase_Storage-0F172A?style=flat-square&logo=supabase&logoColor=3ECF8E)
+![WebSocket](https://img.shields.io/badge/WebSocket-0ea5e9?style=flat-square&logo=socketdotio&logoColor=white)
 
-### Notifications
-
-- per-user inbox
-- admin broadcast announcements
-- dropdown bell with recent items
-- full notification page
-- live refresh through WebSocket
-- unread count in the side navigation
-
-Notification coverage includes:
-- period changes
-- ledger changes
-- refunds
-- lucky draw changes
-- pre-close changes
-- support case activity
-
-### Customer Service
-
-- user opens support case
-- admin and user can reply
-- either side can close or reopen the case
-- conversation history is stored per case
-
-## User Roles
-
-### Admin
-
-- manage periods
-- manage users and override codes
-- send announcements
-- manage lucky draw
-- view audit logs
-- access admin pages
-
-### Regular User
-
-- create tickets
-- manage own ledgers where allowed
-- review notifications
-- use spill-over workflow
-- open support cases
-- review archive data
+### Hosting
+![Vercel](https://img.shields.io/badge/Vercel-111827?style=flat-square&logo=vercel&logoColor=white)
+![Render](https://img.shields.io/badge/Render-4F46E5?style=flat-square&logo=render&logoColor=white)
 
 ## Architecture
 
-### Frontend
-
-- Next.js application
-- workspace-based UI
-- receipt preview and export flows
-- live notification refresh through WebSocket
-- production hosting target: Vercel
-
-### Backend
-
-- Django REST Framework
-- period, ledger, ticket, overflow, notification, archive, and support APIs
-- Django admin for operational oversight
-- ASGI deployment with Daphne for WebSocket support
-- production hosting target: Render
-
-### Database
-
-- PostgreSQL
-
-### Realtime
-
-- Django Channels
-- Redis-backed channel layer for shared live notifications
-- cross-device dashboard refresh events for capacity-changing actions
+- Frontend: Next.js application with a workspace-style interface
+- Backend: Django REST Framework API with ASGI delivery through Daphne
+- Realtime: Django Channels with Redis-backed shared event delivery
+- Database: PostgreSQL
+- Media: Supabase Storage for production avatar uploads
 
 ## Project Structure
 
@@ -312,42 +186,14 @@ GOOGLE_OAUTH_CLIENT_ID=...
 REDIS_URL=redis://127.0.0.1:6379/0
 ```
 
-### Install Backend Dependencies
+### Install And Run
 
 ```bash
 cd flowbit-backend
 venv/bin/python -m pip install -r requirements.txt
 venv/bin/python manage.py migrate
-```
-
-### Start Redis
-
-```bash
-redis-cli ping
-```
-
-Expected:
-
-```text
-PONG
-```
-
-### Start Backend
-
-Use Daphne so WebSocket notifications are served correctly:
-
-```bash
-cd flowbit-backend
 venv/bin/python -m daphne -b 127.0.0.1 -p 8000 flowbit_backend.asgi:application
 ```
-
-Backend base URL:
-
-```text
-http://127.0.0.1:8000
-```
-
-### Start Frontend
 
 ```bash
 cd flowbit-frontend
@@ -355,13 +201,14 @@ pnpm install
 pnpm dev
 ```
 
-Default frontend URL:
+Default local URLs:
 
 ```text
-http://localhost:3000
+Frontend: http://localhost:3000
+Backend:  http://127.0.0.1:8000
 ```
 
-### Google Sign-in for Local Development
+### Google Sign-in For Local Development
 
 Add these authorized JavaScript origins in Google Cloud Console:
 
@@ -370,53 +217,25 @@ http://localhost:3000
 http://127.0.0.1:3000
 ```
 
-## Realtime Notes
+## Deployment
 
-- WebSocket endpoint:
-  `/ws/notifications/`
-- production shared realtime depends on `REDIS_URL`
-- without Redis, only an in-memory single-process fallback is available
-- dashboard and notification state can refresh live across sessions when Redis-backed realtime is active
+### Production Beta Setup
 
-## Testing
+- Frontend: Vercel
+- Backend: Render
+- Database: PostgreSQL via `DATABASE_URL`
+- Realtime: Redis via `REDIS_URL`
+- Avatar storage: Supabase Storage
 
-### Backend
+### Backend Deployment Notes
 
-```bash
-cd flowbit-backend
-venv/bin/python manage.py test --settings=flowbit_backend.test_settings
-```
-
-### Frontend
-
-```bash
-cd flowbit-frontend
-pnpm build
-```
-
-## Operational Notes
-
-- use Daphne for local websocket testing
-- keep Redis running for shared notification delivery
-- restart backend after changing `.env`
-- use the frontend origin registered in Google Cloud Console when testing Google sign-in
-
-## Backend Deployment
-
-Recommended beta setup:
-- frontend on Vercel
-- backend on Render
-- PostgreSQL through your production `DATABASE_URL`
-- Redis for shared realtime notifications and dashboard refresh
-
-Render backend notes:
 - repository root includes `render.yaml`
 - service root directory is `flowbit-backend`
-- start command uses Daphne / ASGI:
+- ASGI start command:
   - `python -m daphne -b 0.0.0.0 -p $PORT flowbit_backend.asgi:application`
 - health check path:
   - `/healthz/`
-- on Render free tier, run migrations manually after the first deploy:
+- on Render free tier, run migrations manually after first deploy:
   - `python manage.py migrate`
 
 Required backend environment variables:
@@ -431,10 +250,7 @@ Required backend environment variables:
 - `FRONTEND_PASSWORD_RESET_URL`
 - `DEFAULT_FROM_EMAIL`
 
-## Frontend Deployment
-
-Recommended frontend host:
-- Vercel
+### Frontend Deployment Notes
 
 Required frontend environment variables:
 - `NEXT_PUBLIC_API_BASE_URL`
@@ -445,16 +261,11 @@ Production notes:
 - Google OAuth authorized JavaScript origins must include the real frontend domain
 - redeploy the frontend after changing environment variables
 
-### Supabase Storage for Profile Avatars
+### Supabase Storage For Profile Avatars
 
-FlowBit can use Supabase Storage for uploaded profile avatars while keeping local media storage for development.
+FlowBit supports Supabase Storage for production profile avatar uploads while keeping local media storage available for development.
 
-Supabase setup:
-- create a public bucket for avatars
-- generate S3 access keys from the Supabase Storage S3 settings page
-- use the Supabase S3 endpoint and public object base URL for that bucket
-
-Backend environment variables for Supabase Storage:
+Required backend environment variables:
 - `SUPABASE_STORAGE_BUCKET`
 - `SUPABASE_STORAGE_S3_ENDPOINT`
 - `SUPABASE_STORAGE_S3_REGION`
@@ -476,4 +287,34 @@ SUPABASE_STORAGE_PUBLIC_BASE_URL=https://<project-ref>.supabase.co/storage/v1/ob
 When all six variables are present:
 - Django media uploads switch from local disk to Supabase Storage
 - avatar URLs resolve from Supabase public storage
-- local development still keeps working when these variables are not set
+- local development still works when these variables are not set
+
+## Testing
+
+### Backend
+
+```bash
+cd flowbit-backend
+venv/bin/python manage.py test --settings=flowbit_backend.test_settings
+```
+
+### Frontend
+
+```bash
+cd flowbit-frontend
+pnpm build
+```
+
+## License
+
+FlowBit is a private product.
+
+- License: proprietary
+- Rights: all rights reserved
+- Details: see [LICENSE](./LICENSE)
+
+<div align="center">
+
+![Footer](https://capsule-render.vercel.app/api?type=waving&color=0:14b8a6,40:0ea5e9,75:1d4ed8,100:0f172a&height=120&section=footer)
+
+</div>
