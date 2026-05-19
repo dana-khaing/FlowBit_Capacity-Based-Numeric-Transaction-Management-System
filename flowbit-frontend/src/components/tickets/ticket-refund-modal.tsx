@@ -10,12 +10,14 @@ type TicketRefundModalProps = {
   ticket: FlowBitTicketDetail | null;
   requireOverrideCode: boolean;
   adminOverrideCode: string;
+  syncRepeatTicket: boolean;
   busyAction:
     | null
     | { kind: "ticket"; id: number }
     | { kind: "transaction"; id: number }
     | { kind: "overflow"; id: number };
   onCodeChange: (value: string) => void;
+  onSyncRepeatTicketChange: (value: boolean) => void;
   onClose: () => void;
   onRefundTicket: () => void;
   onRefundTransaction: (transactionId: number) => void;
@@ -44,8 +46,10 @@ export function TicketRefundModal({
   ticket,
   requireOverrideCode,
   adminOverrideCode,
+  syncRepeatTicket,
   busyAction,
   onCodeChange,
+  onSyncRepeatTicketChange,
   onClose,
   onRefundTicket,
   onRefundTransaction,
@@ -128,6 +132,19 @@ export function TicketRefundModal({
               placeholder="Enter override code"
               disabled={Boolean(busyAction)}
             />
+          </label>
+        ) : null}
+
+        {ticket.repeat_ticket_id ? (
+          <label className="mt-5 flex items-start gap-3 rounded-[20px] border border-stone-900/8 bg-stone-50 px-4 py-3 text-sm text-stone-600">
+            <input
+              type="checkbox"
+              checked={syncRepeatTicket}
+              onChange={(event) => onSyncRepeatTicketChange(event.target.checked)}
+              disabled={Boolean(busyAction)}
+              className="mt-1 h-4 w-4 rounded border-stone-300"
+            />
+            <span>Also update the linked repeat ticket template.</span>
           </label>
         ) : null}
 

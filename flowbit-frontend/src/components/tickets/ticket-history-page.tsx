@@ -73,6 +73,7 @@ export function TicketHistoryPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [showRefundModal, setShowRefundModal] = useState(false);
   const [adminOverrideCode, setAdminOverrideCode] = useState("");
+  const [syncRepeatTicket, setSyncRepeatTicket] = useState(false);
   const [busyRefundAction, setBusyRefundAction] = useState<null | {
     kind: "ticket" | "transaction" | "overflow";
     id: number;
@@ -276,6 +277,7 @@ export function TicketHistoryPage() {
         overflowId,
         action: "refund_overflow_only",
         adminOverrideCode: adminOverrideCode.trim() || undefined,
+        syncRepeatTicket,
       });
       await refreshTicketHistoryState();
       setToast({
@@ -284,6 +286,7 @@ export function TicketHistoryPage() {
       });
       setShowRefundModal(false);
       setAdminOverrideCode("");
+      setSyncRepeatTicket(false);
       notifyDashboardUpdated();
     } catch (error) {
       const message =
@@ -321,6 +324,7 @@ export function TicketHistoryPage() {
         action,
         transactionId,
         adminOverrideCode: adminOverrideCode.trim() || undefined,
+        syncRepeatTicket,
       });
       await refreshTicketHistoryState();
       setToast({
@@ -329,6 +333,7 @@ export function TicketHistoryPage() {
       });
       setShowRefundModal(false);
       setAdminOverrideCode("");
+      setSyncRepeatTicket(false);
       notifyDashboardUpdated();
     } catch (error) {
       const message =
@@ -555,11 +560,14 @@ export function TicketHistoryPage() {
         ticket={selectedTicket}
         requireOverrideCode={currentUserState?.user?.role !== "admin"}
         adminOverrideCode={adminOverrideCode}
+        syncRepeatTicket={syncRepeatTicket}
         busyAction={busyRefundAction}
         onCodeChange={setAdminOverrideCode}
+        onSyncRepeatTicketChange={setSyncRepeatTicket}
         onClose={() => {
           setShowRefundModal(false);
           setAdminOverrideCode("");
+          setSyncRepeatTicket(false);
         }}
         onRefundTicket={() => runTicketRefundAction("refund_ticket", "ticket")}
         onRefundTransaction={(transactionId) =>

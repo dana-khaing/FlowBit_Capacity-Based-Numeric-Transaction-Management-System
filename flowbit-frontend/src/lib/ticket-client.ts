@@ -106,6 +106,7 @@ export type FlowBitTicketListItem = {
   total_amount: string;
   transaction_count: number;
   identifier_numbers: string[];
+  repeat_ticket_id?: number | null;
 };
 
 export type FlowBitTicketListPage = {
@@ -164,12 +165,14 @@ export async function resolveOverflowAction(payload: {
   overflowId: number;
   action: "refund_overflow_only" | "refund_transaction" | "refund_ticket";
   adminOverrideCode?: string;
+  syncRepeatTicket?: boolean;
 }) {
   return apiRequest<{ message: string }>(`/overflows/${payload.overflowId}/resolve/`, {
     method: "POST",
     headers: authHeaders(),
     body: JSON.stringify({
       action: payload.action,
+      ...(payload.syncRepeatTicket ? { sync_repeat_ticket: true } : {}),
       ...(payload.adminOverrideCode
         ? { admin_override_code: payload.adminOverrideCode }
         : {}),
@@ -182,6 +185,7 @@ export async function resolveTicketRefundAction(payload: {
   action: "refund_ticket" | "refund_transaction";
   transactionId?: number;
   adminOverrideCode?: string;
+  syncRepeatTicket?: boolean;
 }) {
   return apiRequest<{ message: string }>(`/tickets/${payload.ticketNumber}/refund/`, {
     method: "POST",
@@ -189,6 +193,7 @@ export async function resolveTicketRefundAction(payload: {
     body: JSON.stringify({
       action: payload.action,
       ...(payload.transactionId ? { transaction_id: payload.transactionId } : {}),
+      ...(payload.syncRepeatTicket ? { sync_repeat_ticket: true } : {}),
       ...(payload.adminOverrideCode
         ? { admin_override_code: payload.adminOverrideCode }
         : {}),
