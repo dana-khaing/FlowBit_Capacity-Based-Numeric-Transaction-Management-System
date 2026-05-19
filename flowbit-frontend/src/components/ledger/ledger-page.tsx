@@ -172,7 +172,8 @@ export function LedgerPage() {
   const [draggedLedgerId, setDraggedLedgerId] = useState<number | null>(null);
 
   const { activePeriod, hasActivePeriod, error: periodError } = usePeriodState();
-  const canManageLedgers = currentUserState?.user?.role === "admin";
+  const effectiveUserRole = currentUserState?.user?.role ?? user?.role ?? "";
+  const canManageLedgers = effectiveUserRole === "admin";
   const requiresOverride = !canManageLedgers;
   const actionRequiresOverride =
     pendingAction !== null &&
