@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { AppSectionPage } from "@/components/app/app-section-page";
-import { getStoredUser } from "@/lib/auth-client";
+import { useCurrentUserState } from "@/components/auth/current-user-context";
 import {
   closeSupportCase,
   createSupportCase,
@@ -45,8 +45,8 @@ function statusTone(status: "OPEN" | "CLOSED") {
 }
 
 export function CustomerServicePage() {
-  const currentUser = getStoredUser();
-  const isAdmin = currentUser?.role === "admin";
+  const currentUserState = useCurrentUserState();
+  const isAdmin = currentUserState?.user?.role === "admin";
 
   const [cases, setCases] = useState<FlowBitSupportCase[]>([]);
   const [selectedCaseId, setSelectedCaseId] = useState<number | null>(null);
@@ -356,7 +356,7 @@ export function CustomerServicePage() {
                     </div>
                   ) : selectedMessages.length ? (
                     selectedMessages.map((message) => {
-                      const isMine = message.sender === currentUser?.id;
+                      const isMine = message.sender === currentUserState?.user?.id;
                       return (
                         <div
                           key={message.id}
