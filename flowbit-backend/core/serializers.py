@@ -1,5 +1,6 @@
 from datetime import datetime, time
 from decimal import Decimal
+from itertools import permutations
 
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
@@ -23,6 +24,9 @@ from .models import (
     PasswordResetToken,
     Collaborator,
     Ticket,
+    RepeatTicket,
+    RepeatTicketItem,
+    RepeatTicketGeneration,
     IdentifierCapacityAdjustment,
     SupportCase,
     SupportMessage,
@@ -302,6 +306,7 @@ class TicketSerializer(serializers.ModelSerializer):
     active_spill_over_count = serializers.SerializerMethodField()
     refunded_spill_over_count = serializers.SerializerMethodField()
     refunded_transaction_count = serializers.SerializerMethodField()
+    repeat_ticket_id = serializers.SerializerMethodField()
 
     class Meta:
         model = Ticket
@@ -322,6 +327,7 @@ class TicketSerializer(serializers.ModelSerializer):
             'active_spill_over_count',
             'refunded_spill_over_count',
             'refunded_transaction_count',
+            'repeat_ticket_id',
         ]
         read_only_fields = [
             'ticket_number',
@@ -433,6 +439,162 @@ class TicketSerializer(serializers.ModelSerializer):
             return annotated_count
         return sum(1 for transaction in self._get_transactions(obj) if transaction.is_refunded)
 
+    def get_repeat_ticket_id(self, obj):
+        try:
+            repeat_generation = obj.repeat_generation
+        except RepeatTicketGeneration.DoesNotExist:
+            repeat_generation = None
+        if repeat_generation is not None:
+            return repeat_generation.repeat_ticket_id
+        generation = RepeatTicketGeneration.objects.filter(ticket=obj).only('repeat_ticket_id').first()
+        return generation.repeat_ticket_id if generation else None
+
+
+class RepeatTicketItemSerializer(serializers.ModelSerializer):
+    identifier_number = serializers.CharField(source='identifier.number', read_only=True)
+
+    class Meta:
+        model = RepeatTicketItem
+        fields = [
+            'id',
+            'identifier',
+            'identifier_number',
+            'amount',
+            'amount_uses_allocation_basis',
+            'use_permutations',
+            'position',
+        ]
+
+
+class RepeatTicketSerializer(serializers.ModelSerializer):
+    items = RepeatTicketItemSerializer(many=True)
+    current_status = serializers.SerializerMethodField()
+    generated_ticket_id = serializers.SerializerMethodField()
+    generated_ticket_number = serializers.SerializerMethodField()
+    generation_error = serializers.SerializerMethodField()
+    item_count = serializers.SerializerMethodField()
+    total_amount = serializers.SerializerMethodField()
+
+    class Meta:
+        model = RepeatTicket
+        fields = [
+            'id',
+            'customer_name',
+            'notes',
+            'version',
+            'created_at',
+            'updated_at',
+            'current_status',
+            'generated_ticket_id',
+            'generated_ticket_number',
+            'generation_error',
+            'item_count',
+            'total_amount',
+            'items',
+        ]
+        read_only_fields = [
+            'version',
+            'created_at',
+            'updated_at',
+            'current_status',
+            'generated_ticket_id',
+            'generated_ticket_number',
+            'generation_error',
+            'item_count',
+            'total_amount',
+        ]
+
+    def _active_period(self):
+        return self.context.get('active_period')
+
+    def _generation(self, obj):
+        period = self._active_period()
+        if period is None:
+            return None
+        prefetched_generations = getattr(obj, '_prefetched_objects_cache', {}).get('generations')
+        if prefetched_generations is not None:
+            for generation in prefetched_generations:
+                if generation.period_id == period.id:
+                    return generation
+            return None
+        return obj.generations.filter(period=period).select_related('ticket').first()
+
+    def get_current_status(self, obj):
+        return obj.current_status_for_period(self._active_period())
+
+    def get_generated_ticket_id(self, obj):
+        generation = self._generation(obj)
+        return generation.ticket_id if generation and generation.ticket_id else None
+
+    def get_generated_ticket_number(self, obj):
+        generation = self._generation(obj)
+        if generation and generation.ticket_id and generation.ticket:
+            return generation.ticket.ticket_number
+        return None
+
+    def get_generation_error(self, obj):
+        generation = self._generation(obj)
+        if generation and generation.status == RepeatTicketGeneration.STATUS_UNSUCCESSFUL:
+            return generation.failure_message
+        return None
+
+    def get_item_count(self, obj):
+        prefetched_items = getattr(obj, '_prefetched_objects_cache', {}).get('items')
+        if prefetched_items is not None:
+            return len(prefetched_items)
+        return obj.items.count()
+
+    def get_total_amount(self, obj):
+        prefetched_items = getattr(obj, '_prefetched_objects_cache', {}).get('items')
+        items = prefetched_items if prefetched_items is not None else obj.items.select_related('identifier').all()
+        total = Decimal('0.00')
+        for item in items:
+            amount = item.amount
+            if item.amount_uses_allocation_basis:
+                amount = amount / Decimal('1.25')
+            multiplier = len({''.join(value) for value in permutations(item.identifier.number)}) if item.use_permutations else 1
+            total += amount * Decimal(str(multiplier))
+        return total.quantize(Decimal('0.01'))
+
+    def validate_items(self, value):
+        if not value:
+            raise serializers.ValidationError("At least one repeat ticket entry is required.")
+        return value
+
+    def create(self, validated_data):
+        items_data = validated_data.pop('items', [])
+        repeat_ticket = RepeatTicket.objects.create(**validated_data)
+        self._replace_items(repeat_ticket, items_data)
+        return repeat_ticket
+
+    def update(self, instance, validated_data):
+        items_data = validated_data.pop('items', None)
+        changed = False
+        for field, value in validated_data.items():
+            if getattr(instance, field) != value:
+                setattr(instance, field, value)
+                changed = True
+        if changed:
+            instance.bump_version(save=False)
+            instance.save()
+        if items_data is not None:
+            self._replace_items(instance, items_data, bump_version=not changed)
+        return instance
+
+    def _replace_items(self, repeat_ticket, items_data, bump_version=False):
+        repeat_ticket.items.all().delete()
+        for index, item_data in enumerate(items_data):
+            RepeatTicketItem.objects.create(
+                repeat_ticket=repeat_ticket,
+                identifier=item_data['identifier'],
+                amount=item_data['amount'],
+                amount_uses_allocation_basis=item_data.get('amount_uses_allocation_basis', False),
+                use_permutations=item_data.get('use_permutations', False),
+                position=index,
+            )
+        if bump_version:
+            repeat_ticket.bump_version()
+
 
 class TicketReceiptPdfSerializer(serializers.Serializer):
     ticket_numbers = serializers.ListField(
@@ -444,6 +606,7 @@ class TicketReceiptPdfSerializer(serializers.Serializer):
 class TicketRefundActionSerializer(serializers.Serializer):
     action = serializers.ChoiceField(choices=['refund_ticket', 'refund_transaction'])
     transaction_id = serializers.IntegerField(required=False)
+    sync_repeat_ticket = serializers.BooleanField(required=False, default=False)
     admin_override_code = serializers.CharField(
         write_only=True,
         required=False,
@@ -714,6 +877,7 @@ class OverflowSerializer(serializers.ModelSerializer):
     identifier_number = serializers.SerializerMethodField()
     timestamp = serializers.SerializerMethodField()
     collaborator_names = serializers.SerializerMethodField()
+    repeat_ticket_id = serializers.SerializerMethodField()
 
     class Meta:
         model = Overflow
@@ -721,6 +885,7 @@ class OverflowSerializer(serializers.ModelSerializer):
             'id',
             'transaction',
             'ticket_number',
+            'repeat_ticket_id',
             'customer_name',
             'order_number',
             'identifier_number',
@@ -752,6 +917,18 @@ class OverflowSerializer(serializers.ModelSerializer):
         if obj.status == Overflow.STATUS_OVERKILL or obj.transaction_id is None or obj.transaction.ticket_id is None:
             return None
         return obj.transaction.ticket.customer_name
+
+    def get_repeat_ticket_id(self, obj):
+        if obj.status == Overflow.STATUS_OVERKILL or obj.transaction_id is None or obj.transaction.ticket_id is None:
+            return None
+        try:
+            repeat_generation = obj.transaction.ticket.repeat_generation
+        except RepeatTicketGeneration.DoesNotExist:
+            repeat_generation = None
+        if repeat_generation is not None:
+            return repeat_generation.repeat_ticket_id
+        generation = RepeatTicketGeneration.objects.filter(ticket=obj.transaction.ticket).only('repeat_ticket_id').first()
+        return generation.repeat_ticket_id if generation else None
 
     def get_order_number(self, obj):
         if obj.status == Overflow.STATUS_OVERKILL or obj.transaction_id is None:
