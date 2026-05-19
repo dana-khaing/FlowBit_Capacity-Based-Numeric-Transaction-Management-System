@@ -147,7 +147,8 @@ export function PeriodPage() {
   );
   const latestClosedPeriod = archivedPeriods[0] ?? null;
 
-  const canManagePeriods = currentUserState?.user?.role === "admin";
+  const effectiveUserRole = currentUserState?.user?.role ?? user?.role ?? "";
+  const canManagePeriods = effectiveUserRole === "admin";
   const canEditLuckyDraw = Boolean(
     canManagePeriods &&
     activePeriod &&
