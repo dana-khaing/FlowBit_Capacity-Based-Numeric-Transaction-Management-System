@@ -29,6 +29,7 @@ import {
 } from "@/components/tickets/ticket-receipt-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useCurrentUserState } from "@/components/auth/current-user-context";
 import { usePeriodState } from "@/components/period/use-period-state";
 import { getStoredUser } from "@/lib/auth-client";
 import {
@@ -47,6 +48,7 @@ type ToastState = {
 } | null;
 
 export function TicketHistoryPage() {
+  const currentUserState = useCurrentUserState();
   const pageSize = 20;
   const actionButtonClassName = "h-12 w-12 rounded-[18px] p-0";
   const actionLinkClassName =
@@ -258,7 +260,7 @@ export function TicketHistoryPage() {
   }
 
   async function runOverflowRefundAction(overflowId: number, kind: "overflow") {
-    const user = getStoredUser();
+    const user = currentUserState?.user;
     const requireOverrideCode = user?.role !== "admin";
     if (requireOverrideCode && !adminOverrideCode.trim()) {
       setToast({
@@ -301,7 +303,7 @@ export function TicketHistoryPage() {
       return;
     }
 
-    const user = getStoredUser();
+    const user = currentUserState?.user;
     const requireOverrideCode = user?.role !== "admin";
     if (requireOverrideCode && !adminOverrideCode.trim()) {
       setToast({
@@ -502,7 +504,7 @@ export function TicketHistoryPage() {
               >
                 <FontAwesomeIcon icon={faPrint} className="h-3.5 w-3.5" />
               </Button>
-              {selectedTicket && getStoredUser()?.role === "admin" ? (
+              {selectedTicket && currentUserState?.user?.role === "admin" ? (
                 <Link
                   href={`/admin/audit-logs?related_ticket_number=${selectedTicket.ticket_number}`}
                   className={actionLinkClassName}
@@ -551,7 +553,7 @@ export function TicketHistoryPage() {
       <TicketRefundModal
         open={showRefundModal}
         ticket={selectedTicket}
-        requireOverrideCode={getStoredUser()?.role !== "admin"}
+        requireOverrideCode={currentUserState?.user?.role !== "admin"}
         adminOverrideCode={adminOverrideCode}
         busyAction={busyRefundAction}
         onCodeChange={setAdminOverrideCode}

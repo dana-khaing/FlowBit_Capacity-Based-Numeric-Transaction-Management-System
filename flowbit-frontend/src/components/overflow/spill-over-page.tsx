@@ -14,6 +14,7 @@ import { AdminActionToast } from "@/components/admin/admin-action-toast";
 import { notifyDashboardUpdated } from "@/components/app/workspace-events";
 import { AdminConfirmModal } from "@/components/admin/admin-confirm-modal";
 import { ActionLoadingModal } from "@/components/app/action-loading-modal";
+import { useCurrentUserState } from "@/components/auth/current-user-context";
 import { PeriodRequiredPage } from "@/components/period/period-required-page";
 import { TicketReceiptCard } from "@/components/tickets/ticket-receipt-card";
 import { Button } from "@/components/ui/button";
@@ -173,6 +174,7 @@ function renderOverflowPager(
 }
 
 export function SpillOverPage() {
+  const currentUserState = useCurrentUserState();
   const [user, setUser] = useState<AuthUser | null>(getStoredUser());
   const [pendingOverflows, setPendingOverflows] = useState<FlowBitOverflow[]>([]);
   const [approvedRowsState, setApprovedRowsState] = useState<FlowBitOverflow[]>([]);
@@ -233,7 +235,7 @@ export function SpillOverPage() {
     collaboratorName: string;
   } | null>(null);
 
-  const requiresOverride = user?.role !== "admin";
+  const requiresOverride = currentUserState?.user?.role !== "admin";
 
   useEffect(() => {
     setUser(getStoredUser());
