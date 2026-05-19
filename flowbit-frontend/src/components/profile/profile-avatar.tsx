@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { type AuthUser } from "@/lib/auth-client";
 
 type ProfileAvatarProps = {
@@ -21,8 +22,17 @@ export function ProfileAvatar({
   className = "h-20 w-20 rounded-[28px]",
   textClassName = "text-2xl font-semibold",
 }: ProfileAvatarProps) {
-  if (user.avatar_url) {
-    return <img src={user.avatar_url} alt={user.full_name || user.username} className={`${className} object-cover`} />;
+  const [imageFailed, setImageFailed] = useState(false);
+
+  if (user.avatar_url && !imageFailed) {
+    return (
+      <img
+        src={user.avatar_url}
+        alt={user.full_name || user.username}
+        className={`${className} object-cover`}
+        onError={() => setImageFailed(true)}
+      />
+    );
   }
 
   return (
