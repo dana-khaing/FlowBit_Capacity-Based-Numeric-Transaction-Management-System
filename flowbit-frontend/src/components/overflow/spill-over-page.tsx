@@ -219,6 +219,7 @@ export function SpillOverPage() {
   } | null>(null);
   const [refundPickerTarget, setRefundPickerTarget] = useState<FlowBitOverflow | null>(null);
   const [overrideCode, setOverrideCode] = useState("");
+  const [syncRepeatTicketRefund, setSyncRepeatTicketRefund] = useState(false);
   const [busyLabel, setBusyLabel] = useState<string | null>(null);
   const [selectedTicketDetail, setSelectedTicketDetail] = useState<FlowBitTicketDetail | null>(null);
   const [isTicketViewLoading, setIsTicketViewLoading] = useState(false);
@@ -536,10 +537,12 @@ export function SpillOverPage() {
         overflowId: refundTarget.overflow.id,
         action: refundTarget.action,
         adminOverrideCode: requiresOverride ? overrideCode : undefined,
+        syncRepeatTicket: syncRepeatTicketRefund,
       });
       setToast({ type: "success", message: response.message });
       setRefundTarget(null);
       setOverrideCode("");
+      setSyncRepeatTicketRefund(false);
       await loadPageData();
       notifyDashboardUpdated();
     } catch (error) {
@@ -1033,9 +1036,23 @@ export function SpillOverPage() {
         onCancel={() => {
           setRefundTarget(null);
           setOverrideCode("");
+          setSyncRepeatTicketRefund(false);
         }}
         onConfirm={handleRefundAction}
-      />
+      >
+        {refundTarget?.overflow.repeat_ticket_id ? (
+          <label className="mt-4 flex items-start gap-3 rounded-[20px] border border-stone-900/8 bg-stone-50 px-4 py-3 text-sm text-stone-600">
+            <input
+              type="checkbox"
+              checked={syncRepeatTicketRefund}
+              onChange={(event) => setSyncRepeatTicketRefund(event.target.checked)}
+              disabled={Boolean(busyLabel)}
+              className="mt-1 h-4 w-4 rounded border-stone-300"
+            />
+            <span>Also update the linked repeat ticket template.</span>
+          </label>
+        ) : null}
+      </AdminConfirmModal>
       {selectedCollaborator ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/30 px-4"
