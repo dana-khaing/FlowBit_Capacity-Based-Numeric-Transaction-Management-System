@@ -1,16 +1,16 @@
 <div align="center">
 
-![Header](https://capsule-render.vercel.app/api?type=waving&color=0:0f172a,35:1d4ed8,70:0ea5e9,100:14b8a6&height=220&section=header&text=FlowBit&fontSize=48&fontColor=ffffff&fontAlignY=38&desc=Realtime%20Numeric%20Transaction%20Operations%20Platform&descAlignY=58&animation=fadeIn)
+![Header](https://capsule-render.vercel.app/api?type=waving&color=0:0b0b0b,35:1a1a1a,70:6b5523,100:d4af37&height=220&section=header&text=FlowBit&fontSize=48&fontColor=f8f3e7&fontAlignY=38&desc=Realtime%20Numeric%20Transaction%20Operations%20Platform&descAlignY=58&descColor=f3df9b&animation=fadeIn)
 
-[![Release](https://img.shields.io/badge/Release-v0.1.0--beta-0ea5e9?style=for-the-badge)](https://github.com/dana-khaing/FlowBit_Capacity-Based-Numeric-Transaction-Management-System/releases/tag/v0.1.0-beta)
-[![Status](https://img.shields.io/badge/Status-Deployed_Beta-0f766e?style=for-the-badge)](https://flowbitdev.vercel.app)
-[![License](https://img.shields.io/badge/License-Proprietary-111827?style=for-the-badge)](./LICENSE)
-[![Frontend](https://img.shields.io/badge/Frontend-Next.js-111827?style=for-the-badge&logo=nextdotjs&logoColor=white)](https://nextjs.org/)
-[![Backend](https://img.shields.io/badge/Backend-Django-092E20?style=for-the-badge&logo=django&logoColor=white)](https://www.djangoproject.com/)
+[![Release](https://img.shields.io/badge/Release-v0.1.0--beta-c9a227?style=for-the-badge&logoColor=white)](https://github.com/dana-khaing/FlowBit_Capacity-Based-Numeric-Transaction-Management-System/releases/tag/v0.1.0-beta)
+[![Status](https://img.shields.io/badge/Status-Deployed_Beta-5f4b1b?style=for-the-badge&logoColor=white)](https://flowbitdev.vercel.app)
+[![License](https://img.shields.io/badge/License-Proprietary-111111?style=for-the-badge&logoColor=white)](./LICENSE)
+[![Frontend](https://img.shields.io/badge/Frontend-Next.js-1b1b1b?style=for-the-badge&logo=nextdotjs&logoColor=f5d76e)](https://nextjs.org/)
+[![Backend](https://img.shields.io/badge/Backend-Django-2f2610?style=for-the-badge&logo=django&logoColor=f3df9b)](https://www.djangoproject.com/)
 
-[![Live App](https://img.shields.io/badge/Live_App-flowbitdev.vercel.app-2563eb?style=for-the-badge&logo=vercel&logoColor=white)](https://flowbitdev.vercel.app)
-[![API Docs](https://img.shields.io/badge/API_Docs-DRF_Schema-0ea5e9?style=for-the-badge&logo=swagger&logoColor=white)](https://flowbit-backend-bcgo.onrender.com/api/docs/)
-[![Repository](https://img.shields.io/badge/GitHub-FlowBit-111827?style=for-the-badge&logo=github&logoColor=white)](https://github.com/dana-khaing/FlowBit_Capacity-Based-Numeric-Transaction-Management-System)
+[![Live App](https://img.shields.io/badge/Live_App-flowbitdev.vercel.app-8c6b1f?style=for-the-badge&logo=vercel&logoColor=fff5d6)](https://flowbitdev.vercel.app)
+[![API Docs](https://img.shields.io/badge/API_Docs-DRF_Schema-a88322?style=for-the-badge&logo=swagger&logoColor=fff5d6)](https://flowbit-backend-bcgo.onrender.com/api/docs/)
+[![Repository](https://img.shields.io/badge/GitHub-FlowBit-111111?style=for-the-badge&logo=github&logoColor=f5d76e)](https://github.com/dana-khaing/FlowBit_Capacity-Based-Numeric-Transaction-Management-System)
 
 </div>
 
@@ -126,26 +126,26 @@ When lucky draw is announced:
 ## Tech Stack
 
 ### Frontend
-![Next.js](https://img.shields.io/badge/Next.js-111827?style=flat-square&logo=nextdotjs&logoColor=white)
-![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white)
-![React](https://img.shields.io/badge/React-20232A?style=flat-square&logo=react&logoColor=61DAFB)
-![shadcn/ui](https://img.shields.io/badge/shadcn%2Fui-18181B?style=flat-square&logo=radixui&logoColor=white)
+![Next.js](https://img.shields.io/badge/Next.js-111111?style=flat-square&logo=nextdotjs&logoColor=f5d76e)
+![TypeScript](https://img.shields.io/badge/TypeScript-5f4b1b?style=flat-square&logo=typescript&logoColor=fff5d6)
+![React](https://img.shields.io/badge/React-2a2418?style=flat-square&logo=react&logoColor=f3df9b)
+![shadcn/ui](https://img.shields.io/badge/shadcn%2Fui-1a1a1a?style=flat-square&logo=radixui&logoColor=d4af37)
 
 ### Backend
-![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white)
-![Django](https://img.shields.io/badge/Django-092E20?style=flat-square&logo=django&logoColor=white)
-![Django REST Framework](https://img.shields.io/badge/DRF-A30000?style=flat-square&logo=django&logoColor=white)
-![Django Channels](https://img.shields.io/badge/Django_Channels-0F172A?style=flat-square&logo=django&logoColor=white)
+![Python](https://img.shields.io/badge/Python-7a611d?style=flat-square&logo=python&logoColor=fff5d6)
+![Django](https://img.shields.io/badge/Django-2f2610?style=flat-square&logo=django&logoColor=f3df9b)
+![Django REST Framework](https://img.shields.io/badge/DRF-8f6d1f?style=flat-square&logo=django&logoColor=fff5d6)
+![Django Channels](https://img.shields.io/badge/Django_Channels-1a1a1a?style=flat-square&logo=django&logoColor=d4af37)
 
 ### Data And Realtime
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-336791?style=flat-square&logo=postgresql&logoColor=white)
-![Redis](https://img.shields.io/badge/Redis-DC382D?style=flat-square&logo=redis&logoColor=white)
-![Supabase Storage](https://img.shields.io/badge/Supabase_Storage-0F172A?style=flat-square&logo=supabase&logoColor=3ECF8E)
-![WebSocket](https://img.shields.io/badge/WebSocket-0ea5e9?style=flat-square&logo=socketdotio&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-5c4a1a?style=flat-square&logo=postgresql&logoColor=fff5d6)
+![Redis](https://img.shields.io/badge/Redis-6b5523?style=flat-square&logo=redis&logoColor=fff5d6)
+![Supabase Storage](https://img.shields.io/badge/Supabase_Storage-1e1b16?style=flat-square&logo=supabase&logoColor=d4af37)
+![WebSocket](https://img.shields.io/badge/WebSocket-8c6b1f?style=flat-square&logo=socketdotio&logoColor=fff5d6)
 
 ### Hosting
-![Vercel](https://img.shields.io/badge/Vercel-111827?style=flat-square&logo=vercel&logoColor=white)
-![Render](https://img.shields.io/badge/Render-4F46E5?style=flat-square&logo=render&logoColor=white)
+![Vercel](https://img.shields.io/badge/Vercel-111111?style=flat-square&logo=vercel&logoColor=f5d76e)
+![Render](https://img.shields.io/badge/Render-3b2f12?style=flat-square&logo=render&logoColor=fff5d6)
 
 ## Architecture
 
@@ -315,6 +315,6 @@ FlowBit is a private product.
 
 <div align="center">
 
-![Footer](https://capsule-render.vercel.app/api?type=waving&color=0:14b8a6,40:0ea5e9,75:1d4ed8,100:0f172a&height=120&section=footer)
+![Footer](https://capsule-render.vercel.app/api?type=waving&color=0:d4af37,40:8c6b1f,75:1a1a1a,100:0b0b0b&height=120&section=footer)
 
 </div>
