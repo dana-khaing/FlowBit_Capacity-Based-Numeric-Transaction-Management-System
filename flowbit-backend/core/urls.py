@@ -31,6 +31,7 @@ from .views import (
     TicketDetailView,
     TicketRefundView,
     TicketReceiptPdfExportView,
+    RepeatTicketViewSet,
 )
 
 router = DefaultRouter()
@@ -45,6 +46,7 @@ router.register(r'support-cases', SupportCaseViewSet, basename='support-case')
 router.register(r'audit-logs', AuditLogViewSet)
 router.register(r'collaborators', CollaboratorViewSet)
 router.register(r'users', UserManagementViewSet, basename='user-management')
+router.register(r'repeat-tickets', RepeatTicketViewSet, basename='repeat-ticket')
 
 urlpatterns = [
     # All router endpoints (ledgers, identifiers, transactions, overflows)

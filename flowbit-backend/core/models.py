@@ -1123,6 +1123,122 @@ class Ticket(models.Model):
         self.save(update_fields=['is_refunded', 'refunded_at'])
 
 
+class RepeatTicket(models.Model):
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='repeat_tickets',
+    )
+    customer_name = models.CharField(max_length=150, blank=True, null=True)
+    notes = models.TextField(blank=True, null=True)
+    version = models.PositiveIntegerField(default=1)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-updated_at', '-created_at']
+        verbose_name = "Repeat Ticket"
+        verbose_name_plural = "Repeat Tickets"
+
+    def __str__(self):
+        return self.customer_name or f"Repeat Ticket #{self.pk}"
+
+    def bump_version(self, save=True):
+        self.version += 1
+        if save:
+            self.save(update_fields=['version', 'updated_at'])
+        return self.version
+
+    def generation_for_period(self, period):
+        if period is None:
+            return None
+        return self.generations.filter(period=period).first()
+
+    def current_status_for_period(self, period):
+        generation = self.generation_for_period(period)
+        if generation is None:
+            return RepeatTicketGeneration.STATUS_NEW
+        if generation.status == RepeatTicketGeneration.STATUS_UNSUCCESSFUL:
+            return RepeatTicketGeneration.STATUS_UNSUCCESSFUL
+        if generation.source_version < self.version:
+            return RepeatTicketGeneration.STATUS_UPDATED
+        return RepeatTicketGeneration.STATUS_GENERATED
+
+
+class RepeatTicketItem(models.Model):
+    repeat_ticket = models.ForeignKey(
+        RepeatTicket,
+        on_delete=models.CASCADE,
+        related_name='items',
+    )
+    identifier = models.ForeignKey(
+        'Identifier',
+        on_delete=models.PROTECT,
+        related_name='repeat_ticket_items',
+    )
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    amount_uses_allocation_basis = models.BooleanField(default=False)
+    use_permutations = models.BooleanField(default=False)
+    position = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['position', 'id']
+        verbose_name = "Repeat Ticket Item"
+        verbose_name_plural = "Repeat Ticket Items"
+
+    def __str__(self):
+        return f"{self.repeat_ticket_id}:{self.identifier.number}:{self.amount}"
+
+
+class RepeatTicketGeneration(models.Model):
+    STATUS_NEW = 'NEW'
+    STATUS_GENERATED = 'GENERATED'
+    STATUS_UPDATED = 'UPDATED'
+    STATUS_UNSUCCESSFUL = 'UNSUCCESSFUL'
+    STATUS_CHOICES = [
+        (STATUS_GENERATED, 'Generated'),
+        (STATUS_UNSUCCESSFUL, 'Unsuccessful'),
+    ]
+
+    repeat_ticket = models.ForeignKey(
+        RepeatTicket,
+        on_delete=models.CASCADE,
+        related_name='generations',
+    )
+    period = models.ForeignKey(
+        Period,
+        on_delete=models.CASCADE,
+        related_name='repeat_ticket_generations',
+    )
+    ticket = models.OneToOneField(
+        Ticket,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='repeat_generation',
+    )
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES)
+    source_version = models.PositiveIntegerField(default=1)
+    failure_message = models.TextField(blank=True, null=True)
+    generated_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-updated_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['repeat_ticket', 'period'],
+                name='unique_repeat_ticket_generation_per_period',
+            ),
+        ]
+        verbose_name = "Repeat Ticket Generation"
+        verbose_name_plural = "Repeat Ticket Generations"
+
+    def __str__(self):
+        return f"{self.repeat_ticket_id}:{self.period_id}:{self.status}"
+
+
 class Transaction(models.Model):
     identifier = models.ForeignKey(Identifier, on_delete=models.CASCADE, related_name='transactions')
     total_amount = models.DecimalField(max_digits=12, decimal_places=2)

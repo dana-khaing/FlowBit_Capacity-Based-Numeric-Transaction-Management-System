@@ -23,6 +23,7 @@ from decimal import Decimal, InvalidOperation
 from datetime import datetime, time
 import csv
 from io import BytesIO
+from itertools import permutations
 from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -46,6 +47,9 @@ from .models import (
     PasswordResetToken,
     Collaborator,
     Ticket,
+    RepeatTicket,
+    RepeatTicketItem,
+    RepeatTicketGeneration,
     LedgerAllocation,
     IdentifierCapacityAdjustment,
     IdentifierLedgerFreeze,
@@ -53,6 +57,7 @@ from .models import (
     _announce_pending_overflows,
     _notify_remaining_overkill_for_lucky_draw,
     _retry_pending_overflows,
+    _from_allocation_basis_amount,
     preview_transaction_allocation,
     refund_overflow,
     refund_transactions,
@@ -90,6 +95,7 @@ from .serializers import (
     SupportCaseReplySerializer,
     TicketSerializer,
     TicketDetailSerializer,
+    RepeatTicketSerializer,
     AuditLogSerializer,
     LoginSerializer,
     RegisterSerializer,
@@ -125,6 +131,14 @@ def parse_period_value(value):
         return timezone.make_aware(parsed_datetime, timezone.get_current_timezone())
 
     return None
+
+
+def parse_bool_value(value):
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {'1', 'true', 'yes', 'on'}
+    return bool(value)
 
 
 def parse_time_value(value):
@@ -642,6 +656,204 @@ def serialize_allocation_preview(preview):
         'overflow_amount': str(preview['overflow_amount']),
         'has_overflow': preview['overflow_amount'] > 0,
     }
+
+
+def _prepare_ticket_items_for_period(*, user, period, items, allow_partial=True):
+    if not items or not isinstance(items, list):
+        raise DRFValidationError({"detail": "Field 'items' must be a non-empty list"})
+
+    prepared_items = []
+    errors = []
+
+    for idx, item in enumerate(items, 1):
+        try:
+            identifier_id = item.get('identifier')
+            amount_str = item.get('amount')
+
+            if not identifier_id:
+                errors.append(f"Item {idx}: missing 'identifier'")
+                continue
+
+            if not amount_str:
+                errors.append(f"Item {idx}: missing 'amount'")
+                continue
+
+            try:
+                amount = Decimal(str(amount_str))
+                if amount <= 0:
+                    raise ValueError("Amount must be positive")
+            except (InvalidOperation, ValueError) as exc:
+                errors.append(f"Item {idx}: invalid amount '{amount_str}' – {exc}")
+                continue
+
+            try:
+                identifier = Identifier.objects.get(id=identifier_id)
+            except Identifier.DoesNotExist:
+                errors.append(f"Item {idx}: identifier ID {identifier_id} not found")
+                continue
+
+            manual_allocations_input = item.get('manual_allocations') or []
+            identifier._allocation_owner = user
+            allow_overflow = item.get('allow_overflow', True)
+            if isinstance(allow_overflow, str):
+                allow_overflow = allow_overflow.strip().lower() not in {'false', '0', 'no'}
+
+            parsed_allocations = []
+            if manual_allocations_input:
+                parsed_allocations = parse_manual_allocations_input(
+                    identifier=identifier,
+                    period=period,
+                    manual_allocations=manual_allocations_input,
+                )
+
+            preview = preview_transaction_allocation(
+                identifier=identifier,
+                total_amount=amount,
+                period=period,
+                manual_allocations=parsed_allocations or None,
+            )
+            if preview['overflow_amount'] > 0 and not allow_overflow:
+                errors.append(
+                    f"Item {idx}: transaction does not fit available capacity and allow_overflow is false"
+                )
+                continue
+
+            prepared_items.append(
+                {
+                    'identifier': identifier,
+                    'amount': amount,
+                    'parsed_allocations': parsed_allocations,
+                    'preview': preview,
+                }
+            )
+        except Exception as exc:
+            if isinstance(exc, ValidationError):
+                errors.append(f"Item {idx}: {exc}")
+                continue
+            errors.append(f"Item {idx}: unexpected error – {str(exc)}")
+
+    if not prepared_items:
+        raise DRFValidationError(
+            {
+                "detail": "At least one valid ticket entry is required.",
+                "errors": errors or ["No valid ticket entries were provided."],
+            }
+        )
+
+    if errors and not allow_partial:
+        raise DRFValidationError(
+            {
+                "detail": "One or more repeat ticket entries failed real ticket rules.",
+                "errors": errors,
+            }
+        )
+
+    return prepared_items, errors
+
+
+def _create_ticket_from_prepared_items(*, user, data, prepared_items):
+    ticket = Ticket.objects.create(
+        customer_name=(data.get('customer_name') or '').strip()[:150] or None,
+        notes=(data.get('notes') or '').strip(),
+        created_by=user if user and user.is_authenticated else None,
+    )
+    if not ticket.customer_name:
+        ticket.customer_name = f"Walk-in {ticket.ticket_number}"
+        ticket.save(update_fields=['customer_name'])
+
+    created_items = []
+    for prepared_item in prepared_items:
+        transaction_obj = Transaction.objects.create(
+            ticket=ticket,
+            identifier=prepared_item['identifier'],
+            total_amount=prepared_item['amount'],
+            created_by=user if user and user.is_authenticated else None,
+        )
+        if prepared_item['parsed_allocations']:
+            transaction_obj._manual_allocations = prepared_item['parsed_allocations']
+            transaction_obj.allocations.all().delete()
+            transaction_obj.overflows.all().delete()
+            transaction_obj._allocate_to_ledgers()
+
+        created_items.append({
+            "order_number": transaction_obj.order_number,
+            "identifier": prepared_item['identifier'].number,
+            "amount": str(transaction_obj.total_amount),
+            "id": transaction_obj.id,
+            "allocation_preview": serialize_allocation_preview(prepared_item['preview']),
+        })
+
+    return ticket, created_items
+
+
+def _build_repeat_identifier_numbers(repeat_item):
+    identifier_number = repeat_item.identifier.number
+    if not repeat_item.use_permutations:
+        return [identifier_number]
+    return sorted({''.join(value) for value in permutations(identifier_number)})
+
+
+def _build_repeat_ticket_generation_payload(repeat_ticket):
+    items = []
+    repeat_items = list(repeat_ticket.items.select_related('identifier').all())
+    for repeat_item in repeat_items:
+        ticket_amount = repeat_item.amount
+        if repeat_item.amount_uses_allocation_basis:
+            ticket_amount = (repeat_item.amount / Decimal('1.25')).quantize(Decimal('0.01'))
+        for identifier_number in _build_repeat_identifier_numbers(repeat_item):
+            identifier = Identifier.objects.filter(number=identifier_number).first()
+            if identifier is None:
+                raise DRFValidationError({
+                    "detail": f"Identifier {identifier_number} no longer exists.",
+                })
+            items.append(
+                {
+                    "identifier": identifier.id,
+                    "amount": str(ticket_amount),
+                    "allow_overflow": True,
+                }
+            )
+
+    if not items:
+        raise DRFValidationError({"detail": "Repeat ticket has no entries to generate."})
+
+    return {
+        "customer_name": repeat_ticket.customer_name or "",
+        "notes": repeat_ticket.notes or "",
+        "items": items,
+    }
+
+
+def _sync_repeat_ticket_from_ticket(*, repeat_ticket, ticket, generation=None):
+    visible_transactions = list(
+        ticket.transactions.filter(is_refunded=False).select_related('identifier').order_by('id')
+    )
+
+    if not visible_transactions:
+        repeat_ticket.delete()
+        return None
+
+    repeat_ticket.customer_name = ticket.customer_name
+    repeat_ticket.notes = ticket.notes
+    repeat_ticket.bump_version(save=False)
+    repeat_ticket.save(update_fields=['customer_name', 'notes', 'version', 'updated_at'])
+    repeat_ticket.items.all().delete()
+    for index, transaction_obj in enumerate(visible_transactions):
+        repeat_ticket.items.create(
+            identifier=transaction_obj.identifier,
+            amount=_transaction_visible_request_amount(transaction_obj),
+            amount_uses_allocation_basis=False,
+            use_permutations=False,
+            position=index,
+        )
+
+    if generation is not None:
+        generation.source_version = repeat_ticket.version
+        generation.failure_message = ""
+        generation.status = RepeatTicketGeneration.STATUS_GENERATED
+        generation.save(update_fields=['source_version', 'failure_message', 'status', 'updated_at'])
+
+    return repeat_ticket
 
 
 class PeriodViewSet(viewsets.ModelViewSet):
@@ -2838,6 +3050,7 @@ class OverflowViewSet(viewsets.ModelViewSet):
     def resolve_overflow(self, request, pk=None):
         overflow = self.get_object()
         action_name = (request.data.get('action') or '').strip().lower()
+        sync_repeat_ticket = parse_bool_value(request.data.get('sync_repeat_ticket'))
         helper_name = helper_name_from_request(request)
         override_profile = get_request_admin_override_profile(request)
 
@@ -2910,6 +3123,16 @@ class OverflowViewSet(viewsets.ModelViewSet):
                     period=overflow.period,
                 )
                 refresh_dashboard_for_user(overflow.owner)
+            if sync_repeat_ticket and overflow.transaction_id and overflow.transaction.ticket_id:
+                repeat_generation = RepeatTicketGeneration.objects.select_related('repeat_ticket').filter(
+                    ticket=overflow.transaction.ticket
+                ).first()
+                if repeat_generation is not None:
+                    _sync_repeat_ticket_from_ticket(
+                        repeat_ticket=repeat_generation.repeat_ticket,
+                        ticket=overflow.transaction.ticket,
+                        generation=repeat_generation,
+                    )
             return Response({
                 "message": "Overflow refunded successfully",
                 "overflow": serializer_data,
@@ -2917,12 +3140,23 @@ class OverflowViewSet(viewsets.ModelViewSet):
 
         if action_name == 'refund_transaction':
             refund_amount = overflow.transaction.total_amount
+            related_ticket = overflow.transaction.ticket if overflow.transaction_id and overflow.transaction.ticket_id else None
             with db_transaction.atomic():
                 refund_transactions(
                     [overflow.transaction],
                     helper_name=helper_name,
                     resolution_type=Overflow.RESOLUTION_REFUND_TRANSACTION,
                 )
+                if sync_repeat_ticket and related_ticket is not None:
+                    repeat_generation = RepeatTicketGeneration.objects.select_related('repeat_ticket').filter(
+                        ticket=related_ticket
+                    ).first()
+                    if repeat_generation is not None:
+                        _sync_repeat_ticket_from_ticket(
+                            repeat_ticket=repeat_generation.repeat_ticket,
+                            ticket=related_ticket,
+                            generation=repeat_generation,
+                        )
             record_audit_log(
                 request,
                 'transaction.refunded',
@@ -2966,6 +3200,16 @@ class OverflowViewSet(viewsets.ModelViewSet):
                     helper_name=helper_name,
                     resolution_type=Overflow.RESOLUTION_REFUND_TICKET,
                 )
+                if sync_repeat_ticket:
+                    repeat_generation = RepeatTicketGeneration.objects.select_related('repeat_ticket').filter(
+                        ticket=ticket
+                    ).first()
+                    if repeat_generation is not None:
+                        _sync_repeat_ticket_from_ticket(
+                            repeat_ticket=repeat_generation.repeat_ticket,
+                            ticket=ticket,
+                            generation=repeat_generation,
+                        )
             record_audit_log(
                 request,
                 'ticket.refunded',
@@ -5092,6 +5336,7 @@ class TicketRefundView(APIView):
 
         helper_name = helper_name_from_request(request)
         action_name = validated['action']
+        sync_repeat_ticket = validated.get('sync_repeat_ticket', False)
 
         if action_name == 'refund_ticket':
             transactions = list(ticket.transactions.all())
@@ -5108,6 +5353,16 @@ class TicketRefundView(APIView):
                     helper_name=helper_name,
                     resolution_type=Overflow.RESOLUTION_REFUND_TICKET,
                 )
+                if sync_repeat_ticket:
+                    repeat_generation = RepeatTicketGeneration.objects.select_related('repeat_ticket').filter(
+                        ticket=ticket
+                    ).first()
+                    if repeat_generation is not None:
+                        _sync_repeat_ticket_from_ticket(
+                            repeat_ticket=repeat_generation.repeat_ticket,
+                            ticket=ticket,
+                            generation=repeat_generation,
+                        )
 
             record_audit_log(
                 request,
@@ -5151,6 +5406,16 @@ class TicketRefundView(APIView):
                 helper_name=helper_name,
                 resolution_type=Overflow.RESOLUTION_REFUND_TRANSACTION,
             )
+            if sync_repeat_ticket:
+                repeat_generation = RepeatTicketGeneration.objects.select_related('repeat_ticket').filter(
+                    ticket=ticket
+                ).first()
+                if repeat_generation is not None:
+                    _sync_repeat_ticket_from_ticket(
+                        repeat_ticket=repeat_generation.repeat_ticket,
+                        ticket=ticket,
+                        generation=repeat_generation,
+                    )
 
         record_audit_log(
             request,
@@ -5187,6 +5452,28 @@ def _ticket_visible_transactions(ticket):
 
 def _ticket_visible_total(ticket):
     return ticket.total_amount
+
+
+def _transaction_visible_request_amount(transaction_obj):
+    refunded_overflow_total = Decimal('0.00')
+    returned_overflow_total = Decimal('0.00')
+
+    for overflow in transaction_obj.overflows.all():
+        if overflow.status == Overflow.STATUS_REFUNDED:
+            refunded_overflow_total += overflow.refund_amount or Decimal('0.00')
+        elif (
+            overflow.status == Overflow.STATUS_TCSO
+            and overflow.refunded_at is not None
+            and overflow.resolution_type == Overflow.RESOLUTION_REFUND_OVERFLOW
+        ):
+            returned_overflow_total += overflow.refund_amount or Decimal('0.00')
+
+    active_total = transaction_obj.total_amount - _from_allocation_basis_amount(
+        refunded_overflow_total + returned_overflow_total
+    )
+    if active_total < Decimal('0.00'):
+        return Decimal('0.00')
+    return active_total
 
 
 def _ticket_visible_line_amount(transaction_obj):
@@ -5450,129 +5737,21 @@ class CreateTicketWithTransactions(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # 1. Validate required fields
-        items = data.get('items')
-        if not items or not isinstance(items, list):
-            return Response(
-                {"detail": "Field 'items' must be a non-empty list"},
-                status=status.HTTP_400_BAD_REQUEST
+        try:
+            prepared_items, errors = _prepare_ticket_items_for_period(
+                user=request.user,
+                period=open_period,
+                items=data.get('items'),
+                allow_partial=True,
             )
+        except DRFValidationError as exc:
+            return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
 
-        created_items = []
-        errors = []
-        prepared_items = []
-
-        # 3. Process each item
-        for idx, item in enumerate(items, 1):
-            try:
-                identifier_id = item.get('identifier')
-                amount_str = item.get('amount')
-
-                if not identifier_id:
-                    errors.append(f"Item {idx}: missing 'identifier'")
-                    continue
-
-                if not amount_str:
-                    errors.append(f"Item {idx}: missing 'amount'")
-                    continue
-
-                # Validate amount
-                try:
-                    amount = Decimal(str(amount_str))
-                    if amount <= 0:
-                        raise ValueError("Amount must be positive")
-                except (InvalidOperation, ValueError) as e:
-                    errors.append(f"Item {idx}: invalid amount '{amount_str}' – {e}")
-                    continue
-
-                # Get identifier
-                try:
-                    identifier = Identifier.objects.get(id=identifier_id)
-                except Identifier.DoesNotExist:
-                    errors.append(f"Item {idx}: identifier ID {identifier_id} not found")
-                    continue
-
-                # Create transaction → this triggers allocation & overflow logic
-                manual_allocations_input = item.get('manual_allocations') or []
-                identifier._allocation_owner = request.user
-                allow_overflow = item.get('allow_overflow', True)
-                if isinstance(allow_overflow, str):
-                    allow_overflow = allow_overflow.strip().lower() not in {'false', '0', 'no'}
-
-                parsed_allocations = []
-                if manual_allocations_input:
-                    parsed_allocations = parse_manual_allocations_input(
-                        identifier=identifier,
-                        period=open_period,
-                        manual_allocations=manual_allocations_input,
-                    )
-
-                preview = preview_transaction_allocation(
-                    identifier=identifier,
-                    total_amount=amount,
-                    period=open_period,
-                    manual_allocations=parsed_allocations or None,
-                )
-                if preview['overflow_amount'] > 0 and not allow_overflow:
-                    errors.append(
-                        f"Item {idx}: transaction does not fit available capacity and allow_overflow is false"
-                    )
-                    continue
-
-                prepared_items.append(
-                    {
-                        'identifier': identifier,
-                        'amount': amount,
-                        'parsed_allocations': parsed_allocations,
-                        'preview': preview,
-                    }
-                )
-
-            except Exception as e:
-                if isinstance(e, ValidationError):
-                    errors.append(f"Item {idx}: {e}")
-                    continue
-                errors.append(f"Item {idx}: unexpected error – {str(e)}")
-
-        if not prepared_items:
-            return Response(
-                {
-                    "detail": "At least one valid ticket entry is required.",
-                    "errors": errors or ["No valid ticket entries were provided."],
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        # 4. Create the ticket only after at least one valid entry is ready.
-        ticket = Ticket.objects.create(
-            customer_name=(data.get('customer_name') or '').strip()[:150] or None,
-            notes=data.get('notes', '').strip(),
-            created_by=request.user if request.user.is_authenticated else None
+        ticket, created_items = _create_ticket_from_prepared_items(
+            user=request.user,
+            data=data,
+            prepared_items=prepared_items,
         )
-        if not ticket.customer_name:
-            ticket.customer_name = f"Walk-in {ticket.ticket_number}"
-            ticket.save(update_fields=['customer_name'])
-
-        for prepared_item in prepared_items:
-            tx = Transaction.objects.create(
-                ticket=ticket,
-                identifier=prepared_item['identifier'],
-                total_amount=prepared_item['amount'],
-                created_by=request.user if request.user.is_authenticated else None
-            )
-            if prepared_item['parsed_allocations']:
-                tx._manual_allocations = prepared_item['parsed_allocations']
-                tx.allocations.all().delete()
-                tx.overflows.all().delete()
-                tx._allocate_to_ledgers()
-
-            created_items.append({
-                "order_number": tx.order_number,
-                "identifier": prepared_item['identifier'].number,
-                "amount": str(tx.total_amount),
-                "id": tx.id,
-                "allocation_preview": serialize_allocation_preview(prepared_item['preview']),
-            })
 
         # 5. If there were errors → rollback is automatic thanks to @transaction.atomic
         if errors:
@@ -5617,3 +5796,171 @@ class CreateTicketWithTransactions(APIView):
             "total_amount": str(ticket.total_amount),
             "transaction_count": ticket.transaction_count
         }, status=status.HTTP_201_CREATED)
+
+
+class RepeatTicketViewSet(viewsets.ModelViewSet):
+    serializer_class = RepeatTicketSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return (
+            RepeatTicket.objects.filter(created_by=self.request.user)
+            .prefetch_related(
+                Prefetch(
+                    'items',
+                    queryset=RepeatTicketItem.objects.select_related('identifier').order_by('position', 'id'),
+                ),
+                Prefetch(
+                    'generations',
+                    queryset=RepeatTicketGeneration.objects.select_related('ticket', 'period').order_by('-updated_at'),
+                ),
+            )
+            .order_by('-updated_at', '-created_at')
+        )
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context['active_period'] = Period.get_open_period()
+        return context
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+
+    @action(detail=True, methods=['post'], url_path='generate')
+    def generate(self, request, pk=None):
+        repeat_ticket = self.get_object()
+        result, status_code = self._generate_repeat_ticket(repeat_ticket)
+        return Response(result, status=status_code)
+
+    @action(detail=False, methods=['post'], url_path='generate-all')
+    def generate_all(self, request):
+        open_period = Period.get_open_period()
+        if not open_period:
+            return Response(
+                {"detail": "No open period available."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if ticket_creation_locked_for_period(open_period):
+            return Response(
+                {"detail": "Ticket creation is locked after the pre-close time is reached."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        repeat_tickets = list(self.get_queryset())
+        generated = []
+        skipped = []
+        unsuccessful = []
+        for repeat_ticket in repeat_tickets:
+            current_status = repeat_ticket.current_status_for_period(open_period)
+            if current_status in {RepeatTicketGeneration.STATUS_GENERATED, RepeatTicketGeneration.STATUS_UPDATED}:
+                skipped.append({
+                    'repeat_ticket_id': repeat_ticket.id,
+                    'status': current_status,
+                })
+                continue
+
+            payload, result_status = self._generate_repeat_ticket(repeat_ticket, open_period=open_period)
+            if result_status == status.HTTP_201_CREATED:
+                generated.append(payload)
+            else:
+                unsuccessful.append(payload)
+
+        return Response(
+            {
+                'generated': generated,
+                'unsuccessful': unsuccessful,
+                'skipped': skipped,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    def _generate_repeat_ticket(self, repeat_ticket, open_period=None):
+        open_period = open_period or Period.get_open_period()
+        if not open_period:
+            return {"detail": "No open period available."}, status.HTTP_400_BAD_REQUEST
+        if ticket_creation_locked_for_period(open_period):
+            return {"detail": "Ticket creation is locked after the pre-close time is reached."}, status.HTTP_400_BAD_REQUEST
+        if not Ledger.objects.filter(
+            is_active=True,
+            period=open_period,
+            is_capacity_reserve=False,
+            owner=self.request.user,
+        ).exists():
+            return {"detail": "No active ledgers available in the current open period."}, status.HTTP_400_BAD_REQUEST
+
+        generation, _created = RepeatTicketGeneration.objects.get_or_create(
+            repeat_ticket=repeat_ticket,
+            period=open_period,
+            defaults={
+                'status': RepeatTicketGeneration.STATUS_UNSUCCESSFUL,
+                'source_version': repeat_ticket.version,
+            },
+        )
+
+        current_status = repeat_ticket.current_status_for_period(open_period)
+        if current_status in {RepeatTicketGeneration.STATUS_GENERATED, RepeatTicketGeneration.STATUS_UPDATED}:
+            return {
+                "detail": "Repeat ticket has already been generated for this period.",
+                "repeat_ticket_id": repeat_ticket.id,
+                "status": current_status,
+            }, status.HTTP_400_BAD_REQUEST
+
+        try:
+            payload = _build_repeat_ticket_generation_payload(repeat_ticket)
+            prepared_items, _errors = _prepare_ticket_items_for_period(
+                user=self.request.user,
+                period=open_period,
+                items=payload['items'],
+                allow_partial=False,
+            )
+            with db_transaction.atomic():
+                ticket, created_items = _create_ticket_from_prepared_items(
+                    user=self.request.user,
+                    data=payload,
+                    prepared_items=prepared_items,
+                )
+                generation.ticket = ticket
+                generation.status = RepeatTicketGeneration.STATUS_GENERATED
+                generation.source_version = repeat_ticket.version
+                generation.generated_at = timezone.now()
+                generation.failure_message = ""
+                generation.save()
+        except DRFValidationError as exc:
+            detail = exc.detail
+            if isinstance(detail, dict):
+                message = detail.get('detail') or "Repeat ticket failed to generate."
+                errors = detail.get('errors') or []
+            else:
+                message = str(detail)
+                errors = []
+            generation.ticket = None
+            generation.status = RepeatTicketGeneration.STATUS_UNSUCCESSFUL
+            generation.source_version = repeat_ticket.version
+            generation.failure_message = "\n".join([message, *errors]).strip()
+            generation.save()
+            return {
+                'repeat_ticket_id': repeat_ticket.id,
+                'status': RepeatTicketGeneration.STATUS_UNSUCCESSFUL,
+                'detail': message,
+                'errors': errors,
+            }, status.HTTP_400_BAD_REQUEST
+
+        record_audit_log(
+            self.request,
+            'repeat_ticket.generated',
+            target=ticket,
+            details=f"Generated ticket '{ticket.ticket_number}' from repeat ticket {repeat_ticket.id}",
+            changes={
+                'repeat_ticket_id': repeat_ticket.id,
+                'ticket_id': ticket.id,
+                'ticket_number': ticket.ticket_number,
+            },
+        )
+        refresh_dashboard_for_user(self.request.user)
+        return {
+            'repeat_ticket_id': repeat_ticket.id,
+            'status': RepeatTicketGeneration.STATUS_GENERATED,
+            'ticket_id': ticket.id,
+            'ticket_number': ticket.ticket_number,
+            'created': created_items,
+        }, status.HTTP_201_CREATED
