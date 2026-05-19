@@ -7,6 +7,7 @@ import { AdminConfirmModal } from "@/components/admin/admin-confirm-modal";
 import { WorkspaceShell } from "@/components/app/workspace-shell";
 import { ActionLoadingModal } from "@/components/app/action-loading-modal";
 import { AdminActionToast } from "@/components/admin/admin-action-toast";
+import { useCurrentUserState } from "@/components/auth/current-user-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { fetchCurrentUser, getStoredUser, type AuthUser } from "@/lib/auth-client";
@@ -116,6 +117,7 @@ function isPreCloseTimeValid(preCloseTime: string, closeTime: string) {
 }
 
 export function PeriodPage() {
+  const currentUserState = useCurrentUserState();
   const [user, setUser] = useState<AuthUser | null>(getStoredUser());
   const [periods, setPeriods] = useState<FlowBitPeriod[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -145,7 +147,7 @@ export function PeriodPage() {
   );
   const latestClosedPeriod = archivedPeriods[0] ?? null;
 
-  const canManagePeriods = user?.role === "admin";
+  const canManagePeriods = currentUserState?.user?.role === "admin";
   const canEditLuckyDraw = Boolean(
     canManagePeriods &&
     activePeriod &&
