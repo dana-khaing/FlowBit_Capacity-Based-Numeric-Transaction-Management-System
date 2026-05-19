@@ -6,6 +6,7 @@ FlowBit is a realtime operations platform for managing capacity-based numeric tr
 
 - current release: `0.1.0-beta`
 - status: deployed beta
+- license: proprietary, all rights reserved
 - delivery model:
   - browser-based production app
   - desktop icon source prepared for later desktop packaging
