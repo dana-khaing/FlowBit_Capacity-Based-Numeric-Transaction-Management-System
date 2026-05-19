@@ -2,8 +2,13 @@
 
 FlowBit is a capacity-based numeric transaction management platform built around identifiers `000`-`999`. It combines period-based ledger control, ticket entry, spill-over approval workflows, reserve capacity, lucky draw rules, archive access, and live notifications in a single web application.
 
-Current release:
-- `0.1.0-beta`
+## Release Status
+
+- current release: `0.1.0-beta`
+- status: deployed beta
+- delivery model:
+  - browser-based production app
+  - desktop icon source prepared for later desktop packaging
 
 ## About
 
@@ -20,6 +25,15 @@ The system supports:
 - period lifecycle control with pre-close and lucky draw rules
 - archived historical review
 - live user notifications and customer service cases
+
+## Production Deployment
+
+FlowBit beta is designed to run with:
+- frontend on Vercel
+- backend on Render
+- PostgreSQL as the primary application database
+- Redis for shared realtime notifications and dashboard refresh
+- Supabase Storage for profile avatar uploads
 
 ## Core Concepts
 
@@ -246,12 +260,15 @@ Notification coverage includes:
 - workspace-based UI
 - receipt preview and export flows
 - live notification refresh through WebSocket
+- production hosting target: Vercel
 
 ### Backend
 
 - Django REST Framework
 - period, ledger, ticket, overflow, notification, archive, and support APIs
 - Django admin for operational oversight
+- ASGI deployment with Daphne for WebSocket support
+- production hosting target: Render
 
 ### Database
 
@@ -412,6 +429,20 @@ Required backend environment variables:
 - `GOOGLE_OAUTH_CLIENT_ID`
 - `FRONTEND_PASSWORD_RESET_URL`
 - `DEFAULT_FROM_EMAIL`
+
+## Frontend Deployment
+
+Recommended frontend host:
+- Vercel
+
+Required frontend environment variables:
+- `NEXT_PUBLIC_API_BASE_URL`
+- `NEXT_PUBLIC_GOOGLE_CLIENT_ID`
+
+Production notes:
+- `NEXT_PUBLIC_API_BASE_URL` should point to the deployed backend `/api`
+- Google OAuth authorized JavaScript origins must include the real frontend domain
+- redeploy the frontend after changing environment variables
 
 ### Supabase Storage for Profile Avatars
 
