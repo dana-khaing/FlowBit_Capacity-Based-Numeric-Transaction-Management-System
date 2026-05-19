@@ -18,6 +18,7 @@ import { AdminActionToast } from "@/components/admin/admin-action-toast";
 import { WorkspaceShell } from "@/components/app/workspace-shell";
 import { ActionLoadingModal } from "@/components/app/action-loading-modal";
 import { notifyDashboardUpdated } from "@/components/app/workspace-events";
+import { useCurrentUserState } from "@/components/auth/current-user-context";
 import { usePeriodState } from "@/components/period/use-period-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -153,6 +154,7 @@ function filterLedgers(
 }
 
 export function LedgerPage() {
+  const currentUserState = useCurrentUserState();
   const [user, setUser] = useState<AuthUser | null>(getStoredUser());
   const [activeLedgers, setActiveLedgers] = useState<FlowBitLedger[]>([]);
   const [archivedLedgers, setArchivedLedgers] = useState<FlowBitLedger[]>([]);
@@ -170,7 +172,7 @@ export function LedgerPage() {
   const [draggedLedgerId, setDraggedLedgerId] = useState<number | null>(null);
 
   const { activePeriod, hasActivePeriod, error: periodError } = usePeriodState();
-  const canManageLedgers = user?.role === "admin";
+  const canManageLedgers = currentUserState?.user?.role === "admin";
   const requiresOverride = !canManageLedgers;
   const actionRequiresOverride =
     pendingAction !== null &&

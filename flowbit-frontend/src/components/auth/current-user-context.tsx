@@ -57,9 +57,7 @@ export function CurrentUserProvider({ children }: CurrentUserProviderProps) {
   useEffect(() => {
     const storedUser = getStoredUser();
     applyUser(storedUser);
-    if (!storedUser) {
-      void refreshUser();
-    }
+    void refreshUser();
   }, [applyUser, refreshUser]);
 
   useEffect(() => {
