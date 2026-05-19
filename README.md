@@ -1,6 +1,6 @@
 # FlowBit
 
-FlowBit is a capacity-based numeric transaction management platform built around identifiers `000`-`999`. It combines period-based ledger control, ticket entry, spill-over approval workflows, reserve capacity, lucky draw rules, archive access, and live notifications in a single web application.
+FlowBit is a realtime operations platform for managing capacity-based numeric transactions across identifiers `000`-`999`. It brings ticket entry, ledger control, spill-over workflows, lucky draw operations, reporting, notifications, and customer support into one connected workspace.
 
 ## Release Status
 
@@ -12,7 +12,7 @@ FlowBit is a capacity-based numeric transaction management platform built around
 
 ## About
 
-FlowBit is an operational web application for managing identifier-based capacity, ticket entry, spill-over approvals, period controls, lucky draw workflows, archive review, notifications, and customer support in one system.
+FlowBit is built as a day-to-day operations product for teams that need live control over numeric capacity, transactional workflows, period scheduling, lucky draw handling, support cases, and admin oversight without splitting work across multiple tools.
 
 ## Overview
 
