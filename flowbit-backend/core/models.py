@@ -345,6 +345,16 @@ class Identifier(models.Model):
     def __str__(self):
         return self.number
 
+    @classmethod
+    def ensure_default_numbers(cls):
+        if cls.objects.exists():
+            return
+
+        cls.objects.bulk_create(
+            [cls(number=f"{value:03d}") for value in range(1000)],
+            ignore_conflicts=True,
+        )
+
     @property
     def current_utilization(self):
         """Total amount actually used, including approved and pending overflow"""

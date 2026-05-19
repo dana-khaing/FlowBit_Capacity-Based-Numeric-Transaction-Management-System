@@ -80,6 +80,19 @@ function formatAmount(value: string | number) {
   });
 }
 
+function ensureRepeatCustomerName(value: string) {
+  const trimmedValue = value.trim();
+  if (!trimmedValue) {
+    return "";
+  }
+
+  if (/^rep-/i.test(trimmedValue)) {
+    return `REP-${trimmedValue.slice(4).trimStart()}`;
+  }
+
+  return `REP-${trimmedValue}`;
+}
+
 function getPermutationCount(identifierNumber: string) {
   const digits = normalizeIdentifierNumber(identifierNumber);
   if (digits.length !== 3) {
@@ -214,7 +227,11 @@ export function RepeatTicketPage() {
 
   function openEditModal(repeatTicket: FlowBitRepeatTicket) {
     setEditingRepeatTicket(repeatTicket);
-    setCustomerName(repeatTicket.customer_name ?? "");
+    setCustomerName(
+      repeatTicket.customer_name?.trim()
+        ? ensureRepeatCustomerName(repeatTicket.customer_name)
+        : "",
+    );
     setNotes(repeatTicket.notes ?? "");
     setDraftItems(
       repeatTicket.items.map((item) =>
@@ -263,7 +280,7 @@ export function RepeatTicketPage() {
     );
 
     return {
-      customer_name: customerName,
+      customer_name: ensureRepeatCustomerName(customerName),
       notes,
       items: validItems,
     };
@@ -443,7 +460,7 @@ export function RepeatTicketPage() {
                         <div>
                           <div className="flex flex-wrap items-center gap-3">
                             <p className="text-xl font-semibold text-stone-950">
-                              {repeatTicket.customer_name?.trim() || "Walk-in repeat ticket"}
+                              {ensureRepeatCustomerName(repeatTicket.customer_name || "") || "Walk-in repeat ticket"}
                             </p>
                             <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${getStatusTone(repeatTicket.current_status)}`}>
                               {getStatusLabel(repeatTicket.current_status)}
@@ -563,7 +580,7 @@ export function RepeatTicketPage() {
             <div className="mt-6 grid gap-4 md:grid-cols-2">
               <label className="block space-y-2">
                 <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Customer name</span>
-                <Input value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Walk-in or saved name" disabled={isSaving} />
+                <Input value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="REP-Customer name" disabled={isSaving} />
               </label>
               <label className="block space-y-2">
                 <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Notes</span>

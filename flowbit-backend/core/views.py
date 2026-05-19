@@ -2238,6 +2238,7 @@ class IdentifierViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='options')
     def options(self, request):
+        Identifier.ensure_default_numbers()
         identifiers = list(
             self.get_queryset()
             .order_by('number')
