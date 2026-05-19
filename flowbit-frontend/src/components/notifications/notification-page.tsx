@@ -7,6 +7,7 @@ import { faBell, faBullhorn, faCheckDouble, faTriangleExclamation } from "@forta
 import { AppSectionPage } from "@/components/app/app-section-page";
 import { AdminActionToast } from "@/components/admin/admin-action-toast";
 import { useCurrentUserState } from "@/components/auth/current-user-context";
+import { fetchCurrentUser, getStoredUser } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -59,6 +60,7 @@ function levelStyles(level: FlowBitNotification["level"]) {
 
 export function NotificationPage() {
   const currentUserState = useCurrentUserState();
+  const [pageUserRole, setPageUserRole] = useState<string | null>(getStoredUser()?.role ?? null);
   const [notifications, setNotifications] = useState<FlowBitNotification[]>(notificationPageCache?.notifications ?? []);
   const [isLoading, setIsLoading] = useState(notificationPageCache === null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -71,6 +73,19 @@ export function NotificationPage() {
     level: "INFO" as "INFO" | "WARNING" | "IMPORTANT",
   });
   const user = currentUserState?.user ?? null;
+
+  useEffect(() => {
+    const nextRole = currentUserState?.user?.role ?? getStoredUser()?.role ?? null;
+    setPageUserRole(nextRole);
+  }, [currentUserState?.user?.role]);
+
+  useEffect(() => {
+    fetchCurrentUser()
+      .then((nextUser) => setPageUserRole(nextUser.role))
+      .catch(() => {
+        // SessionGuard handles invalid sessions.
+      });
+  }, []);
 
   async function loadNotifications(unreadOnly = showUnreadOnly, background = false) {
     if (!background) {
@@ -196,7 +211,7 @@ export function NotificationPage() {
     }
   }
 
-  const isAdmin = user?.role === "admin";
+  const isAdmin = (pageUserRole ?? user?.role ?? "").toLowerCase() === "admin";
 
   return (
     <>
