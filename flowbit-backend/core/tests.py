@@ -171,6 +171,20 @@ class OperationalDataPurgeCommandTests(APITestCase):
 
 
 class IdentifierBootstrapTests(APITestCase):
+    def test_identifier_options_bootstrap_identifiers_without_standard_ledger(self):
+        user = User.objects.create_user(username='options_owner', password='password123')
+        self.client.force_authenticate(user=user)
+
+        self.assertEqual(Identifier.objects.count(), 0)
+
+        response = self.client.get('/api/identifiers/options/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1000)
+        self.assertEqual(Identifier.objects.count(), 1000)
+        self.assertEqual(response.data[0]['number'], '000')
+        self.assertEqual(response.data[-1]['number'], '999')
+
     def test_first_standard_ledger_creates_identifiers_even_if_reserve_exists(self):
         owner = User.objects.create_user(username='ledger_owner', password='password123')
         period = Period.objects.create(
