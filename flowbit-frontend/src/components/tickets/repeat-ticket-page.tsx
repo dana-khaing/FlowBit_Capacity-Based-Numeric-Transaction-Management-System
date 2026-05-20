@@ -190,6 +190,7 @@ function getStatusLabel(status: FlowBitRepeatTicket["current_status"]) {
 export function RepeatTicketPage() {
   const { activePeriod, hasActivePeriod } = usePeriodState();
   const actionButtonClassName = "h-12 min-w-[152px] rounded-[18px] justify-center";
+  const ticketsPerPage = 20;
   const [repeatTickets, setRepeatTickets] = useState<FlowBitRepeatTicket[]>([]);
   const [activeStandardLedgerCount, setActiveStandardLedgerCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -205,6 +206,7 @@ export function RepeatTicketPage() {
   const [deleteTarget, setDeleteTarget] = useState<FlowBitRepeatTicket | null>(null);
   const [busyTicketId, setBusyTicketId] = useState<number | null>(null);
   const [selectedRepeatTicketId, setSelectedRepeatTicketId] = useState<number | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const identifierOptions = useMemo(
     () => Array.from({ length: 1000 }, (_value, index) => index.toString().padStart(3, "0")),
@@ -214,6 +216,11 @@ export function RepeatTicketPage() {
   const canGenerate = hasActivePeriod && activeStandardLedgerCount > 0;
   const actionableRepeatTickets = repeatTickets.filter(
     (repeatTicket) => repeatTicket.current_status === "NEW" || repeatTicket.current_status === "UNSUCCESSFUL",
+  );
+  const totalPages = Math.max(1, Math.ceil(repeatTickets.length / ticketsPerPage));
+  const paginatedRepeatTickets = useMemo(
+    () => repeatTickets.slice((currentPage - 1) * ticketsPerPage, currentPage * ticketsPerPage),
+    [currentPage, repeatTickets],
   );
   const selectedRepeatTicket = useMemo(
     () =>
@@ -252,6 +259,10 @@ export function RepeatTicketPage() {
         : repeatTickets[0].id,
     );
   }, [repeatTickets]);
+
+  useEffect(() => {
+    setCurrentPage((current) => Math.min(current, Math.max(1, Math.ceil(repeatTickets.length / ticketsPerPage))));
+  }, [repeatTickets.length]);
 
   useEffect(() => {
     if (!activePeriod) {
@@ -347,7 +358,10 @@ export function RepeatTicketPage() {
         ? Math.min(currentIndex + 1, repeatTickets.length - 1)
         : Math.max(currentIndex - 1, 0);
 
-    focusRepeatTicket(repeatTickets[nextIndex].id);
+    const nextTicket = repeatTickets[nextIndex];
+    const nextPage = Math.floor(nextIndex / ticketsPerPage) + 1;
+    setCurrentPage(nextPage);
+    focusRepeatTicket(nextTicket.id);
   }
 
   function buildPayload() {
@@ -496,7 +510,7 @@ export function RepeatTicketPage() {
         workspaceClassName="print:hidden"
         asideClassName="print:block"
         aside={
-          <section className="ticket-history-print-shell h-[calc(100vh-8.5rem)] overflow-y-auto rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] print:h-auto print:max-h-none print:overflow-visible print:rounded-none print:border-0 print:p-0 print:shadow-none sm:p-6">
+          <section className="ticket-history-print-shell h-[calc(100vh-6.5rem)] overflow-y-auto rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] print:h-auto print:max-h-none print:overflow-visible print:rounded-none print:border-0 print:p-0 print:shadow-none sm:p-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Repeat ticket view</p>
@@ -583,7 +597,7 @@ export function RepeatTicketPage() {
                             {identifierNumber}
                           </p>
                           <p className="text-lg font-semibold text-stone-950">
-                            ............... {formatAmount(displayAmount)}
+                            {formatAmount(displayAmount)}
                           </p>
                         </div>
                       </div>
@@ -660,7 +674,8 @@ export function RepeatTicketPage() {
                   : "Generate is enabled for repeat tickets with New or Unsuccessful status. Generated and Updated tickets stay locked for the current period to prevent duplicates."}
             </div>
 
-            <div className="mt-6 space-y-4">
+            <div className="mt-6 rounded-[28px] border border-stone-900/8 bg-white p-3 shadow-[0_8px_24px_rgba(28,24,20,0.04)]">
+            <div className="max-h-[calc(100vh-24rem)] space-y-4 overflow-y-auto pr-1">
               {isLoading ? (
                 <div className="rounded-[24px] border border-dashed border-stone-300 bg-stone-50 px-5 py-10 text-sm text-stone-500">
                   Loading repeat tickets.
@@ -670,7 +685,7 @@ export function RepeatTicketPage() {
                   {pageError}
                 </div>
               ) : repeatTickets.length ? (
-                repeatTickets.map((repeatTicket) => {
+                paginatedRepeatTickets.map((repeatTicket) => {
                   const isGeneratedForPeriod =
                     repeatTicket.current_status === "GENERATED" ||
                     repeatTicket.current_status === "UPDATED";
@@ -777,6 +792,30 @@ export function RepeatTicketPage() {
                 </div>
               )}
             </div>
+            {repeatTickets.length > ticketsPerPage ? (
+              <div className="mt-4 flex items-center justify-between gap-3 px-2">
+                <p className="text-sm text-stone-500">
+                  Page {currentPage} of {totalPages}
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setCurrentPage((current) => Math.max(1, current - 1))}
+                    disabled={currentPage === 1}
+                  >
+                    Previous
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => setCurrentPage((current) => Math.min(totalPages, current + 1))}
+                    disabled={currentPage === totalPages}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+            </div>
       </AppSectionPage>
 
       {isModalOpen ? (
@@ -798,7 +837,7 @@ export function RepeatTicketPage() {
                 </div>
               </div>
 
-              <div className="max-h-[calc(100vh-16rem)] overflow-y-auto px-5 py-5 sm:px-6">
+              <div className="max-h-[calc(100vh-18rem)] overflow-y-auto px-5 py-5 sm:px-6">
                 <div className="grid gap-4 md:grid-cols-2">
                   <label className="block space-y-2">
                     <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Customer name</span>
@@ -855,7 +894,6 @@ export function RepeatTicketPage() {
                           <label className="space-y-2">
                             <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Identifier</span>
                             <Input
-                              list={`repeat-identifiers-${item.id}`}
                               inputMode="numeric"
                               pattern="[0-9]*"
                               value={item.identifierNumber}
@@ -863,11 +901,6 @@ export function RepeatTicketPage() {
                               placeholder="Enter identifier"
                               disabled={isSaving}
                             />
-                            <datalist id={`repeat-identifiers-${item.id}`}>
-                              {identifierOptions.map((option) => (
-                                <option key={option} value={option} />
-                              ))}
-                            </datalist>
                             {!hasValidIdentifier && item.identifierNumber ? (
                               <p className="text-sm text-rose-600">Enter a 3-digit identifier.</p>
                             ) : null}
@@ -913,12 +946,12 @@ export function RepeatTicketPage() {
                 </div>
               </div>
 
-              <div className="flex justify-between gap-3 border-t border-stone-900/8 bg-white px-5 py-4 sm:px-6">
+              <div className="flex min-h-[88px] items-center justify-between gap-3 border-t border-stone-900/8 bg-white px-5 py-5 sm:px-6">
                 <Button variant="outline" onClick={() => setDraftItems((current) => [...current, createDraftItem()])} disabled={isSaving}>
                   <FontAwesomeIcon icon={faPlus} className="h-3.5 w-3.5" />
                   Add entry
                 </Button>
-                <Button className="min-w-[176px] justify-center" onClick={handleSaveRepeatTicket} disabled={isSaving}>
+                <Button className="h-12 min-w-[200px] justify-center self-center" onClick={handleSaveRepeatTicket} disabled={isSaving}>
                   {isSaving ? (
                     <>
                       <FontAwesomeIcon icon={faCircleNotch} className="h-4 w-4 animate-spin" />
