@@ -18,7 +18,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { usePeriodState } from "@/components/period/use-period-state";
 import { fetchLedgers } from "@/lib/ledger-client";
-import { fetchIdentifierOptions, type FlowBitIdentifierOption } from "@/lib/ticket-client";
 import {
   createRepeatTicket,
   deleteRepeatTicket,
@@ -93,6 +92,14 @@ function ensureRepeatCustomerName(value: string) {
   return `REP-${trimmedValue}`;
 }
 
+function stripRepeatCustomerName(value: string) {
+  const trimmedValue = value.trim();
+  if (/^rep-/i.test(trimmedValue)) {
+    return trimmedValue.slice(4).trimStart();
+  }
+  return trimmedValue;
+}
+
 function getPermutationCount(identifierNumber: string) {
   const digits = normalizeIdentifierNumber(identifierNumber);
   if (digits.length !== 3) {
@@ -136,7 +143,6 @@ function getStatusLabel(status: FlowBitRepeatTicket["current_status"]) {
 export function RepeatTicketPage() {
   const { activePeriod, hasActivePeriod } = usePeriodState();
   const [repeatTickets, setRepeatTickets] = useState<FlowBitRepeatTicket[]>([]);
-  const [identifiers, setIdentifiers] = useState<FlowBitIdentifierOption[]>([]);
   const [activeStandardLedgerCount, setActiveStandardLedgerCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -151,13 +157,9 @@ export function RepeatTicketPage() {
   const [deleteTarget, setDeleteTarget] = useState<FlowBitRepeatTicket | null>(null);
   const [busyTicketId, setBusyTicketId] = useState<number | null>(null);
 
-  const identifierMap = useMemo(
-    () => new Map(identifiers.map((identifier) => [identifier.number, identifier])),
-    [identifiers],
-  );
   const identifierOptions = useMemo(
-    () => identifiers.map((identifier) => identifier.number),
-    [identifiers],
+    () => Array.from({ length: 1000 }, (_value, index) => index.toString().padStart(3, "0")),
+    [],
   );
 
   const canGenerate = hasActivePeriod && activeStandardLedgerCount > 0;
@@ -169,12 +171,8 @@ export function RepeatTicketPage() {
     setIsLoading(true);
     setPageError(null);
     try {
-      const [nextRepeatTickets, nextIdentifiers] = await Promise.all([
-        fetchRepeatTickets(),
-        fetchIdentifierOptions(),
-      ]);
+      const nextRepeatTickets = await fetchRepeatTickets();
       setRepeatTickets(nextRepeatTickets);
-      setIdentifiers(nextIdentifiers);
     } catch (error) {
       setPageError(error instanceof Error ? error.message : "Failed to load repeat tickets.");
     } finally {
@@ -229,7 +227,7 @@ export function RepeatTicketPage() {
     setEditingRepeatTicket(repeatTicket);
     setCustomerName(
       repeatTicket.customer_name?.trim()
-        ? ensureRepeatCustomerName(repeatTicket.customer_name)
+        ? stripRepeatCustomerName(repeatTicket.customer_name)
         : "",
     );
     setNotes(repeatTicket.notes ?? "");
@@ -253,13 +251,12 @@ export function RepeatTicketPage() {
   function buildPayload() {
     const items = draftItems.map((item, index) => {
       const normalizedIdentifier = normalizeIdentifierNumber(item.identifierNumber);
-      const matchedIdentifier = identifierMap.get(normalizedIdentifier);
       const amount = Number(item.amount);
-      if (!matchedIdentifier || Number.isNaN(amount) || amount <= 0) {
+      if (normalizedIdentifier.length !== 3 || Number.isNaN(amount) || amount <= 0) {
         return null;
       }
       return {
-        identifier: matchedIdentifier.id,
+        identifier_number: normalizedIdentifier,
         amount: `${amount}.00`,
         amount_uses_allocation_basis: item.amountUsesAllocationBasis,
         use_permutations: item.usePermutations,
@@ -592,7 +589,7 @@ export function RepeatTicketPage() {
               {draftItems.map((item, index) => {
                 const permutationCount = getPermutationCount(item.identifierNumber);
                 const normalizedIdentifier = normalizeIdentifierNumber(item.identifierNumber);
-                const matchedIdentifier = identifierMap.get(normalizedIdentifier);
+                const hasValidIdentifier = normalizedIdentifier.length === 3;
                 return (
                   <div key={item.id} className="rounded-[24px] border border-stone-900/8 bg-stone-50 p-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -646,8 +643,8 @@ export function RepeatTicketPage() {
                             <option key={option} value={option} />
                           ))}
                         </datalist>
-                        {!matchedIdentifier && item.identifierNumber ? (
-                          <p className="text-sm text-rose-600">Choose a valid identifier.</p>
+                        {!hasValidIdentifier && item.identifierNumber ? (
+                          <p className="text-sm text-rose-600">Enter a 3-digit identifier.</p>
                         ) : null}
                       </label>
 

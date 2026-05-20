@@ -28,7 +28,8 @@ export type FlowBitRepeatTicket = {
 };
 
 export type RepeatTicketDraftItemPayload = {
-  identifier: number;
+  identifier?: number;
+  identifier_number?: string;
   amount: string;
   amount_uses_allocation_basis: boolean;
   use_permutations: boolean;

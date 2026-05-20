@@ -2586,6 +2586,27 @@ class PrivateWorkflowAPITests(APITestCase):
         self.assertEqual(listed_repeat_ticket['generated_ticket_id'], generated_ticket.id)
         self.assertEqual(listed_repeat_ticket['generated_ticket_number'], generated_ticket.ticket_number)
 
+    def test_repeat_ticket_can_be_created_with_identifier_number_only(self):
+        create_response = self.client.post(
+            '/api/repeat-tickets/',
+            {
+                'customer_name': 'Number Only Repeat',
+                'items': [
+                    {
+                        'identifier_number': '101',
+                        'amount': '50.00',
+                        'amount_uses_allocation_basis': False,
+                        'use_permutations': False,
+                        'position': 0,
+                    },
+                ],
+            },
+            format='json',
+        )
+
+        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(create_response.data['items'][0]['identifier_number'], '101')
+
     def test_repeat_ticket_generate_all_skips_generated_and_collects_unsuccessful(self):
         generated_repeat = self.client.post(
             '/api/repeat-tickets/',

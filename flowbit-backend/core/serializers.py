@@ -451,7 +451,8 @@ class TicketSerializer(serializers.ModelSerializer):
 
 
 class RepeatTicketItemSerializer(serializers.ModelSerializer):
-    identifier_number = serializers.CharField(source='identifier.number', read_only=True)
+    identifier = serializers.PrimaryKeyRelatedField(queryset=Identifier.objects.all(), required=False)
+    identifier_number = serializers.CharField(required=False)
 
     class Meta:
         model = RepeatTicketItem
@@ -464,6 +465,30 @@ class RepeatTicketItemSerializer(serializers.ModelSerializer):
             'use_permutations',
             'position',
         ]
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        identifier = attrs.get('identifier')
+        identifier_number = attrs.get('identifier_number')
+
+        if identifier is None:
+            normalized_identifier_number = ''.join(ch for ch in str(identifier_number or '') if ch.isdigit())
+            if not normalized_identifier_number:
+                raise serializers.ValidationError({'identifier_number': 'Identifier number is required.'})
+            normalized_identifier_number = normalized_identifier_number[-3:].zfill(3)
+            Identifier.ensure_default_numbers()
+            identifier = Identifier.objects.filter(number=normalized_identifier_number).first()
+            if identifier is None:
+                raise serializers.ValidationError({'identifier_number': 'Choose a valid identifier.'})
+            attrs['identifier'] = identifier
+            attrs['identifier_number'] = normalized_identifier_number
+
+        return attrs
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data['identifier_number'] = instance.identifier.number
+        return data
 
 
 class RepeatTicketSerializer(serializers.ModelSerializer):
