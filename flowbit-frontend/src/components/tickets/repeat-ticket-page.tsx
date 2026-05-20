@@ -780,8 +780,9 @@ export function RepeatTicketPage() {
       </AppSectionPage>
 
       {isModalOpen ? (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-stone-950/35 px-4 py-6" onClick={() => !isSaving && setIsModalOpen(false)}>
-          <div className="flex max-h-[calc(100vh-3rem)] w-full max-w-4xl flex-col overflow-hidden rounded-[30px] border border-stone-900/8 bg-white p-5 shadow-[0_18px_60px_rgba(24,24,24,0.22)] sm:p-6" onClick={(event) => event.stopPropagation()}>
+        <div className="fixed inset-0 z-[80] overflow-y-auto bg-stone-950/35 px-4 py-6" onClick={() => !isSaving && setIsModalOpen(false)}>
+          <div className="flex min-h-full items-start justify-center">
+            <div className="flex max-h-[calc(100vh-3rem)] min-h-0 w-full max-w-4xl flex-col overflow-hidden rounded-[30px] border border-stone-900/8 bg-white p-5 shadow-[0_18px_60px_rgba(24,24,24,0.22)] sm:p-6" onClick={(event) => event.stopPropagation()}>
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Repeat Tickets</p>
@@ -795,7 +796,7 @@ export function RepeatTicketPage() {
               <Button variant="outline" onClick={() => !isSaving && setIsModalOpen(false)}>Close</Button>
             </div>
 
-            <div className="mt-6 flex-1 overflow-y-auto pr-1">
+            <div className="mt-6 min-h-0 flex-1 overflow-y-auto pr-1">
               <div className="grid gap-4 md:grid-cols-2">
                 <label className="block space-y-2">
                   <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Customer name</span>
@@ -910,7 +911,7 @@ export function RepeatTicketPage() {
               </div>
             </div>
 
-            <div className="mt-6 flex shrink-0 justify-between gap-3 border-t border-stone-900/8 pt-4">
+            <div className="sticky bottom-0 mt-6 flex shrink-0 justify-between gap-3 border-t border-stone-900/8 bg-white pt-4">
               <Button variant="outline" onClick={() => setDraftItems((current) => [...current, createDraftItem()])} disabled={isSaving}>
                 <FontAwesomeIcon icon={faPlus} className="h-3.5 w-3.5" />
                 Add entry
@@ -925,6 +926,7 @@ export function RepeatTicketPage() {
               </Button>
             </div>
           </div>
+        </div>
         </div>
       ) : null}
     </>
