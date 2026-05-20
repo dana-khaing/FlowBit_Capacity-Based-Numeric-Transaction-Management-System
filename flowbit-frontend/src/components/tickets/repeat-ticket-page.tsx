@@ -5,6 +5,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faArrowsRotate,
   faCircleCheck,
+  faCircleNotch,
   faClockRotateLeft,
   faPenToSquare,
   faPlus,
@@ -157,7 +158,7 @@ function getPermutationNumbers(identifierNumber: string) {
 }
 
 function getRepeatItemDisplayAmount(amount: string | number, usesAllocationBasis: boolean) {
-  return usesAllocationBasis ? Number(amount) / 1.25 : Number(amount);
+  return usesAllocationBasis ? Number(amount) : Number(amount);
 }
 
 function getStatusTone(status: FlowBitRepeatTicket["current_status"]) {
@@ -314,6 +315,39 @@ export function RepeatTicketPage() {
 
   function setDraftItemState(itemId: string, updater: (item: RepeatDraftItem) => RepeatDraftItem) {
     setDraftItems((current) => current.map((item) => (item.id === itemId ? updater(item) : item)));
+  }
+
+  function focusRepeatTicket(ticketId: number) {
+    setSelectedRepeatTicketId(ticketId);
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.requestAnimationFrame(() => {
+      const target = document.querySelector<HTMLElement>(`[data-repeat-ticket-trigger="${ticketId}"]`);
+      target?.focus();
+    });
+  }
+
+  function handleRepeatTicketKeyDown(
+    repeatTicketId: number,
+    event: React.KeyboardEvent<HTMLButtonElement>,
+  ) {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") {
+      return;
+    }
+
+    event.preventDefault();
+    const currentIndex = repeatTickets.findIndex((repeatTicket) => repeatTicket.id === repeatTicketId);
+    if (currentIndex === -1) {
+      return;
+    }
+
+    const nextIndex =
+      event.key === "ArrowDown"
+        ? Math.min(currentIndex + 1, repeatTickets.length - 1)
+        : Math.max(currentIndex - 1, 0);
+
+    focusRepeatTicket(repeatTickets[nextIndex].id);
   }
 
   function buildPayload() {
@@ -542,14 +576,14 @@ export function RepeatTicketPage() {
                     return identifierNumbers.map((identifierNumber) => (
                       <div
                         key={`${item.id}-${identifierNumber}`}
-                        className="rounded-[22px] border border-stone-900/8 bg-white px-4 py-4"
+                        className="rounded-[22px] border-2 border-stone-300 bg-stone-50 px-4 py-4 shadow-[inset_0_0_0_1px_rgba(41,37,36,0.04)]"
                       >
                         <div className="flex items-center justify-between gap-3">
                           <p className="text-lg font-semibold text-stone-950">
                             {identifierNumber}
                           </p>
                           <p className="text-lg font-semibold text-stone-950">
-                            {formatAmount(displayAmount)}
+                            ............... {formatAmount(displayAmount)}
                           </p>
                         </div>
                       </div>
@@ -654,7 +688,9 @@ export function RepeatTicketPage() {
                         <div className="flex flex-wrap items-start justify-between gap-3">
                           <button
                             type="button"
-                            onClick={() => setSelectedRepeatTicketId(repeatTicket.id)}
+                            data-repeat-ticket-trigger={repeatTicket.id}
+                            onClick={() => focusRepeatTicket(repeatTicket.id)}
+                            onKeyDown={(event) => handleRepeatTicketKeyDown(repeatTicket.id, event)}
                             className="min-w-0 flex-1 text-left"
                           >
                             <div className="flex flex-wrap items-center gap-3">
@@ -704,7 +740,8 @@ export function RepeatTicketPage() {
 
                         <button
                           type="button"
-                          onClick={() => setSelectedRepeatTicketId(repeatTicket.id)}
+                          onClick={() => focusRepeatTicket(repeatTicket.id)}
+                          onKeyDown={(event) => handleRepeatTicketKeyDown(repeatTicket.id, event)}
                           className="mt-3 block w-full text-left"
                         >
                           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-stone-600">
@@ -877,7 +914,12 @@ export function RepeatTicketPage() {
                 Add entry
               </Button>
               <Button className="min-w-[176px] justify-center" onClick={handleSaveRepeatTicket} disabled={isSaving}>
-                {isSaving ? "Saving..." : editingRepeatTicket ? "Save repeat ticket" : "Create repeat ticket"}
+                {isSaving ? (
+                  <>
+                    <FontAwesomeIcon icon={faCircleNotch} className="h-4 w-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : editingRepeatTicket ? "Save repeat ticket" : "Create repeat ticket"}
               </Button>
             </div>
           </div>
