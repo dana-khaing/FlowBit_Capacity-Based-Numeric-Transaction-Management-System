@@ -952,12 +952,13 @@ export function RepeatTicketPage() {
                 </div>
               </div>
 
-              <div className="flex min-h-[72px] items-center justify-between gap-3 border-t border-stone-900/8 bg-white px-5 py-4 sm:px-6">
-                <Button variant="outline" onClick={() => setDraftItems((current) => [...current, createDraftItem()])} disabled={isSaving}>
+              <div className="border-t border-stone-900/8 bg-white px-5 pb-6 pt-4 sm:px-6 sm:pb-6">
+                <div className="flex min-h-[64px] items-center justify-between gap-3">
+                <Button className="h-11 rounded-[18px]" variant="outline" onClick={() => setDraftItems((current) => [...current, createDraftItem()])} disabled={isSaving}>
                   <FontAwesomeIcon icon={faPlus} className="h-3.5 w-3.5" />
                   Add entry
                 </Button>
-                <Button className="h-12 min-w-[200px] justify-center self-center rounded-[18px]" onClick={handleSaveRepeatTicket} disabled={isSaving}>
+                <Button className="h-11 min-w-[188px] justify-center self-center rounded-[18px]" onClick={handleSaveRepeatTicket} disabled={isSaving}>
                   {isSaving ? (
                     <>
                       <FontAwesomeIcon icon={faCircleNotch} className="h-4 w-4 animate-spin" />
@@ -965,6 +966,7 @@ export function RepeatTicketPage() {
                     </>
                   ) : editingRepeatTicket ? "Save repeat ticket" : "Create repeat ticket"}
                 </Button>
+                </div>
               </div>
             </div>
           </div>
