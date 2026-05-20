@@ -781,152 +781,154 @@ export function RepeatTicketPage() {
 
       {isModalOpen ? (
         <div className="fixed inset-0 z-[80] overflow-y-auto bg-stone-950/35 px-4 py-6" onClick={() => !isSaving && setIsModalOpen(false)}>
-          <div className="flex min-h-full items-start justify-center">
-            <div className="flex max-h-[calc(100vh-3rem)] min-h-0 w-full max-w-4xl flex-col overflow-hidden rounded-[30px] border border-stone-900/8 bg-white p-5 shadow-[0_18px_60px_rgba(24,24,24,0.22)] sm:p-6" onClick={(event) => event.stopPropagation()}>
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Repeat Tickets</p>
-                <h2 className="mt-2 text-2xl font-semibold text-stone-950">
-                  {editingRepeatTicket ? "Edit repeat ticket" : "Add repeat ticket"}
-                </h2>
-                <p className="mt-3 text-sm leading-6 text-stone-500">
-                  This form keeps the same entry feel as ticket creation, but it does not check current-period capacity or preview allocation before saving.
-                </p>
-              </div>
-              <Button variant="outline" onClick={() => !isSaving && setIsModalOpen(false)}>Close</Button>
-            </div>
-
-            <div className="mt-6 min-h-0 flex-1 overflow-y-auto pr-1">
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="block space-y-2">
-                  <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Customer name</span>
-                  <Input value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Customer name" disabled={isSaving} />
-                </label>
-                <label className="block space-y-2">
-                  <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Notes</span>
-                  <Input value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Optional notes" disabled={isSaving} />
-                </label>
+          <div className="mx-auto flex min-h-full items-start justify-center">
+            <div className="w-full max-w-4xl overflow-hidden rounded-[30px] border border-stone-900/8 bg-white shadow-[0_18px_60px_rgba(24,24,24,0.22)]" onClick={(event) => event.stopPropagation()}>
+              <div className="border-b border-stone-900/8 px-5 py-5 sm:px-6 sm:py-6">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Repeat Tickets</p>
+                    <h2 className="mt-2 text-2xl font-semibold text-stone-950">
+                      {editingRepeatTicket ? "Edit repeat ticket" : "Add repeat ticket"}
+                    </h2>
+                    <p className="mt-3 text-sm leading-6 text-stone-500">
+                      This form keeps the same entry feel as ticket creation, but it does not check current-period capacity or preview allocation before saving.
+                    </p>
+                  </div>
+                  <Button variant="outline" onClick={() => !isSaving && setIsModalOpen(false)}>Close</Button>
+                </div>
               </div>
 
-              <div className="mt-6 space-y-4">
-                {draftItems.map((item, index) => {
-                  const permutationCount = getPermutationCount(item.identifierNumber);
-                  const normalizedIdentifier = normalizeIdentifierNumber(item.identifierNumber);
-                  const hasValidIdentifier = normalizedIdentifier.length === 3;
-                  return (
-                    <div key={item.id} className="rounded-[24px] border border-stone-900/8 bg-stone-50 p-4">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <p className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-500">Entry {index + 1}</p>
-                        <div className="flex gap-2">
-                          <Button
-                            variant="outline"
-                            onClick={() =>
-                              setDraftItems((current) => [
-                                ...current,
-                                createDraftItem({
-                                  identifierNumber: item.identifierNumber,
-                                  amount: item.amount,
-                                  amountUsesAllocationBasis: item.amountUsesAllocationBasis,
-                                  usePermutations: item.usePermutations,
-                                }),
-                              ])
-                            }
-                            disabled={isSaving}
-                          >
-                            <FontAwesomeIcon icon={faPlus} className="h-3.5 w-3.5" />
-                            Duplicate
-                          </Button>
-                          {draftItems.length > 1 ? (
+              <div className="max-h-[calc(100vh-16rem)] overflow-y-auto px-5 py-5 sm:px-6">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <label className="block space-y-2">
+                    <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Customer name</span>
+                    <Input value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Customer name" disabled={isSaving} />
+                  </label>
+                  <label className="block space-y-2">
+                    <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Notes</span>
+                    <Input value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Optional notes" disabled={isSaving} />
+                  </label>
+                </div>
+
+                <div className="mt-6 space-y-4">
+                  {draftItems.map((item, index) => {
+                    const permutationCount = getPermutationCount(item.identifierNumber);
+                    const normalizedIdentifier = normalizeIdentifierNumber(item.identifierNumber);
+                    const hasValidIdentifier = normalizedIdentifier.length === 3;
+                    return (
+                      <div key={item.id} className="rounded-[24px] border border-stone-900/8 bg-stone-50 p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <p className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-500">Entry {index + 1}</p>
+                          <div className="flex gap-2">
                             <Button
                               variant="outline"
-                              onClick={() => setDraftItems((current) => current.filter((draft) => draft.id !== item.id))}
+                              onClick={() =>
+                                setDraftItems((current) => [
+                                  ...current,
+                                  createDraftItem({
+                                    identifierNumber: item.identifierNumber,
+                                    amount: item.amount,
+                                    amountUsesAllocationBasis: item.amountUsesAllocationBasis,
+                                    usePermutations: item.usePermutations,
+                                  }),
+                                ])
+                              }
                               disabled={isSaving}
                             >
-                              <FontAwesomeIcon icon={faTrashCan} className="h-3.5 w-3.5" />
-                              Remove
+                              <FontAwesomeIcon icon={faPlus} className="h-3.5 w-3.5" />
+                              Duplicate
                             </Button>
-                          ) : null}
-                        </div>
-                      </div>
-
-                      <div className="mt-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-                        <label className="space-y-2">
-                          <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Identifier</span>
-                          <Input
-                            list={`repeat-identifiers-${item.id}`}
-                            inputMode="numeric"
-                            pattern="[0-9]*"
-                            value={item.identifierNumber}
-                            onChange={(event) => setDraftItemState(item.id, (current) => ({ ...current, identifierNumber: sanitizeIdentifierInput(event.target.value) }))}
-                            placeholder="Enter identifier"
-                            disabled={isSaving}
-                          />
-                          <datalist id={`repeat-identifiers-${item.id}`}>
-                            {identifierOptions.map((option) => (
-                              <option key={option} value={option} />
-                            ))}
-                          </datalist>
-                          {!hasValidIdentifier && item.identifierNumber ? (
-                            <p className="text-sm text-rose-600">Enter a 3-digit identifier.</p>
-                          ) : null}
-                        </label>
-
-                        <label className="space-y-2">
-                          <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Amount</span>
-                          <div className="flex gap-2">
-                            <Input
-                              inputMode="numeric"
-                              pattern="[0-9]*"
-                              value={item.amount}
-                              onChange={(event) => setDraftItemState(item.id, (current) => ({ ...current, amount: sanitizeAmountInput(event.target.value) }))}
-                              placeholder="0.00"
-                              disabled={isSaving}
-                            />
-                            {permutationCount > 1 ? (
+                            {draftItems.length > 1 ? (
                               <Button
-                                type="button"
-                                variant={item.usePermutations ? "default" : "outline"}
-                                className="h-12 w-20 rounded-[18px] px-0 whitespace-nowrap"
-                                onClick={() => setDraftItemState(item.id, (current) => ({ ...current, usePermutations: !current.usePermutations }))}
+                                variant="outline"
+                                onClick={() => setDraftItems((current) => current.filter((draft) => draft.id !== item.id))}
                                 disabled={isSaving}
                               >
-                                x{permutationCount}
+                                <FontAwesomeIcon icon={faTrashCan} className="h-3.5 w-3.5" />
+                                Remove
                               </Button>
                             ) : null}
-                            <Button
-                              type="button"
-                              variant={item.amountUsesAllocationBasis ? "default" : "outline"}
-                              className="h-12 w-20 rounded-[18px] px-0 whitespace-nowrap"
-                              onClick={() => setDraftItemState(item.id, (current) => ({ ...current, amountUsesAllocationBasis: !current.amountUsesAllocationBasis }))}
-                              disabled={isSaving}
-                            >
-                              %
-                            </Button>
                           </div>
-                        </label>
+                        </div>
+
+                        <div className="mt-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                          <label className="space-y-2">
+                            <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Identifier</span>
+                            <Input
+                              list={`repeat-identifiers-${item.id}`}
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              value={item.identifierNumber}
+                              onChange={(event) => setDraftItemState(item.id, (current) => ({ ...current, identifierNumber: sanitizeIdentifierInput(event.target.value) }))}
+                              placeholder="Enter identifier"
+                              disabled={isSaving}
+                            />
+                            <datalist id={`repeat-identifiers-${item.id}`}>
+                              {identifierOptions.map((option) => (
+                                <option key={option} value={option} />
+                              ))}
+                            </datalist>
+                            {!hasValidIdentifier && item.identifierNumber ? (
+                              <p className="text-sm text-rose-600">Enter a 3-digit identifier.</p>
+                            ) : null}
+                          </label>
+
+                          <label className="space-y-2">
+                            <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Amount</span>
+                            <div className="flex gap-2">
+                              <Input
+                                inputMode="numeric"
+                                pattern="[0-9]*"
+                                value={item.amount}
+                                onChange={(event) => setDraftItemState(item.id, (current) => ({ ...current, amount: sanitizeAmountInput(event.target.value) }))}
+                                placeholder="0.00"
+                                disabled={isSaving}
+                              />
+                              {permutationCount > 1 ? (
+                                <Button
+                                  type="button"
+                                  variant={item.usePermutations ? "default" : "outline"}
+                                  className="h-12 w-20 rounded-[18px] px-0 whitespace-nowrap"
+                                  onClick={() => setDraftItemState(item.id, (current) => ({ ...current, usePermutations: !current.usePermutations }))}
+                                  disabled={isSaving}
+                                >
+                                  x{permutationCount}
+                                </Button>
+                              ) : null}
+                              <Button
+                                type="button"
+                                variant={item.amountUsesAllocationBasis ? "default" : "outline"}
+                                className="h-12 w-20 rounded-[18px] px-0 whitespace-nowrap"
+                                onClick={() => setDraftItemState(item.id, (current) => ({ ...current, amountUsesAllocationBasis: !current.amountUsesAllocationBasis }))}
+                                disabled={isSaving}
+                              >
+                                %
+                              </Button>
+                            </div>
+                          </label>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex justify-between gap-3 border-t border-stone-900/8 bg-white px-5 py-4 sm:px-6">
+                <Button variant="outline" onClick={() => setDraftItems((current) => [...current, createDraftItem()])} disabled={isSaving}>
+                  <FontAwesomeIcon icon={faPlus} className="h-3.5 w-3.5" />
+                  Add entry
+                </Button>
+                <Button className="min-w-[176px] justify-center" onClick={handleSaveRepeatTicket} disabled={isSaving}>
+                  {isSaving ? (
+                    <>
+                      <FontAwesomeIcon icon={faCircleNotch} className="h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : editingRepeatTicket ? "Save repeat ticket" : "Create repeat ticket"}
+                </Button>
               </div>
             </div>
-
-            <div className="sticky bottom-0 mt-6 flex shrink-0 justify-between gap-3 border-t border-stone-900/8 bg-white pt-4">
-              <Button variant="outline" onClick={() => setDraftItems((current) => [...current, createDraftItem()])} disabled={isSaving}>
-                <FontAwesomeIcon icon={faPlus} className="h-3.5 w-3.5" />
-                Add entry
-              </Button>
-              <Button className="min-w-[176px] justify-center" onClick={handleSaveRepeatTicket} disabled={isSaving}>
-                {isSaving ? (
-                  <>
-                    <FontAwesomeIcon icon={faCircleNotch} className="h-4 w-4 animate-spin" />
-                    Saving...
-                  </>
-                ) : editingRepeatTicket ? "Save repeat ticket" : "Create repeat ticket"}
-              </Button>
-            </div>
           </div>
-        </div>
         </div>
       ) : null}
     </>
