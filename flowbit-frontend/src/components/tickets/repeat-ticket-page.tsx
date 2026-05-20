@@ -82,6 +82,21 @@ function formatAmount(value: string | number) {
   });
 }
 
+function formatRepeatTicketDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function ensureRepeatCustomerName(value: string) {
   const trimmedValue = value.trim();
   if (!trimmedValue) {
@@ -571,7 +586,7 @@ export function RepeatTicketPage() {
                       key={repeatTicket.id}
                       className={`rounded-[24px] border shadow-[0_8px_24px_rgba(28,24,20,0.04)] transition ${
                         isSelected
-                          ? "border-stone-950 bg-stone-950 text-white"
+                          ? "border-stone-950 bg-white"
                           : "border-stone-900/8 bg-white"
                       }`}
                     >
@@ -582,7 +597,7 @@ export function RepeatTicketPage() {
                           </span>
                           {repeatTicket.generation_error ? (
                             <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${
-                              isSelected ? "bg-rose-200/20 text-rose-100" : "bg-rose-100 text-rose-700"
+                              "bg-rose-100 text-rose-700"
                             }`}>
                               <FontAwesomeIcon icon={faTriangleExclamation} className="h-3 w-3" />
                               Needs attention
@@ -591,8 +606,7 @@ export function RepeatTicketPage() {
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
                           <Button
-                            variant={isSelected ? "default" : "outline"}
-                            className={isSelected ? "border border-white/10 bg-white text-stone-950 hover:bg-stone-100" : undefined}
+                            variant="outline"
                             onClick={() => handleGenerateTicket(repeatTicket)}
                             disabled={!canGenerate || isGeneratedForPeriod || busyTicketId === repeatTicket.id}
                           >
@@ -604,16 +618,14 @@ export function RepeatTicketPage() {
                                 : "Generate"}
                           </Button>
                           <Button
-                            variant={isSelected ? "default" : "outline"}
-                            className={isSelected ? "border border-white/10 bg-white text-stone-950 hover:bg-stone-100" : undefined}
+                            variant="outline"
                             onClick={() => openEditModal(repeatTicket)}
                           >
                             <FontAwesomeIcon icon={faPenToSquare} className="h-3.5 w-3.5" />
                             Edit
                           </Button>
                           <Button
-                            variant={isSelected ? "default" : "outline"}
-                            className={isSelected ? "border border-white/10 bg-white text-stone-950 hover:bg-stone-100" : undefined}
+                            variant="outline"
                             onClick={() => setDeleteTarget(repeatTicket)}
                           >
                             <FontAwesomeIcon icon={faTrashCan} className="h-3.5 w-3.5" />
@@ -629,20 +641,27 @@ export function RepeatTicketPage() {
                           className="min-w-0 flex-1 text-left"
                         >
                           <div className="flex flex-wrap items-center gap-3">
-                            <p className={`text-xl font-semibold ${isSelected ? "text-white" : "text-stone-950"}`}>
+                            <p className="text-xl font-semibold text-stone-950">
                               {ensureRepeatCustomerName(repeatTicket.customer_name || "") || "Walk-in repeat ticket"}
                             </p>
                           </div>
 
-                          <div className={`mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm ${isSelected ? "text-stone-200" : "text-stone-600"}`}>
+                          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-stone-600">
+                            <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${getStatusTone(repeatTicket.current_status)}`}>
+                              {getStatusLabel(repeatTicket.current_status)}
+                            </span>
+                          </div>
+
+                          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-stone-600">
                             <span className="inline-flex items-center gap-2">
                               <FontAwesomeIcon
                                 icon={faReceipt}
-                                className={`h-3.5 w-3.5 ${isSelected ? "text-stone-300" : "text-stone-400"}`}
+                                className="h-3.5 w-3.5 text-stone-400"
                               />
                               {formatAmount(repeatTicket.total_amount)}
                             </span>
                             <span>{repeatTicket.item_count} entries</span>
+                            <span>{formatRepeatTicketDate(repeatTicket.created_at)}</span>
                             {repeatTicket.generated_ticket_number ? (
                               <span>{repeatTicket.generated_ticket_number}</span>
                             ) : null}
@@ -652,9 +671,7 @@ export function RepeatTicketPage() {
 
                       {repeatTicket.generation_error ? (
                         <div className={`mx-5 mb-5 rounded-[20px] border px-4 py-3 text-sm ${
-                          isSelected
-                            ? "border-rose-300/20 bg-rose-200/10 text-rose-100"
-                            : "border-rose-200 bg-rose-50 text-rose-700"
+                          "border-rose-200 bg-rose-50 text-rose-700"
                         }`}>
                           {repeatTicket.generation_error}
                         </div>
