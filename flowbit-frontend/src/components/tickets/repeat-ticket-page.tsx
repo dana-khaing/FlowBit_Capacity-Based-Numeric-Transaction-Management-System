@@ -336,7 +336,7 @@ export function RepeatTicketPage() {
 
   function handleRepeatTicketKeyDown(
     repeatTicketId: number,
-    event: React.KeyboardEvent<HTMLButtonElement>,
+    event: React.KeyboardEvent<HTMLElement>,
   ) {
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") {
       return;
@@ -688,11 +688,15 @@ export function RepeatTicketPage() {
                   return (
                     <div
                       key={repeatTicket.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => focusRepeatTicket(repeatTicket.id)}
+                      onKeyDown={(event) => handleRepeatTicketKeyDown(repeatTicket.id, event)}
                       className={`rounded-[24px] border shadow-[0_8px_24px_rgba(28,24,20,0.04)] transition ${
                         isSelected
                           ? "border-stone-950 bg-white"
                           : "border-stone-900/8 bg-white"
-                      }`}
+                      } cursor-pointer`}
                     >
                       <div className="px-5 py-5">
                         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -721,7 +725,10 @@ export function RepeatTicketPage() {
                           <div className="flex flex-wrap items-center gap-2">
                             <Button
                               variant="outline"
-                              onClick={() => handleGenerateTicket(repeatTicket)}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void handleGenerateTicket(repeatTicket);
+                              }}
                               disabled={!canGenerate || isGeneratedForPeriod || busyTicketId === repeatTicket.id}
                             >
                               <FontAwesomeIcon icon={faCircleCheck} className="h-3.5 w-3.5" />
@@ -733,14 +740,20 @@ export function RepeatTicketPage() {
                             </Button>
                             <Button
                               variant="outline"
-                              onClick={() => openEditModal(repeatTicket)}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                openEditModal(repeatTicket);
+                              }}
                             >
                               <FontAwesomeIcon icon={faPenToSquare} className="h-3.5 w-3.5" />
                               Edit
                             </Button>
                             <Button
                               variant="outline"
-                              onClick={() => setDeleteTarget(repeatTicket)}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setDeleteTarget(repeatTicket);
+                              }}
                             >
                               <FontAwesomeIcon icon={faTrashCan} className="h-3.5 w-3.5" />
                               Delete
@@ -939,7 +952,7 @@ export function RepeatTicketPage() {
                 </div>
               </div>
 
-              <div className="flex min-h-[88px] items-center justify-between gap-3 border-t border-stone-900/8 bg-white px-5 py-5 sm:px-6">
+              <div className="flex min-h-[72px] items-center justify-between gap-3 border-t border-stone-900/8 bg-white px-5 py-4 sm:px-6">
                 <Button variant="outline" onClick={() => setDraftItems((current) => [...current, createDraftItem()])} disabled={isSaving}>
                   <FontAwesomeIcon icon={faPlus} className="h-3.5 w-3.5" />
                   Add entry
