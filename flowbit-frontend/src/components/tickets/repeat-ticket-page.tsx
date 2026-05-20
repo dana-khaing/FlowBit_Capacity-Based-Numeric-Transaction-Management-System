@@ -5,7 +5,6 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faArrowsRotate,
   faCircleCheck,
-  faCircleNotch,
   faClockRotateLeft,
   faPenToSquare,
   faPlus,
@@ -959,12 +958,7 @@ export function RepeatTicketPage() {
                   Add entry
                 </Button>
                 <Button className="h-11 min-w-[188px] justify-center self-center rounded-[18px]" onClick={handleSaveRepeatTicket} disabled={isSaving}>
-                  {isSaving ? (
-                    <>
-                      <FontAwesomeIcon icon={faCircleNotch} className="h-4 w-4 animate-spin" />
-                      Saving...
-                    </>
-                  ) : editingRepeatTicket ? "Save repeat ticket" : "Create repeat ticket"}
+                  {editingRepeatTicket ? "Save repeat ticket" : "Create repeat ticket"}
                 </Button>
                 </div>
               </div>
