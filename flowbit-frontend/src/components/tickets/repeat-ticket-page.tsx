@@ -576,6 +576,53 @@ export function RepeatTicketPage() {
                       }`}
                     >
                       <div className="flex flex-wrap items-start justify-between gap-3 px-5 pt-5">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${getStatusTone(repeatTicket.current_status)}`}>
+                            {getStatusLabel(repeatTicket.current_status)}
+                          </span>
+                          {repeatTicket.generation_error ? (
+                            <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${
+                              isSelected ? "bg-rose-200/20 text-rose-100" : "bg-rose-100 text-rose-700"
+                            }`}>
+                              <FontAwesomeIcon icon={faTriangleExclamation} className="h-3 w-3" />
+                              Needs attention
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Button
+                            variant={isSelected ? "default" : "outline"}
+                            className={isSelected ? "border border-white/10 bg-white text-stone-950 hover:bg-stone-100" : undefined}
+                            onClick={() => handleGenerateTicket(repeatTicket)}
+                            disabled={!canGenerate || isGeneratedForPeriod || busyTicketId === repeatTicket.id}
+                          >
+                            <FontAwesomeIcon icon={faCircleCheck} className="h-3.5 w-3.5" />
+                            {busyTicketId === repeatTicket.id
+                              ? "Generating..."
+                              : isGeneratedForPeriod
+                                ? "Generated"
+                                : "Generate"}
+                          </Button>
+                          <Button
+                            variant={isSelected ? "default" : "outline"}
+                            className={isSelected ? "border border-white/10 bg-white text-stone-950 hover:bg-stone-100" : undefined}
+                            onClick={() => openEditModal(repeatTicket)}
+                          >
+                            <FontAwesomeIcon icon={faPenToSquare} className="h-3.5 w-3.5" />
+                            Edit
+                          </Button>
+                          <Button
+                            variant={isSelected ? "default" : "outline"}
+                            className={isSelected ? "border border-white/10 bg-white text-stone-950 hover:bg-stone-100" : undefined}
+                            onClick={() => setDeleteTarget(repeatTicket)}
+                          >
+                            <FontAwesomeIcon icon={faTrashCan} className="h-3.5 w-3.5" />
+                            Delete
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div className="px-5 pb-5 pt-3">
                         <button
                           type="button"
                           onClick={() => setSelectedRepeatTicketId(repeatTicket.id)}
@@ -585,27 +632,9 @@ export function RepeatTicketPage() {
                             <p className={`text-xl font-semibold ${isSelected ? "text-white" : "text-stone-950"}`}>
                               {ensureRepeatCustomerName(repeatTicket.customer_name || "") || "Walk-in repeat ticket"}
                             </p>
-                            <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${getStatusTone(repeatTicket.current_status)}`}>
-                              {getStatusLabel(repeatTicket.current_status)}
-                            </span>
-                            {repeatTicket.generation_error ? (
-                              <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${
-                                isSelected ? "bg-rose-200/20 text-rose-100" : "bg-rose-100 text-rose-700"
-                              }`}>
-                                <FontAwesomeIcon icon={faTriangleExclamation} className="h-3 w-3" />
-                                Needs attention
-                              </span>
-                            ) : null}
                           </div>
 
                           <div className={`mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm ${isSelected ? "text-stone-200" : "text-stone-600"}`}>
-                            <span className="inline-flex items-center gap-2">
-                              <FontAwesomeIcon
-                                icon={faUser}
-                                className={`h-3.5 w-3.5 ${isSelected ? "text-stone-300" : "text-stone-400"}`}
-                              />
-                              {ensureRepeatCustomerName(repeatTicket.customer_name || "") || "Walk-in repeat ticket"}
-                            </span>
                             <span className="inline-flex items-center gap-2">
                               <FontAwesomeIcon
                                 icon={faReceipt}
@@ -618,45 +647,7 @@ export function RepeatTicketPage() {
                               <span>{repeatTicket.generated_ticket_number}</span>
                             ) : null}
                           </div>
-
-                          <p className={`mt-3 text-sm leading-6 ${isSelected ? "text-stone-300" : "text-stone-500"}`}>
-                            {repeatTicket.notes?.trim() || "No notes added."}
-                          </p>
                         </button>
-                      </div>
-
-                      <div className={`mt-4 flex flex-wrap items-center justify-end gap-2 border-t px-5 py-4 ${
-                        isSelected ? "border-white/10" : "border-stone-900/8"
-                      }`}>
-                        <Button
-                          variant={isSelected ? "default" : "outline"}
-                          className={isSelected ? "border border-white/10 bg-white text-stone-950 hover:bg-stone-100" : undefined}
-                          onClick={() => handleGenerateTicket(repeatTicket)}
-                          disabled={!canGenerate || isGeneratedForPeriod || busyTicketId === repeatTicket.id}
-                        >
-                          <FontAwesomeIcon icon={faCircleCheck} className="h-3.5 w-3.5" />
-                          {busyTicketId === repeatTicket.id
-                            ? "Generating..."
-                            : isGeneratedForPeriod
-                              ? "Already generated for this period"
-                              : "Generate"}
-                        </Button>
-                        <Button
-                          variant={isSelected ? "default" : "outline"}
-                          className={isSelected ? "border border-white/10 bg-white text-stone-950 hover:bg-stone-100" : undefined}
-                          onClick={() => openEditModal(repeatTicket)}
-                        >
-                          <FontAwesomeIcon icon={faPenToSquare} className="h-3.5 w-3.5" />
-                          Edit
-                        </Button>
-                        <Button
-                          variant={isSelected ? "default" : "outline"}
-                          className={isSelected ? "border border-white/10 bg-white text-stone-950 hover:bg-stone-100" : undefined}
-                          onClick={() => setDeleteTarget(repeatTicket)}
-                        >
-                          <FontAwesomeIcon icon={faTrashCan} className="h-3.5 w-3.5" />
-                          Delete
-                        </Button>
                       </div>
 
                       {repeatTicket.generation_error ? (
