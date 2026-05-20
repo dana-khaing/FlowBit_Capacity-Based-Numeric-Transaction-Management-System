@@ -13,7 +13,7 @@ import {
   faTriangleExclamation,
   faUser,
 } from "@fortawesome/free-solid-svg-icons";
-import { WorkspaceShell } from "@/components/app/workspace-shell";
+import { AppSectionPage } from "@/components/app/app-section-page";
 import { notifyDashboardUpdated, notifyTicketsUpdated } from "@/components/app/workspace-events";
 import { AdminActionToast } from "@/components/admin/admin-action-toast";
 import { AdminConfirmModal } from "@/components/admin/admin-confirm-modal";
@@ -145,6 +145,7 @@ function getStatusLabel(status: FlowBitRepeatTicket["current_status"]) {
 
 export function RepeatTicketPage() {
   const { activePeriod, hasActivePeriod } = usePeriodState();
+  const actionButtonClassName = "h-12 min-w-[152px] rounded-[18px] justify-center";
   const [repeatTickets, setRepeatTickets] = useState<FlowBitRepeatTicket[]>([]);
   const [activeStandardLedgerCount, setActiveStandardLedgerCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -387,7 +388,7 @@ export function RepeatTicketPage() {
   }
 
   return (
-    <WorkspaceShell>
+    <>
       {toast ? (
         <AdminActionToast message={toast.message} type={toast.type} onClose={() => setToast(null)} />
       ) : null}
@@ -408,9 +409,100 @@ export function RepeatTicketPage() {
         onConfirm={handleDeleteRepeatTicket}
       />
 
-      <div className="mx-auto w-full max-w-[1800px] px-4 py-4 sm:px-6 lg:px-8">
-        <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-          <article className="rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6">
+      <AppSectionPage
+        eyebrow="Tickets"
+        title="Repeat Tickets"
+        description={`Reusable ticket templates${activePeriod ? ` for ${activePeriod.name}` : ""}.`}
+        workspaceLabel="Repeat tickets"
+        headerClassName="hidden"
+        asideClassName="xl:block"
+        aside={
+          <section className="h-[calc(100vh-8.5rem)] overflow-y-auto rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Repeat ticket view</p>
+                <p className="mt-2 text-lg font-semibold text-stone-950">Template preview</p>
+              </div>
+              {selectedRepeatTicket ? (
+                <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${getStatusTone(selectedRepeatTicket.current_status)}`}>
+                  {getStatusLabel(selectedRepeatTicket.current_status)}
+                </span>
+              ) : null}
+            </div>
+
+            {selectedRepeatTicket ? (
+              <div className="mt-5 space-y-4">
+                <div className="rounded-[24px] border border-dashed border-stone-300 bg-stone-50 p-5">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <p className="text-2xl font-semibold text-stone-950">
+                      {ensureRepeatCustomerName(selectedRepeatTicket.customer_name || "") || "Walk-in repeat ticket"}
+                    </p>
+                    {selectedRepeatTicket.generated_ticket_number ? (
+                      <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-stone-600">
+                        {selectedRepeatTicket.generated_ticket_number}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-stone-600">
+                    <span className="inline-flex items-center gap-2">
+                      <FontAwesomeIcon icon={faUser} className="h-3.5 w-3.5 text-stone-400" />
+                      {ensureRepeatCustomerName(selectedRepeatTicket.customer_name || "") || "Walk-in repeat ticket"}
+                    </span>
+                    <span className="inline-flex items-center gap-2">
+                      <FontAwesomeIcon icon={faReceipt} className="h-3.5 w-3.5 text-stone-400" />
+                      {formatAmount(selectedRepeatTicket.total_amount)}
+                    </span>
+                    <span>{selectedRepeatTicket.item_count} entries</span>
+                  </div>
+                  <p className="mt-4 text-sm leading-6 text-stone-500">
+                    {selectedRepeatTicket.notes?.trim() || "No notes added."}
+                  </p>
+                </div>
+
+                {selectedRepeatTicket.generation_error ? (
+                  <div className="rounded-[22px] border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-700">
+                    {selectedRepeatTicket.generation_error}
+                  </div>
+                ) : null}
+
+                <div className="rounded-[24px] border border-stone-900/8 bg-[#f3f0ea] px-4 py-4 text-sm text-stone-600">
+                  <div className="flex items-center gap-2 font-semibold text-stone-900">
+                    <FontAwesomeIcon icon={faClockRotateLeft} className="h-4 w-4 text-stone-500" />
+                    Status reminders
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    <p><span className="font-semibold text-stone-900">New</span> means ready for the current period.</p>
+                    <p><span className="font-semibold text-stone-900">Generated</span> means already created as a real ticket in this period.</p>
+                    <p><span className="font-semibold text-stone-900">Updated</span> means the saved repeat ticket changed after generation, but it still will not generate again in the same period.</p>
+                    <p><span className="font-semibold text-stone-900">Unsuccessful</span> means real ticket rules failed during generation and you can try again after fixing it.</p>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  {selectedRepeatTicket.items.map((item) => (
+                    <div key={item.id} className="rounded-[22px] border border-stone-900/8 bg-white px-4 py-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-lg font-semibold text-stone-950">{item.identifier_number}</p>
+                        <div className="flex items-center gap-2 text-stone-500">
+                          {item.use_permutations ? <span className="rounded-full bg-stone-100 px-2 py-1 text-xs font-semibold uppercase tracking-[0.14em]">x{getPermutationCount(item.identifier_number)}</span> : null}
+                          {item.amount_uses_allocation_basis ? <span className="rounded-full bg-stone-100 px-2 py-1 text-xs font-semibold uppercase tracking-[0.14em]">%</span> : null}
+                        </div>
+                      </div>
+                      <p className="mt-2 text-sm text-stone-500">
+                        Amount {formatAmount(item.amount_uses_allocation_basis ? Number(item.amount) / 1.25 : item.amount)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="mt-5 rounded-[22px] border border-dashed border-stone-300 bg-stone-50 px-4 py-4 text-sm text-stone-500">
+                Select a repeat ticket from the list to preview it here.
+              </div>
+            )}
+          </section>
+        }
+      >
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Tickets</p>
@@ -422,13 +514,14 @@ export function RepeatTicketPage() {
               <div className="flex flex-wrap gap-3">
                 <Button
                   variant="outline"
+                  className={actionButtonClassName}
                   onClick={handleGenerateAll}
                   disabled={!canGenerate || !actionableRepeatTickets.length || isGeneratingAll}
                 >
                   <FontAwesomeIcon icon={faArrowsRotate} className="h-3.5 w-3.5" />
                   {isGeneratingAll ? "Generating..." : "Generate all"}
                 </Button>
-                <Button onClick={openCreateModal}>
+                <Button className={actionButtonClassName} onClick={openCreateModal}>
                   <FontAwesomeIcon icon={faPlus} className="h-3.5 w-3.5" />
                   Add
                 </Button>
@@ -584,94 +677,7 @@ export function RepeatTicketPage() {
                 </div>
               )}
             </div>
-          </article>
-
-          <aside className="h-fit rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6 xl:sticky xl:top-24">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Repeat ticket view</p>
-                <p className="mt-2 text-lg font-semibold text-stone-950">Template preview</p>
-              </div>
-              {selectedRepeatTicket ? (
-                <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${getStatusTone(selectedRepeatTicket.current_status)}`}>
-                  {getStatusLabel(selectedRepeatTicket.current_status)}
-                </span>
-              ) : null}
-            </div>
-
-            {selectedRepeatTicket ? (
-              <div className="mt-5 space-y-4">
-                <div className="rounded-[24px] border border-dashed border-stone-300 bg-stone-50 p-5">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <p className="text-2xl font-semibold text-stone-950">
-                      {ensureRepeatCustomerName(selectedRepeatTicket.customer_name || "") || "Walk-in repeat ticket"}
-                    </p>
-                    {selectedRepeatTicket.generated_ticket_number ? (
-                      <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-stone-600">
-                        {selectedRepeatTicket.generated_ticket_number}
-                      </span>
-                    ) : null}
-                  </div>
-                  <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-stone-600">
-                    <span className="inline-flex items-center gap-2">
-                      <FontAwesomeIcon icon={faUser} className="h-3.5 w-3.5 text-stone-400" />
-                      {ensureRepeatCustomerName(selectedRepeatTicket.customer_name || "") || "Walk-in repeat ticket"}
-                    </span>
-                    <span className="inline-flex items-center gap-2">
-                      <FontAwesomeIcon icon={faReceipt} className="h-3.5 w-3.5 text-stone-400" />
-                      {formatAmount(selectedRepeatTicket.total_amount)}
-                    </span>
-                    <span>{selectedRepeatTicket.item_count} entries</span>
-                  </div>
-                  <p className="mt-4 text-sm leading-6 text-stone-500">
-                    {selectedRepeatTicket.notes?.trim() || "No notes added."}
-                  </p>
-                </div>
-
-                {selectedRepeatTicket.generation_error ? (
-                  <div className="rounded-[22px] border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-700">
-                    {selectedRepeatTicket.generation_error}
-                  </div>
-                ) : null}
-
-                <div className="rounded-[24px] border border-stone-900/8 bg-[#f3f0ea] px-4 py-4 text-sm text-stone-600">
-                  <div className="flex items-center gap-2 font-semibold text-stone-900">
-                    <FontAwesomeIcon icon={faClockRotateLeft} className="h-4 w-4 text-stone-500" />
-                    Status reminders
-                  </div>
-                  <div className="mt-3 space-y-2">
-                    <p><span className="font-semibold text-stone-900">New</span> means ready for the current period.</p>
-                    <p><span className="font-semibold text-stone-900">Generated</span> means already created as a real ticket in this period.</p>
-                    <p><span className="font-semibold text-stone-900">Updated</span> means the saved repeat ticket changed after generation, but it still will not generate again in the same period.</p>
-                    <p><span className="font-semibold text-stone-900">Unsuccessful</span> means real ticket rules failed during generation and you can try again after fixing it.</p>
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  {selectedRepeatTicket.items.map((item) => (
-                    <div key={item.id} className="rounded-[22px] border border-stone-900/8 bg-white px-4 py-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-lg font-semibold text-stone-950">{item.identifier_number}</p>
-                        <div className="flex items-center gap-2 text-stone-500">
-                          {item.use_permutations ? <span className="rounded-full bg-stone-100 px-2 py-1 text-xs font-semibold uppercase tracking-[0.14em]">x{getPermutationCount(item.identifier_number)}</span> : null}
-                          {item.amount_uses_allocation_basis ? <span className="rounded-full bg-stone-100 px-2 py-1 text-xs font-semibold uppercase tracking-[0.14em]">%</span> : null}
-                        </div>
-                      </div>
-                      <p className="mt-2 text-sm text-stone-500">
-                        Amount {formatAmount(item.amount_uses_allocation_basis ? Number(item.amount) / 1.25 : item.amount)}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div className="mt-5 rounded-[22px] border border-dashed border-stone-300 bg-stone-50 px-4 py-4 text-sm text-stone-500">
-                Select a repeat ticket from the list to preview it here.
-              </div>
-            )}
-          </aside>
-        </section>
-      </div>
+      </AppSectionPage>
 
       {isModalOpen ? (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-stone-950/35 px-4 py-6" onClick={() => !isSaving && setIsModalOpen(false)}>
@@ -814,6 +820,6 @@ export function RepeatTicketPage() {
           </div>
         </div>
       ) : null}
-    </WorkspaceShell>
+    </>
   );
 }
