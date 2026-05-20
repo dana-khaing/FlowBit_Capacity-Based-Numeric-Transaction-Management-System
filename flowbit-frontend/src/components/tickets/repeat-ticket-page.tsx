@@ -8,7 +8,10 @@ import {
   faClockRotateLeft,
   faPenToSquare,
   faPlus,
+  faReceipt,
   faTrashCan,
+  faTriangleExclamation,
+  faUser,
 } from "@fortawesome/free-solid-svg-icons";
 import { WorkspaceShell } from "@/components/app/workspace-shell";
 import { notifyDashboardUpdated, notifyTicketsUpdated } from "@/components/app/workspace-events";
@@ -156,6 +159,7 @@ export function RepeatTicketPage() {
   const [draftItems, setDraftItems] = useState<RepeatDraftItem[]>([createDraftItem()]);
   const [deleteTarget, setDeleteTarget] = useState<FlowBitRepeatTicket | null>(null);
   const [busyTicketId, setBusyTicketId] = useState<number | null>(null);
+  const [selectedRepeatTicketId, setSelectedRepeatTicketId] = useState<number | null>(null);
 
   const identifierOptions = useMemo(
     () => Array.from({ length: 1000 }, (_value, index) => index.toString().padStart(3, "0")),
@@ -165,6 +169,13 @@ export function RepeatTicketPage() {
   const canGenerate = hasActivePeriod && activeStandardLedgerCount > 0;
   const actionableRepeatTickets = repeatTickets.filter(
     (repeatTicket) => repeatTicket.current_status === "NEW" || repeatTicket.current_status === "UNSUCCESSFUL",
+  );
+  const selectedRepeatTicket = useMemo(
+    () =>
+      repeatTickets.find((repeatTicket) => repeatTicket.id === selectedRepeatTicketId) ??
+      repeatTickets[0] ??
+      null,
+    [repeatTickets, selectedRepeatTicketId],
   );
 
   async function loadPageData() {
@@ -183,6 +194,19 @@ export function RepeatTicketPage() {
   useEffect(() => {
     void loadPageData();
   }, []);
+
+  useEffect(() => {
+    if (!repeatTickets.length) {
+      setSelectedRepeatTicketId(null);
+      return;
+    }
+
+    setSelectedRepeatTicketId((current) =>
+      current && repeatTickets.some((repeatTicket) => repeatTicket.id === current)
+        ? current
+        : repeatTickets[0].id,
+    );
+  }, [repeatTickets]);
 
   useEffect(() => {
     if (!activePeriod) {
@@ -448,78 +472,109 @@ export function RepeatTicketPage() {
                   const isGeneratedForPeriod =
                     repeatTicket.current_status === "GENERATED" ||
                     repeatTicket.current_status === "UPDATED";
+                  const isSelected = selectedRepeatTicket?.id === repeatTicket.id;
                   return (
                     <div
                       key={repeatTicket.id}
-                      className="rounded-[24px] border border-stone-900/8 bg-white px-5 py-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)]"
+                      className={`rounded-[24px] border shadow-[0_8px_24px_rgba(28,24,20,0.04)] transition ${
+                        isSelected
+                          ? "border-stone-950 bg-stone-950 text-white"
+                          : "border-stone-900/8 bg-white"
+                      }`}
                     >
-                      <div className="flex flex-wrap items-start justify-between gap-4">
-                        <div>
+                      <div className="flex flex-wrap items-start justify-between gap-3 px-5 pt-5">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedRepeatTicketId(repeatTicket.id)}
+                          className="min-w-0 flex-1 text-left"
+                        >
                           <div className="flex flex-wrap items-center gap-3">
-                            <p className="text-xl font-semibold text-stone-950">
+                            <p className={`text-xl font-semibold ${isSelected ? "text-white" : "text-stone-950"}`}>
                               {ensureRepeatCustomerName(repeatTicket.customer_name || "") || "Walk-in repeat ticket"}
                             </p>
                             <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${getStatusTone(repeatTicket.current_status)}`}>
                               {getStatusLabel(repeatTicket.current_status)}
                             </span>
-                          </div>
-                          <p className="mt-2 text-sm text-stone-500">
-                            {repeatTicket.notes?.trim() || "No notes added."}
-                          </p>
-                          <div className="mt-3 flex flex-wrap gap-3 text-sm text-stone-500">
-                            <span>{repeatTicket.item_count} entries</span>
-                            <span>Total {formatAmount(repeatTicket.total_amount)}</span>
-                            {repeatTicket.generated_ticket_number ? (
-                              <span>Generated as {repeatTicket.generated_ticket_number}</span>
+                            {repeatTicket.generation_error ? (
+                              <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${
+                                isSelected ? "bg-rose-200/20 text-rose-100" : "bg-rose-100 text-rose-700"
+                              }`}>
+                                <FontAwesomeIcon icon={faTriangleExclamation} className="h-3 w-3" />
+                                Needs attention
+                              </span>
                             ) : null}
                           </div>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          <Button
-                            variant="outline"
-                            onClick={() => handleGenerateTicket(repeatTicket)}
-                            disabled={!canGenerate || isGeneratedForPeriod || busyTicketId === repeatTicket.id}
-                          >
-                            <FontAwesomeIcon icon={faCircleCheck} className="h-3.5 w-3.5" />
-                            {busyTicketId === repeatTicket.id
-                              ? "Generating..."
-                              : isGeneratedForPeriod
-                                ? "Already generated for this period"
-                                : "Generate"}
-                          </Button>
-                          <Button variant="outline" onClick={() => openEditModal(repeatTicket)}>
-                            <FontAwesomeIcon icon={faPenToSquare} className="h-3.5 w-3.5" />
-                            Edit
-                          </Button>
-                          <Button variant="outline" onClick={() => setDeleteTarget(repeatTicket)}>
-                            <FontAwesomeIcon icon={faTrashCan} className="h-3.5 w-3.5" />
-                            Delete
-                          </Button>
-                        </div>
+
+                          <div className={`mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm ${isSelected ? "text-stone-200" : "text-stone-600"}`}>
+                            <span className="inline-flex items-center gap-2">
+                              <FontAwesomeIcon
+                                icon={faUser}
+                                className={`h-3.5 w-3.5 ${isSelected ? "text-stone-300" : "text-stone-400"}`}
+                              />
+                              {ensureRepeatCustomerName(repeatTicket.customer_name || "") || "Walk-in repeat ticket"}
+                            </span>
+                            <span className="inline-flex items-center gap-2">
+                              <FontAwesomeIcon
+                                icon={faReceipt}
+                                className={`h-3.5 w-3.5 ${isSelected ? "text-stone-300" : "text-stone-400"}`}
+                              />
+                              {formatAmount(repeatTicket.total_amount)}
+                            </span>
+                            <span>{repeatTicket.item_count} entries</span>
+                            {repeatTicket.generated_ticket_number ? (
+                              <span>{repeatTicket.generated_ticket_number}</span>
+                            ) : null}
+                          </div>
+
+                          <p className={`mt-3 text-sm leading-6 ${isSelected ? "text-stone-300" : "text-stone-500"}`}>
+                            {repeatTicket.notes?.trim() || "No notes added."}
+                          </p>
+                        </button>
+                      </div>
+
+                      <div className={`mt-4 flex flex-wrap items-center justify-end gap-2 border-t px-5 py-4 ${
+                        isSelected ? "border-white/10" : "border-stone-900/8"
+                      }`}>
+                        <Button
+                          variant={isSelected ? "default" : "outline"}
+                          className={isSelected ? "border border-white/10 bg-white text-stone-950 hover:bg-stone-100" : undefined}
+                          onClick={() => handleGenerateTicket(repeatTicket)}
+                          disabled={!canGenerate || isGeneratedForPeriod || busyTicketId === repeatTicket.id}
+                        >
+                          <FontAwesomeIcon icon={faCircleCheck} className="h-3.5 w-3.5" />
+                          {busyTicketId === repeatTicket.id
+                            ? "Generating..."
+                            : isGeneratedForPeriod
+                              ? "Already generated for this period"
+                              : "Generate"}
+                        </Button>
+                        <Button
+                          variant={isSelected ? "default" : "outline"}
+                          className={isSelected ? "border border-white/10 bg-white text-stone-950 hover:bg-stone-100" : undefined}
+                          onClick={() => openEditModal(repeatTicket)}
+                        >
+                          <FontAwesomeIcon icon={faPenToSquare} className="h-3.5 w-3.5" />
+                          Edit
+                        </Button>
+                        <Button
+                          variant={isSelected ? "default" : "outline"}
+                          className={isSelected ? "border border-white/10 bg-white text-stone-950 hover:bg-stone-100" : undefined}
+                          onClick={() => setDeleteTarget(repeatTicket)}
+                        >
+                          <FontAwesomeIcon icon={faTrashCan} className="h-3.5 w-3.5" />
+                          Delete
+                        </Button>
                       </div>
 
                       {repeatTicket.generation_error ? (
-                        <div className="mt-4 rounded-[20px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                        <div className={`mx-5 mb-5 rounded-[20px] border px-4 py-3 text-sm ${
+                          isSelected
+                            ? "border-rose-300/20 bg-rose-200/10 text-rose-100"
+                            : "border-rose-200 bg-rose-50 text-rose-700"
+                        }`}>
                           {repeatTicket.generation_error}
                         </div>
                       ) : null}
-
-                      <div className="mt-4 grid gap-3 md:grid-cols-2">
-                        {repeatTicket.items.map((item) => (
-                          <div key={item.id} className="rounded-[20px] border border-stone-900/8 bg-stone-50 px-4 py-4">
-                            <div className="flex items-center justify-between gap-3">
-                              <p className="text-lg font-semibold text-stone-950">{item.identifier_number}</p>
-                              <div className="flex items-center gap-2 text-stone-500">
-                                {item.use_permutations ? <span className="rounded-full bg-white px-2 py-1 text-xs font-semibold uppercase tracking-[0.14em]">x{getPermutationCount(item.identifier_number)}</span> : null}
-                                {item.amount_uses_allocation_basis ? <span className="rounded-full bg-white px-2 py-1 text-xs font-semibold uppercase tracking-[0.14em]">%</span> : null}
-                              </div>
-                            </div>
-                            <p className="mt-2 text-sm text-stone-500">
-                              Amount {formatAmount(item.amount_uses_allocation_basis ? Number(item.amount) / 1.25 : item.amount)}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
                     </div>
                   );
                 })
@@ -531,29 +586,89 @@ export function RepeatTicketPage() {
             </div>
           </article>
 
-          <aside className="rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6">
-            <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">How it works</p>
-            <h2 className="mt-2 text-2xl font-semibold text-stone-950">Repeat ticket flow</h2>
-            <div className="mt-5 space-y-3 text-sm leading-6 text-stone-500">
-              <p>1. Save reusable repeat tickets here at any time.</p>
-              <p>2. When a new active period opens, every repeat ticket starts again as <span className="font-semibold text-stone-900">New</span>.</p>
-              <p>3. Generate one ticket or all eligible repeat tickets into the active period.</p>
-              <p>4. Generated repeat tickets stay saved here and do not disappear.</p>
-              <p>5. If real-ticket refunds later need to update the repeat ticket too, the refund flow will ask for confirmation.</p>
+          <aside className="h-fit rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6 xl:sticky xl:top-24">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Repeat ticket view</p>
+                <p className="mt-2 text-lg font-semibold text-stone-950">Template preview</p>
+              </div>
+              {selectedRepeatTicket ? (
+                <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${getStatusTone(selectedRepeatTicket.current_status)}`}>
+                  {getStatusLabel(selectedRepeatTicket.current_status)}
+                </span>
+              ) : null}
             </div>
 
-            <div className="mt-5 rounded-[24px] border border-stone-900/8 bg-[#f3f0ea] px-4 py-4 text-sm text-stone-600">
-              <div className="flex items-center gap-2 font-semibold text-stone-900">
-                <FontAwesomeIcon icon={faClockRotateLeft} className="h-4 w-4 text-stone-500" />
-                Status reminders
+            {selectedRepeatTicket ? (
+              <div className="mt-5 space-y-4">
+                <div className="rounded-[24px] border border-dashed border-stone-300 bg-stone-50 p-5">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <p className="text-2xl font-semibold text-stone-950">
+                      {ensureRepeatCustomerName(selectedRepeatTicket.customer_name || "") || "Walk-in repeat ticket"}
+                    </p>
+                    {selectedRepeatTicket.generated_ticket_number ? (
+                      <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-stone-600">
+                        {selectedRepeatTicket.generated_ticket_number}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-stone-600">
+                    <span className="inline-flex items-center gap-2">
+                      <FontAwesomeIcon icon={faUser} className="h-3.5 w-3.5 text-stone-400" />
+                      {ensureRepeatCustomerName(selectedRepeatTicket.customer_name || "") || "Walk-in repeat ticket"}
+                    </span>
+                    <span className="inline-flex items-center gap-2">
+                      <FontAwesomeIcon icon={faReceipt} className="h-3.5 w-3.5 text-stone-400" />
+                      {formatAmount(selectedRepeatTicket.total_amount)}
+                    </span>
+                    <span>{selectedRepeatTicket.item_count} entries</span>
+                  </div>
+                  <p className="mt-4 text-sm leading-6 text-stone-500">
+                    {selectedRepeatTicket.notes?.trim() || "No notes added."}
+                  </p>
+                </div>
+
+                {selectedRepeatTicket.generation_error ? (
+                  <div className="rounded-[22px] border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-700">
+                    {selectedRepeatTicket.generation_error}
+                  </div>
+                ) : null}
+
+                <div className="rounded-[24px] border border-stone-900/8 bg-[#f3f0ea] px-4 py-4 text-sm text-stone-600">
+                  <div className="flex items-center gap-2 font-semibold text-stone-900">
+                    <FontAwesomeIcon icon={faClockRotateLeft} className="h-4 w-4 text-stone-500" />
+                    Status reminders
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    <p><span className="font-semibold text-stone-900">New</span> means ready for the current period.</p>
+                    <p><span className="font-semibold text-stone-900">Generated</span> means already created as a real ticket in this period.</p>
+                    <p><span className="font-semibold text-stone-900">Updated</span> means the saved repeat ticket changed after generation, but it still will not generate again in the same period.</p>
+                    <p><span className="font-semibold text-stone-900">Unsuccessful</span> means real ticket rules failed during generation and you can try again after fixing it.</p>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  {selectedRepeatTicket.items.map((item) => (
+                    <div key={item.id} className="rounded-[22px] border border-stone-900/8 bg-white px-4 py-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-lg font-semibold text-stone-950">{item.identifier_number}</p>
+                        <div className="flex items-center gap-2 text-stone-500">
+                          {item.use_permutations ? <span className="rounded-full bg-stone-100 px-2 py-1 text-xs font-semibold uppercase tracking-[0.14em]">x{getPermutationCount(item.identifier_number)}</span> : null}
+                          {item.amount_uses_allocation_basis ? <span className="rounded-full bg-stone-100 px-2 py-1 text-xs font-semibold uppercase tracking-[0.14em]">%</span> : null}
+                        </div>
+                      </div>
+                      <p className="mt-2 text-sm text-stone-500">
+                        Amount {formatAmount(item.amount_uses_allocation_basis ? Number(item.amount) / 1.25 : item.amount)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div className="mt-3 space-y-2">
-                <p><span className="font-semibold text-stone-900">New</span> means ready for the current period.</p>
-                <p><span className="font-semibold text-stone-900">Generated</span> means already created as a real ticket in this period.</p>
-                <p><span className="font-semibold text-stone-900">Updated</span> means the saved repeat ticket changed after generation, but it still will not generate again in the same period.</p>
-                <p><span className="font-semibold text-stone-900">Unsuccessful</span> means real ticket rules failed during generation and you can try again after fixing it.</p>
+            ) : (
+              <div className="mt-5 rounded-[22px] border border-dashed border-stone-300 bg-stone-50 px-4 py-4 text-sm text-stone-500">
+                Select a repeat ticket from the list to preview it here.
               </div>
-            </div>
+            )}
           </aside>
         </section>
       </div>
@@ -577,7 +692,7 @@ export function RepeatTicketPage() {
             <div className="mt-6 grid gap-4 md:grid-cols-2">
               <label className="block space-y-2">
                 <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Customer name</span>
-                <Input value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="REP-Customer name" disabled={isSaving} />
+                <Input value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Customer name" disabled={isSaving} />
               </label>
               <label className="block space-y-2">
                 <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Notes</span>
@@ -692,7 +807,7 @@ export function RepeatTicketPage() {
                 <FontAwesomeIcon icon={faPlus} className="h-3.5 w-3.5" />
                 Add entry
               </Button>
-              <Button onClick={handleSaveRepeatTicket} disabled={isSaving}>
+              <Button className="min-w-[176px] justify-center" onClick={handleSaveRepeatTicket} disabled={isSaving}>
                 {isSaving ? "Saving..." : editingRepeatTicket ? "Save repeat ticket" : "Create repeat ticket"}
               </Button>
             </div>
