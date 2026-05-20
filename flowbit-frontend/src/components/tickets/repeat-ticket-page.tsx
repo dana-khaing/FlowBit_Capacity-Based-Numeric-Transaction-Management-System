@@ -208,11 +208,6 @@ export function RepeatTicketPage() {
   const [selectedRepeatTicketId, setSelectedRepeatTicketId] = useState<number | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
 
-  const identifierOptions = useMemo(
-    () => Array.from({ length: 1000 }, (_value, index) => index.toString().padStart(3, "0")),
-    [],
-  );
-
   const canGenerate = hasActivePeriod && activeStandardLedgerCount > 0;
   const actionableRepeatTickets = repeatTickets.filter(
     (repeatTicket) => repeatTicket.current_status === "NEW" || repeatTicket.current_status === "UNSUCCESSFUL",
@@ -675,7 +670,7 @@ export function RepeatTicketPage() {
             </div>
 
             <div className="mt-6 rounded-[28px] border border-stone-900/8 bg-white p-3 shadow-[0_8px_24px_rgba(28,24,20,0.04)]">
-            <div className="max-h-[calc(100vh-24rem)] space-y-4 overflow-y-auto pr-1">
+            <div className="h-[calc(100vh-24rem)] min-h-[20rem] space-y-4 overflow-y-auto pr-1">
               {isLoading ? (
                 <div className="rounded-[24px] border border-dashed border-stone-300 bg-stone-50 px-5 py-10 text-sm text-stone-500">
                   Loading repeat tickets.
@@ -792,34 +787,32 @@ export function RepeatTicketPage() {
                 </div>
               )}
             </div>
-            {repeatTickets.length > ticketsPerPage ? (
-              <div className="mt-4 flex items-center justify-between gap-3 px-2">
-                <p className="text-sm text-stone-500">
-                  Page {currentPage} of {totalPages}
-                </p>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => setCurrentPage((current) => Math.max(1, current - 1))}
-                    disabled={currentPage === 1}
-                  >
-                    Previous
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => setCurrentPage((current) => Math.min(totalPages, current + 1))}
-                    disabled={currentPage === totalPages}
-                  >
-                    Next
-                  </Button>
-                </div>
+            <div className="mt-4 flex items-center justify-between gap-3 px-2">
+              <p className="text-sm text-stone-500">
+                Page {currentPage} of {totalPages}
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setCurrentPage((current) => Math.max(1, current - 1))}
+                  disabled={currentPage === 1}
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setCurrentPage((current) => Math.min(totalPages, current + 1))}
+                  disabled={currentPage === totalPages}
+                >
+                  Next
+                </Button>
               </div>
-            ) : null}
+            </div>
             </div>
       </AppSectionPage>
 
       {isModalOpen ? (
-        <div className="fixed inset-0 z-[80] overflow-y-auto bg-stone-950/35 px-4 py-6" onClick={() => !isSaving && setIsModalOpen(false)}>
+        <div className="fixed inset-0 z-[80] overflow-y-auto bg-stone-950/35 px-4 py-8 sm:py-10" onClick={() => !isSaving && setIsModalOpen(false)}>
           <div className="mx-auto flex min-h-full items-start justify-center">
             <div className="w-full max-w-4xl overflow-hidden rounded-[30px] border border-stone-900/8 bg-white shadow-[0_18px_60px_rgba(24,24,24,0.22)]" onClick={(event) => event.stopPropagation()}>
               <div className="border-b border-stone-900/8 px-5 py-5 sm:px-6 sm:py-6">
@@ -837,7 +830,7 @@ export function RepeatTicketPage() {
                 </div>
               </div>
 
-              <div className="max-h-[calc(100vh-18rem)] overflow-y-auto px-5 py-5 sm:px-6">
+              <div className="max-h-[calc(100vh-22rem)] overflow-y-auto px-5 py-5 sm:px-6">
                 <div className="grid gap-4 md:grid-cols-2">
                   <label className="block space-y-2">
                     <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Customer name</span>
@@ -951,7 +944,7 @@ export function RepeatTicketPage() {
                   <FontAwesomeIcon icon={faPlus} className="h-3.5 w-3.5" />
                   Add entry
                 </Button>
-                <Button className="h-12 min-w-[200px] justify-center self-center" onClick={handleSaveRepeatTicket} disabled={isSaving}>
+                <Button className="h-12 min-w-[200px] justify-center self-center rounded-[18px]" onClick={handleSaveRepeatTicket} disabled={isSaving}>
                   {isSaving ? (
                     <>
                       <FontAwesomeIcon icon={faCircleNotch} className="h-4 w-4 animate-spin" />
