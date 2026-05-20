@@ -132,6 +132,34 @@ function getPermutationCount(identifierNumber: string) {
   )).size || 1;
 }
 
+function getPermutationNumbers(identifierNumber: string) {
+  const digits = normalizeIdentifierNumber(identifierNumber);
+  if (digits.length !== 3) {
+    return [identifierNumber];
+  }
+
+  return Array.from(
+    new Set(
+      digits.split("").flatMap((first, firstIndex, all) =>
+        all.flatMap((second, secondIndex) =>
+          all
+            .filter(
+              (_third, thirdIndex) =>
+                thirdIndex !== firstIndex &&
+                thirdIndex !== secondIndex &&
+                secondIndex !== firstIndex,
+            )
+            .map((third) => `${first}${second}${third}`),
+        ),
+      ),
+    ),
+  ).sort();
+}
+
+function getRepeatItemDisplayAmount(amount: string | number, usesAllocationBasis: boolean) {
+  return usesAllocationBasis ? Number(amount) / 1.25 : Number(amount);
+}
+
 function getStatusTone(status: FlowBitRepeatTicket["current_status"]) {
   if (status === "GENERATED") {
     return "bg-emerald-100 text-emerald-700";
@@ -438,7 +466,6 @@ export function RepeatTicketPage() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Repeat ticket view</p>
-                <p className="mt-2 text-lg font-semibold text-stone-950">Template preview</p>
               </div>
               {selectedRepeatTicket ? (
                 <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${getStatusTone(selectedRepeatTicket.current_status)}`}>
@@ -460,16 +487,39 @@ export function RepeatTicketPage() {
                       </span>
                     ) : null}
                   </div>
-                  <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-stone-600">
-                    <span className="inline-flex items-center gap-2">
-                      <FontAwesomeIcon icon={faUser} className="h-3.5 w-3.5 text-stone-400" />
-                      {ensureRepeatCustomerName(selectedRepeatTicket.customer_name || "") || "Walk-in repeat ticket"}
-                    </span>
-                    <span className="inline-flex items-center gap-2">
-                      <FontAwesomeIcon icon={faReceipt} className="h-3.5 w-3.5 text-stone-400" />
-                      {formatAmount(selectedRepeatTicket.total_amount)}
-                    </span>
-                    <span>{selectedRepeatTicket.item_count} entries</span>
+                  <div className="mt-4 grid gap-3 text-sm text-stone-600 sm:grid-cols-2">
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-400">Customer</p>
+                      <p className="inline-flex items-center gap-2 font-medium text-stone-900">
+                        <FontAwesomeIcon icon={faUser} className="h-3.5 w-3.5 text-stone-400" />
+                        {ensureRepeatCustomerName(selectedRepeatTicket.customer_name || "") || "Walk-in repeat ticket"}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-400">Total amount</p>
+                      <p className="inline-flex items-center gap-2 font-medium text-stone-900">
+                        <FontAwesomeIcon icon={faReceipt} className="h-3.5 w-3.5 text-stone-400" />
+                        {formatAmount(selectedRepeatTicket.total_amount)}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-400">Entries</p>
+                      <p className="font-medium text-stone-900">{selectedRepeatTicket.item_count} entries</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-400">Created</p>
+                      <p className="font-medium text-stone-900">{formatRepeatTicketDate(selectedRepeatTicket.created_at)}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-400">Status</p>
+                      <p className="font-medium text-stone-900">{getStatusLabel(selectedRepeatTicket.current_status)}</p>
+                    </div>
+                    {selectedRepeatTicket.generated_ticket_number ? (
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-400">Generated ticket</p>
+                        <p className="font-medium text-stone-900">{selectedRepeatTicket.generated_ticket_number}</p>
+                      </div>
+                    ) : null}
                   </div>
                   <p className="mt-4 text-sm leading-6 text-stone-500">
                     {selectedRepeatTicket.notes?.trim() || "No notes added."}
@@ -483,20 +533,28 @@ export function RepeatTicketPage() {
                 ) : null}
 
                 <div className="space-y-3">
-                  {selectedRepeatTicket.items.map((item) => (
-                    <div key={item.id} className="rounded-[22px] border border-stone-900/8 bg-white px-4 py-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-lg font-semibold text-stone-950">{item.identifier_number}</p>
-                        <div className="flex items-center gap-2 text-stone-500">
-                          {item.use_permutations ? <span className="rounded-full bg-stone-100 px-2 py-1 text-xs font-semibold uppercase tracking-[0.14em]">x{getPermutationCount(item.identifier_number)}</span> : null}
-                          {item.amount_uses_allocation_basis ? <span className="rounded-full bg-stone-100 px-2 py-1 text-xs font-semibold uppercase tracking-[0.14em]">%</span> : null}
+                  {selectedRepeatTicket.items.flatMap((item) => {
+                    const identifierNumbers = item.use_permutations
+                      ? getPermutationNumbers(item.identifier_number)
+                      : [item.identifier_number];
+                    const displayAmount = getRepeatItemDisplayAmount(item.amount, item.amount_uses_allocation_basis);
+
+                    return identifierNumbers.map((identifierNumber) => (
+                      <div
+                        key={`${item.id}-${identifierNumber}`}
+                        className="rounded-[22px] border border-stone-900/8 bg-white px-4 py-4"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-lg font-semibold text-stone-950">
+                            {identifierNumber}
+                          </p>
+                          <p className="text-lg font-semibold text-stone-950">
+                            {formatAmount(displayAmount)}
+                          </p>
                         </div>
                       </div>
-                      <p className="mt-2 text-sm text-stone-500">
-                        Amount {formatAmount(item.amount_uses_allocation_basis ? Number(item.amount) / 1.25 : item.amount)}
-                      </p>
-                    </div>
-                  ))}
+                    ));
+                  })}
                 </div>
 
                 <div className="rounded-[24px] border border-stone-900/8 bg-[#f3f0ea] px-4 py-4 text-sm text-stone-600">
