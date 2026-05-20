@@ -480,19 +480,6 @@ export function RepeatTicketPage() {
                   </div>
                 ) : null}
 
-                <div className="rounded-[24px] border border-stone-900/8 bg-[#f3f0ea] px-4 py-4 text-sm text-stone-600">
-                  <div className="flex items-center gap-2 font-semibold text-stone-900">
-                    <FontAwesomeIcon icon={faClockRotateLeft} className="h-4 w-4 text-stone-500" />
-                    Status reminders
-                  </div>
-                  <div className="mt-3 space-y-2">
-                    <p><span className="font-semibold text-stone-900">New</span> means ready for the current period.</p>
-                    <p><span className="font-semibold text-stone-900">Generated</span> means already created as a real ticket in this period.</p>
-                    <p><span className="font-semibold text-stone-900">Updated</span> means the saved repeat ticket changed after generation, but it still will not generate again in the same period.</p>
-                    <p><span className="font-semibold text-stone-900">Unsuccessful</span> means real ticket rules failed during generation and you can try again after fixing it.</p>
-                  </div>
-                </div>
-
                 <div className="space-y-3">
                   {selectedRepeatTicket.items.map((item) => (
                     <div key={item.id} className="rounded-[22px] border border-stone-900/8 bg-white px-4 py-4">
@@ -508,6 +495,19 @@ export function RepeatTicketPage() {
                       </p>
                     </div>
                   ))}
+                </div>
+
+                <div className="rounded-[24px] border border-stone-900/8 bg-[#f3f0ea] px-4 py-4 text-sm text-stone-600">
+                  <div className="flex items-center gap-2 font-semibold text-stone-900">
+                    <FontAwesomeIcon icon={faClockRotateLeft} className="h-4 w-4 text-stone-500" />
+                    Status reminders
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    <p><span className="font-semibold text-stone-900">New</span> means ready for the current period.</p>
+                    <p><span className="font-semibold text-stone-900">Generated</span> means already created as a real ticket in this period.</p>
+                    <p><span className="font-semibold text-stone-900">Updated</span> means the saved repeat ticket changed after generation, but it still will not generate again in the same period.</p>
+                    <p><span className="font-semibold text-stone-900">Unsuccessful</span> means real ticket rules failed during generation and you can try again after fixing it.</p>
+                  </div>
                 </div>
               </div>
             ) : (
