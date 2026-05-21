@@ -798,7 +798,7 @@ export function RepeatTicketPage() {
             </div>
 
             <div className="mt-6 rounded-[28px] border border-stone-900/8 bg-white p-3 shadow-[0_8px_24px_rgba(28,24,20,0.04)]">
-            <div className="h-[calc(100vh-24rem)] min-h-[20rem] space-y-4 overflow-y-auto pr-1">
+            <div className="h-[calc(100vh-18rem)] min-h-[34rem] space-y-4 overflow-y-auto pr-1">
               {isLoading ? (
                 <div className="rounded-[24px] border border-dashed border-stone-300 bg-stone-50 px-5 py-10 text-sm text-stone-500">
                   Loading repeat tickets.
