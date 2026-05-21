@@ -625,10 +625,10 @@ export function RepeatTicketPage() {
       </AdminConfirmModal>
 
       <AppSectionPage
-        eyebrow="Tickets"
-        title="Repeat Tickets"
+        eyebrow=""
+        title=""
         description={`Reusable ticket templates${activePeriod ? ` for ${activePeriod.name}` : ""}.`}
-        workspaceLabel="Repeat tickets"
+        workspaceLabel=""
         headerClassName="hidden"
         layoutClassName="print:block"
         workspaceClassName="print:hidden"
