@@ -88,6 +88,10 @@ export function TicketRefundModal({
       return;
     }
 
+    if (requireOverrideCode && !adminOverrideCode.trim()) {
+      return;
+    }
+
     if (confirmAction.kind === "ticket") {
       onRefundTicket();
       return;
@@ -287,6 +291,20 @@ export function TicketRefundModal({
               <p className="mt-2 text-sm leading-6 text-stone-500">
                 {confirmAction.label}. This action will reverse the selected ticket records.
               </p>
+              {requireOverrideCode ? (
+                <label className="mt-5 block space-y-2">
+                  <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+                    Admin override code
+                  </span>
+                  <Input
+                    type="password"
+                    value={adminOverrideCode}
+                    onChange={(event) => onCodeChange(event.target.value)}
+                    placeholder="Enter override code"
+                    disabled={Boolean(busyAction)}
+                  />
+                </label>
+              ) : null}
               <div className="mt-5 flex justify-end gap-3">
                 <Button
                   variant="outline"
@@ -295,7 +313,10 @@ export function TicketRefundModal({
                 >
                   Cancel
                 </Button>
-                <Button onClick={handleConfirmRefund} disabled={Boolean(busyAction)}>
+                <Button
+                  onClick={handleConfirmRefund}
+                  disabled={Boolean(busyAction) || (requireOverrideCode && !adminOverrideCode.trim())}
+                >
                   Confirm refund
                 </Button>
               </div>

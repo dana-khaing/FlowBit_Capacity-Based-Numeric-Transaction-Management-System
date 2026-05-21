@@ -794,6 +794,13 @@ def _build_repeat_identifier_numbers(repeat_item):
     return sorted({''.join(value) for value in permutations(identifier_number)})
 
 
+def _generated_repeat_ticket_customer_name(repeat_ticket):
+    customer_name = (repeat_ticket.customer_name or "").strip()
+    if customer_name:
+        return f"REP-{customer_name}"
+    return repeat_ticket.repeat_code or ""
+
+
 def _build_repeat_ticket_generation_payload(repeat_ticket):
     items = []
     repeat_items = list(repeat_ticket.items.select_related('identifier').all())
@@ -819,7 +826,7 @@ def _build_repeat_ticket_generation_payload(repeat_ticket):
         raise DRFValidationError({"detail": "Repeat ticket has no entries to generate."})
 
     return {
-        "customer_name": repeat_ticket.customer_name or "",
+        "customer_name": _generated_repeat_ticket_customer_name(repeat_ticket),
         "notes": repeat_ticket.notes or "",
         "items": items,
     }
@@ -851,7 +858,12 @@ def _sync_repeat_ticket_from_ticket(*, repeat_ticket, ticket, generation=None):
         repeat_ticket.delete()
         return None
 
-    repeat_ticket.customer_name = ticket.customer_name
+    next_customer_name = ticket.customer_name
+    generated_customer_name = _generated_repeat_ticket_customer_name(repeat_ticket)
+    if next_customer_name == generated_customer_name:
+        next_customer_name = repeat_ticket.customer_name
+
+    repeat_ticket.customer_name = next_customer_name
     repeat_ticket.notes = ticket.notes
     repeat_ticket.bump_version(save=False)
     repeat_ticket.save(update_fields=['customer_name', 'notes', 'version', 'updated_at'])
