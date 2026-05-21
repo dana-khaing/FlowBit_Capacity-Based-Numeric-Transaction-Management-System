@@ -261,9 +261,7 @@ export function TicketHistoryPage() {
   }
 
   async function runOverflowRefundAction(overflowId: number, kind: "overflow") {
-    const user = currentUserState?.user;
-    const requireOverrideCode = user?.role !== "admin";
-    if (requireOverrideCode && !adminOverrideCode.trim()) {
+    if (!adminOverrideCode.trim()) {
       setToast({
         type: "error",
         message: "Admin override code is required for refund actions.",
@@ -306,9 +304,7 @@ export function TicketHistoryPage() {
       return;
     }
 
-    const user = currentUserState?.user;
-    const requireOverrideCode = user?.role !== "admin";
-    if (requireOverrideCode && !adminOverrideCode.trim()) {
+    if (!adminOverrideCode.trim()) {
       setToast({
         type: "error",
         message: "Admin override code is required for refund actions.",
@@ -558,7 +554,7 @@ export function TicketHistoryPage() {
       <TicketRefundModal
         open={showRefundModal}
         ticket={selectedTicket}
-        requireOverrideCode={currentUserState?.user?.role !== "admin"}
+        requireOverrideCode={true}
         adminOverrideCode={adminOverrideCode}
         syncRepeatTicket={syncRepeatTicket}
         busyAction={busyRefundAction}

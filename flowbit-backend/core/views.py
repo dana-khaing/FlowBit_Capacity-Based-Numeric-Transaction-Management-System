@@ -3083,7 +3083,8 @@ class OverflowViewSet(viewsets.ModelViewSet):
         action_name = (request.data.get('action') or '').strip().lower()
         sync_repeat_ticket = parse_bool_value(request.data.get('sync_repeat_ticket'))
         helper_name = helper_name_from_request(request)
-        override_profile = get_request_admin_override_profile(request)
+        raw_override_code = get_request_admin_override_code(request)
+        override_profile = get_valid_admin_override_profile(raw_override_code)
 
         if action_name in {'', 'approve'}:
             return self._approve_overflow(overflow, request)
@@ -3094,9 +3095,14 @@ class OverflowViewSet(viewsets.ModelViewSet):
                     {"detail": "Refunds are locked after the pre-close time is reached for this period."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            if not is_admin_user(request.user) and override_profile is None:
+            if not raw_override_code:
                 return Response(
                     {"detail": "Admin override code is required for refund actions."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            if override_profile is None:
+                return Response(
+                    {"detail": "Admin override code is incorrect."},
                     status=status.HTTP_403_FORBIDDEN,
                 )
 
@@ -5358,10 +5364,16 @@ class TicketRefundView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        override_profile = get_request_admin_override_profile(request)
-        if not is_admin_user(request.user) and override_profile is None:
+        raw_override_code = get_request_admin_override_code(request)
+        if not raw_override_code:
             return Response(
                 {"detail": "Admin override code is required for refund actions."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        override_profile = get_valid_admin_override_profile(raw_override_code)
+        if override_profile is None:
+            return Response(
+                {"detail": "Admin override code is incorrect."},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
