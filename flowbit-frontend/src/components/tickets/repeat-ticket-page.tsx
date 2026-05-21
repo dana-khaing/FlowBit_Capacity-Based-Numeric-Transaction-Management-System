@@ -827,7 +827,7 @@ export function RepeatTicketPage() {
                       } cursor-pointer`}
                     >
                       <div className="px-5 py-5">
-                        <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="flex items-start justify-between gap-3">
                           <button
                             type="button"
                             data-repeat-ticket-trigger={repeatTicket.id}
@@ -835,8 +835,8 @@ export function RepeatTicketPage() {
                             onKeyDown={(event) => handleRepeatTicketKeyDown(repeatTicket.id, event)}
                             className="min-w-0 flex-1 text-left"
                           >
-                            <div className="flex flex-wrap items-center gap-3">
-                              <p className="text-xl font-semibold text-stone-950">
+                            <div className="flex items-center gap-3 overflow-hidden">
+                              <p className="truncate text-xl font-semibold text-stone-950">
                                 {getRepeatTicketCode(repeatTicket)}
                               </p>
                               <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${getStatusTone(repeatTicket.current_status)}`}>
@@ -850,7 +850,7 @@ export function RepeatTicketPage() {
                               ) : null}
                             </div>
                           </button>
-                          <div className="flex flex-wrap items-center gap-2">
+                          <div className="flex shrink-0 items-center gap-2 whitespace-nowrap">
                             <Button
                               variant="outline"
                               onClick={(event) => {
