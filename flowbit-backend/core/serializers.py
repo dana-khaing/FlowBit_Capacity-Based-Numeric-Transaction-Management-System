@@ -493,6 +493,7 @@ class RepeatTicketItemSerializer(serializers.ModelSerializer):
 
 class RepeatTicketSerializer(serializers.ModelSerializer):
     items = RepeatTicketItemSerializer(many=True)
+    repeat_code = serializers.SerializerMethodField()
     current_status = serializers.SerializerMethodField()
     generated_ticket_id = serializers.SerializerMethodField()
     generated_ticket_number = serializers.SerializerMethodField()
@@ -504,6 +505,7 @@ class RepeatTicketSerializer(serializers.ModelSerializer):
         model = RepeatTicket
         fields = [
             'id',
+            'repeat_code',
             'customer_name',
             'notes',
             'version',
@@ -521,6 +523,7 @@ class RepeatTicketSerializer(serializers.ModelSerializer):
             'version',
             'created_at',
             'updated_at',
+            'repeat_code',
             'current_status',
             'generated_ticket_id',
             'generated_ticket_number',
@@ -546,6 +549,9 @@ class RepeatTicketSerializer(serializers.ModelSerializer):
 
     def get_current_status(self, obj):
         return obj.current_status_for_period(self._active_period())
+
+    def get_repeat_code(self, obj):
+        return obj.repeat_code
 
     def get_generated_ticket_id(self, obj):
         generation = self._generation(obj)
@@ -589,6 +595,8 @@ class RepeatTicketSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         items_data = validated_data.pop('items', [])
         repeat_ticket = RepeatTicket.objects.create(**validated_data)
+        repeat_ticket.assign_serial_number()
+        repeat_ticket.save(update_fields=['serial_number'])
         self._replace_items(repeat_ticket, items_data)
         return repeat_ticket
 

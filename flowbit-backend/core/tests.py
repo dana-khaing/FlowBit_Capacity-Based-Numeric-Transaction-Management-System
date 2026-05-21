@@ -185,6 +185,33 @@ class IdentifierBootstrapTests(APITestCase):
         self.assertEqual(response.data[0]['number'], '000')
         self.assertEqual(response.data[-1]['number'], '999')
 
+    def test_repeat_ticket_create_bootstraps_identifiers_without_standard_ledger(self):
+        user = User.objects.create_user(username='repeat_bootstrap_owner', password='password123')
+        self.client.force_authenticate(user=user)
+
+        self.assertEqual(Identifier.objects.count(), 0)
+
+        response = self.client.post(
+            '/api/repeat-tickets/',
+            {
+                'customer_name': 'Bootstrap Repeat',
+                'items': [
+                    {
+                        'identifier_number': '101',
+                        'amount': '50.00',
+                        'amount_uses_allocation_basis': False,
+                        'use_permutations': False,
+                        'position': 0,
+                    },
+                ],
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(Identifier.objects.count(), 1000)
+        self.assertEqual(response.data['items'][0]['identifier_number'], '101')
+
     def test_first_standard_ledger_creates_identifiers_even_if_reserve_exists(self):
         owner = User.objects.create_user(username='ledger_owner', password='password123')
         period = Period.objects.create(
@@ -2606,6 +2633,68 @@ class PrivateWorkflowAPITests(APITestCase):
 
         self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(create_response.data['items'][0]['identifier_number'], '101')
+
+    def test_repeat_ticket_assigns_per_user_serial_code_and_reuses_gaps(self):
+        first_response = self.client.post(
+            '/api/repeat-tickets/',
+            {
+                'customer_name': 'First Repeat',
+                'items': [
+                    {
+                        'identifier': self.identifier.id,
+                        'amount': '50.00',
+                        'amount_uses_allocation_basis': False,
+                        'use_permutations': False,
+                        'position': 0,
+                    },
+                ],
+            },
+            format='json',
+        )
+        second_response = self.client.post(
+            '/api/repeat-tickets/',
+            {
+                'customer_name': 'Second Repeat',
+                'items': [
+                    {
+                        'identifier': self.second_identifier.id,
+                        'amount': '40.00',
+                        'amount_uses_allocation_basis': False,
+                        'use_permutations': False,
+                        'position': 0,
+                    },
+                ],
+            },
+            format='json',
+        )
+
+        self.assertEqual(first_response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(second_response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(first_response.data['repeat_code'], 'REP-00001')
+        self.assertEqual(second_response.data['repeat_code'], 'REP-00002')
+
+        delete_response = self.client.delete(f"/api/repeat-tickets/{first_response.data['id']}/")
+        self.assertEqual(delete_response.status_code, status.HTTP_204_NO_CONTENT)
+
+        third_response = self.client.post(
+            '/api/repeat-tickets/',
+            {
+                'customer_name': 'Third Repeat',
+                'items': [
+                    {
+                        'identifier': self.identifier.id,
+                        'amount': '30.00',
+                        'amount_uses_allocation_basis': False,
+                        'use_permutations': False,
+                        'position': 0,
+                    },
+                ],
+            },
+            format='json',
+        )
+
+        self.assertEqual(third_response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(third_response.data['repeat_code'], 'REP-00001')
 
     def test_repeat_ticket_generate_all_skips_generated_and_collects_unsuccessful(self):
         generated_repeat = self.client.post(
