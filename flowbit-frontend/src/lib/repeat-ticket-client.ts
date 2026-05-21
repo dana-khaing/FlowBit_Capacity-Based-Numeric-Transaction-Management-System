@@ -13,6 +13,7 @@ export type FlowBitRepeatTicketItem = {
 
 export type FlowBitRepeatTicket = {
   id: number;
+  repeat_code: string | null;
   customer_name: string | null;
   notes: string | null;
   version: number;
