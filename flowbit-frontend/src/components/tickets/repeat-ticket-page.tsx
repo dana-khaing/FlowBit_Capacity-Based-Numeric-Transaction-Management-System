@@ -668,7 +668,7 @@ export function RepeatTicketPage() {
         workspaceClassName="print:hidden"
         asideClassName="print:block"
         aside={
-          <section className="ticket-history-print-shell h-[calc(100vh-6.5rem)] overflow-y-auto rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] print:h-auto print:max-h-none print:overflow-visible print:rounded-none print:border-0 print:p-0 print:shadow-none sm:p-6">
+          <section className="ticket-history-print-shell h-[calc(100vh-18rem)] min-h-[34rem] overflow-y-auto rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] print:h-auto print:max-h-none print:overflow-visible print:rounded-none print:border-0 print:p-0 print:shadow-none sm:p-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Repeat ticket view</p>
