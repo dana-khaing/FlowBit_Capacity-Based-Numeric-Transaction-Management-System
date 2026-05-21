@@ -176,7 +176,11 @@ function getPermutationNumbers(identifierNumber: string) {
 }
 
 function getRepeatItemDisplayAmount(amount: string | number, usesAllocationBasis: boolean) {
-  return usesAllocationBasis ? Number(amount) : Number(amount);
+  const numericAmount = Number(amount);
+  if (Number.isNaN(numericAmount)) {
+    return amount;
+  }
+  return usesAllocationBasis ? numericAmount : numericAmount * 1.25;
 }
 
 function getStatusTone(status: FlowBitRepeatTicket["current_status"]) {
