@@ -67,6 +67,7 @@ from .notification_realtime import (
     push_dashboard_refresh_for_user,
     push_dashboard_refresh_for_users,
     push_notification_refresh_for_user,
+    push_repeat_tickets_refresh_for_user,
 )
 from .permissions import (
     IsAdminRole,
@@ -5843,6 +5844,16 @@ class RepeatTicketViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
+        push_repeat_tickets_refresh_for_user(self.request.user.id)
+
+    def perform_update(self, serializer):
+        serializer.save()
+        push_repeat_tickets_refresh_for_user(self.request.user.id)
+
+    def perform_destroy(self, instance):
+        user_id = self.request.user.id
+        instance.delete()
+        push_repeat_tickets_refresh_for_user(user_id)
 
     @action(detail=True, methods=['post'], url_path='generate')
     def generate(self, request, pk=None):
@@ -5990,6 +6001,7 @@ class RepeatTicketViewSet(viewsets.ModelViewSet):
             },
         )
         refresh_dashboard_for_user(self.request.user)
+        push_repeat_tickets_refresh_for_user(self.request.user.id)
         return {
             'repeat_ticket_id': repeat_ticket.id,
             'status': RepeatTicketGeneration.STATUS_GENERATED,

@@ -14,7 +14,11 @@ import {
   faUser,
 } from "@fortawesome/free-solid-svg-icons";
 import { AppSectionPage } from "@/components/app/app-section-page";
-import { notifyDashboardUpdated, notifyTicketsUpdated } from "@/components/app/workspace-events";
+import {
+  notifyDashboardUpdated,
+  notifyTicketsUpdated,
+  REPEAT_TICKETS_UPDATED_EVENT,
+} from "@/components/app/workspace-events";
 import { AdminActionToast } from "@/components/admin/admin-action-toast";
 import { AdminConfirmModal } from "@/components/admin/admin-confirm-modal";
 import { Button } from "@/components/ui/button";
@@ -120,6 +124,17 @@ function getRepeatTicketCustomerName(customerName: string | null | undefined) {
     return "No customer name";
   }
   return trimmedValue;
+}
+
+function sortRepeatTickets(tickets: FlowBitRepeatTicket[]) {
+  return [...tickets].sort((left, right) => {
+    const updatedDifference =
+      new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime();
+    if (updatedDifference !== 0) {
+      return updatedDifference;
+    }
+    return new Date(right.created_at).getTime() - new Date(left.created_at).getTime();
+  });
 }
 
 function getPermutationCount(identifierNumber: string) {
@@ -234,7 +249,7 @@ export function RepeatTicketPage() {
     setPageError(null);
     try {
       const nextRepeatTickets = await fetchRepeatTickets();
-      setRepeatTickets(nextRepeatTickets);
+      setRepeatTickets(sortRepeatTickets(nextRepeatTickets));
     } catch (error) {
       setPageError(error instanceof Error ? error.message : "Failed to load repeat tickets.");
     } finally {
@@ -244,6 +259,17 @@ export function RepeatTicketPage() {
 
   useEffect(() => {
     void loadPageData();
+  }, []);
+
+  useEffect(() => {
+    const handleRepeatTicketsUpdated = () => {
+      void loadPageData();
+    };
+
+    window.addEventListener(REPEAT_TICKETS_UPDATED_EVENT, handleRepeatTicketsUpdated);
+    return () => {
+      window.removeEventListener(REPEAT_TICKETS_UPDATED_EVENT, handleRepeatTicketsUpdated);
+    };
   }, []);
 
   useEffect(() => {
@@ -399,15 +425,23 @@ export function RepeatTicketPage() {
     try {
       const payload = buildPayload();
       if (editingRepeatTicket) {
-        await updateRepeatTicket(editingRepeatTicket.id, payload);
+        const updatedRepeatTicket = await updateRepeatTicket(editingRepeatTicket.id, payload);
+        setRepeatTickets((current) =>
+          sortRepeatTickets(
+            current.map((repeatTicket) =>
+              repeatTicket.id === updatedRepeatTicket.id ? updatedRepeatTicket : repeatTicket,
+            ),
+          ),
+        );
         setToast({ type: "success", message: "Repeat ticket updated." });
       } else {
-        await createRepeatTicket(payload);
+        const createdRepeatTicket = await createRepeatTicket(payload);
+        setRepeatTickets((current) => sortRepeatTickets([createdRepeatTicket, ...current]));
+        setSelectedRepeatTicketId(createdRepeatTicket.id);
         setToast({ type: "success", message: "Repeat ticket created." });
       }
       setIsModalOpen(false);
       resetModalState();
-      await loadPageData();
     } catch (error) {
       setToast({ type: "error", message: error instanceof Error ? error.message : "Request failed." });
     } finally {
@@ -557,9 +591,9 @@ export function RepeatTicketPage() {
     setIsSaving(true);
     try {
       await deleteRepeatTicket(deleteTarget.id);
+      setRepeatTickets((current) => current.filter((repeatTicket) => repeatTicket.id !== deleteTarget.id));
       setToast({ type: "success", message: "Repeat ticket deleted." });
       setDeleteTarget(null);
-      await loadPageData();
     } catch (error) {
       setToast({ type: "error", message: error instanceof Error ? error.message : "Request failed." });
     } finally {
