@@ -43,13 +43,18 @@ export type RepeatTicketPayload = {
   items: RepeatTicketDraftItemPayload[];
 };
 
-type RepeatTicketGenerateResponse = {
+export type RepeatTicketGenerateResponse = {
   repeat_ticket_id: number;
-  status: "GENERATED" | "UNSUCCESSFUL" | "UPDATED";
+  status: "GENERATED" | "UNSUCCESSFUL" | "UPDATED" | "CONFIRM_REQUIRED";
   ticket_id?: number;
   ticket_number?: string;
   detail?: string;
   errors?: string[];
+  overflow_items?: Array<{
+    identifier_number: string;
+    overflow_amount: string;
+  }>;
+  total_overflow_amount?: string;
 };
 
 function authHeaders() {
@@ -90,10 +95,11 @@ export async function deleteRepeatTicket(id: number) {
   });
 }
 
-export async function generateRepeatTicket(id: number) {
+export async function generateRepeatTicket(id: number, payload?: { confirm_spill_over?: boolean }) {
   return apiRequest<RepeatTicketGenerateResponse>(`/repeat-tickets/${id}/generate/`, {
     method: "POST",
     headers: authHeaders(),
+    body: JSON.stringify(payload ?? {}),
   });
 }
 

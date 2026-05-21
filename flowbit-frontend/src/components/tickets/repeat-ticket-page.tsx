@@ -25,9 +25,9 @@ import {
   createRepeatTicket,
   deleteRepeatTicket,
   fetchRepeatTickets,
-  generateAllRepeatTickets,
   generateRepeatTicket,
   type FlowBitRepeatTicket,
+  type RepeatTicketGenerateResponse,
   updateRepeatTicket,
 } from "@/lib/repeat-ticket-client";
 
@@ -35,6 +35,19 @@ type ToastState = {
   type: "success" | "error";
   message: string;
 } | null;
+
+type RepeatTicketOverflowPromptState = {
+  repeatTicketId: number;
+  repeatTicketCode: string;
+  overflowItems: Array<{
+    identifier_number: string;
+    overflow_amount: string;
+  }>;
+  totalOverflowAmount: string;
+  remainingQueue: number[];
+  generatedCount: number;
+  unsuccessfulCount: number;
+};
 
 type RepeatDraftItem = {
   id: string;
@@ -197,6 +210,7 @@ export function RepeatTicketPage() {
   const [busyTicketId, setBusyTicketId] = useState<number | null>(null);
   const [selectedRepeatTicketId, setSelectedRepeatTicketId] = useState<number | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [overflowPrompt, setOverflowPrompt] = useState<RepeatTicketOverflowPromptState | null>(null);
 
   const canGenerate = hasActivePeriod && activeStandardLedgerCount > 0;
   const actionableRepeatTickets = repeatTickets.filter(
@@ -402,44 +416,138 @@ export function RepeatTicketPage() {
   }
 
   async function handleGenerateTicket(repeatTicket: FlowBitRepeatTicket) {
-    setBusyTicketId(repeatTicket.id);
-    try {
-      const response = await generateRepeatTicket(repeatTicket.id);
-      setToast({
-        type: "success",
-        message: `Repeat ticket generated as ${response.ticket_number}.`,
-      });
-      notifyTicketsUpdated();
-      notifyDashboardUpdated();
-      await loadPageData();
-    } catch (error) {
-      setToast({ type: "error", message: error instanceof Error ? error.message : "Request failed." });
-      await loadPageData();
-    } finally {
-      setBusyTicketId(null);
-    }
+    await processRepeatTicketQueue([repeatTicket.id]);
   }
 
   async function handleGenerateAll() {
     setIsGeneratingAll(true);
     try {
-      const response = await generateAllRepeatTickets();
-      const generatedCount = response.generated.length;
-      const unsuccessfulCount = response.unsuccessful.length;
-      setToast({
-        type: unsuccessfulCount ? "error" : "success",
-        message: unsuccessfulCount
-          ? `${generatedCount} repeat tickets generated, ${unsuccessfulCount} unsuccessful.`
-          : `${generatedCount} repeat tickets generated successfully.`,
-      });
-      notifyTicketsUpdated();
-      notifyDashboardUpdated();
-      await loadPageData();
+      await processRepeatTicketQueue(actionableRepeatTickets.map((repeatTicket) => repeatTicket.id), true);
     } catch (error) {
       setToast({ type: "error", message: error instanceof Error ? error.message : "Request failed." });
-    } finally {
-      setIsGeneratingAll(false);
     }
+  }
+
+  async function processRepeatTicketQueue(
+    queue: number[],
+    isBatch = false,
+    generatedCount = 0,
+    unsuccessfulCount = 0,
+  ) {
+    if (!queue.length) {
+      setBusyTicketId(null);
+      setIsGeneratingAll(false);
+      if (isBatch) {
+        setToast({
+          type: unsuccessfulCount ? "error" : "success",
+          message: unsuccessfulCount
+            ? `${generatedCount} repeat tickets generated, ${unsuccessfulCount} unsuccessful or skipped.`
+            : `${generatedCount} repeat tickets generated successfully.`,
+        });
+      } else if (generatedCount > 0) {
+        setToast({
+          type: "success",
+          message: "Repeat ticket generated successfully.",
+        });
+      }
+      if (generatedCount > 0) {
+        notifyTicketsUpdated();
+        notifyDashboardUpdated();
+      }
+      await loadPageData();
+      return;
+    }
+
+    const [currentTicketId, ...remainingQueue] = queue;
+    const currentRepeatTicket = repeatTickets.find((repeatTicket) => repeatTicket.id === currentTicketId);
+    if (!currentRepeatTicket) {
+      await processRepeatTicketQueue(
+        remainingQueue,
+        isBatch,
+        generatedCount,
+        unsuccessfulCount + 1,
+      );
+      return;
+    }
+
+    setBusyTicketId(currentTicketId);
+    try {
+      const response = await generateRepeatTicket(currentTicketId);
+      if (response.status === "CONFIRM_REQUIRED") {
+        setBusyTicketId(null);
+        setOverflowPrompt({
+          repeatTicketId: currentTicketId,
+          repeatTicketCode: getRepeatTicketCode(currentRepeatTicket),
+          overflowItems: response.overflow_items || [],
+          totalOverflowAmount: response.total_overflow_amount || "0",
+          remainingQueue,
+          generatedCount,
+          unsuccessfulCount,
+        });
+        return;
+      }
+
+      await processRepeatTicketQueue(
+        remainingQueue,
+        isBatch,
+        generatedCount + 1,
+        unsuccessfulCount,
+      );
+    } catch (error) {
+      if (!isBatch) {
+        setToast({ type: "error", message: error instanceof Error ? error.message : "Request failed." });
+      }
+      await processRepeatTicketQueue(
+        remainingQueue,
+        isBatch,
+        generatedCount,
+        unsuccessfulCount + 1,
+      );
+    }
+  }
+
+  async function handleOverflowPromptConfirm() {
+    if (!overflowPrompt) {
+      return;
+    }
+    setBusyTicketId(overflowPrompt.repeatTicketId);
+    try {
+      const response: RepeatTicketGenerateResponse = await generateRepeatTicket(
+        overflowPrompt.repeatTicketId,
+        { confirm_spill_over: true },
+      );
+      setOverflowPrompt(null);
+      await processRepeatTicketQueue(
+        overflowPrompt.remainingQueue,
+        overflowPrompt.remainingQueue.length > 0,
+        overflowPrompt.generatedCount + (response.status === "GENERATED" ? 1 : 0),
+        overflowPrompt.unsuccessfulCount + (response.status === "GENERATED" ? 0 : 1),
+      );
+    } catch (error) {
+      setToast({ type: "error", message: error instanceof Error ? error.message : "Request failed." });
+      const promptState = overflowPrompt;
+      setOverflowPrompt(null);
+      await processRepeatTicketQueue(
+        promptState.remainingQueue,
+        promptState.remainingQueue.length > 0,
+        promptState.generatedCount,
+        promptState.unsuccessfulCount + 1,
+      );
+    }
+  }
+
+  async function handleOverflowPromptDecline() {
+    if (!overflowPrompt) {
+      return;
+    }
+    const promptState = overflowPrompt;
+    setOverflowPrompt(null);
+    await processRepeatTicketQueue(
+      promptState.remainingQueue,
+      promptState.remainingQueue.length > 0,
+      promptState.generatedCount,
+      promptState.unsuccessfulCount + 1,
+    );
   }
 
   async function handleDeleteRepeatTicket() {
@@ -480,6 +588,41 @@ export function RepeatTicketPage() {
         onCancel={() => setDeleteTarget(null)}
         onConfirm={handleDeleteRepeatTicket}
       />
+
+      <AdminConfirmModal
+        open={Boolean(overflowPrompt)}
+        title="Process spill over"
+        description={
+          overflowPrompt
+            ? `${overflowPrompt.repeatTicketCode} will create spill over. Process this repeat ticket and continue?`
+            : ""
+        }
+        confirmLabel="Process"
+        showCodeInput={false}
+        busy={busyTicketId === overflowPrompt?.repeatTicketId}
+        onCodeChange={() => {}}
+        onCancel={() => {
+          void handleOverflowPromptDecline();
+        }}
+        onConfirm={() => {
+          void handleOverflowPromptConfirm();
+        }}
+      >
+        {overflowPrompt ? (
+          <div className="space-y-3 text-sm text-stone-600">
+            <div className="rounded-[18px] border border-stone-900/8 bg-stone-50 px-4 py-3">
+              Total spill over {formatAmount(overflowPrompt.totalOverflowAmount)}
+            </div>
+            <div className="space-y-2">
+              {overflowPrompt.overflowItems.map((item) => (
+                <p key={`${item.identifier_number}-${item.overflow_amount}`}>
+                  {item.identifier_number} spill over {formatAmount(item.overflow_amount)}
+                </p>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </AdminConfirmModal>
 
       <AppSectionPage
         eyebrow="Tickets"
