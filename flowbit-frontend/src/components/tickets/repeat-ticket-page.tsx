@@ -97,23 +97,14 @@ function formatRepeatTicketDate(value: string) {
   });
 }
 
-function ensureRepeatCustomerName(value: string) {
-  const trimmedValue = value.trim();
-  if (!trimmedValue) {
-    return "";
-  }
-
-  if (/^rep-/i.test(trimmedValue)) {
-    return `REP-${trimmedValue.slice(4).trimStart()}`;
-  }
-
-  return `REP-${trimmedValue}`;
+function getRepeatTicketCode(repeatTicket: Pick<FlowBitRepeatTicket, "repeat_code" | "customer_name" | "id">) {
+  return repeatTicket.repeat_code || repeatTicket.customer_name || `Repeat Ticket #${repeatTicket.id}`;
 }
 
-function stripRepeatCustomerName(value: string) {
-  const trimmedValue = value.trim();
-  if (/^rep-/i.test(trimmedValue)) {
-    return trimmedValue.slice(4).trimStart();
+function getRepeatTicketCustomerName(customerName: string | null | undefined) {
+  const trimmedValue = customerName?.trim();
+  if (!trimmedValue) {
+    return "No customer name";
   }
   return trimmedValue;
 }
@@ -299,11 +290,7 @@ export function RepeatTicketPage() {
 
   function openEditModal(repeatTicket: FlowBitRepeatTicket) {
     setEditingRepeatTicket(repeatTicket);
-    setCustomerName(
-      repeatTicket.customer_name?.trim()
-        ? stripRepeatCustomerName(repeatTicket.customer_name)
-        : "",
-    );
+    setCustomerName(repeatTicket.customer_name?.trim() || "");
     setNotes(repeatTicket.notes ?? "");
     setDraftItems(
       repeatTicket.items.map((item) =>
@@ -387,7 +374,7 @@ export function RepeatTicketPage() {
     );
 
     return {
-      customer_name: ensureRepeatCustomerName(customerName),
+      customer_name: customerName.trim(),
       notes,
       items: validItems,
     };
@@ -521,7 +508,7 @@ export function RepeatTicketPage() {
                 <div className="rounded-[24px] border border-dashed border-stone-300 bg-stone-50 p-5">
                   <div className="flex flex-wrap items-center gap-3">
                     <p className="text-2xl font-semibold text-stone-950">
-                      {ensureRepeatCustomerName(selectedRepeatTicket.customer_name || "") || "Walk-in repeat ticket"}
+                      {getRepeatTicketCode(selectedRepeatTicket)}
                     </p>
                     {selectedRepeatTicket.generated_ticket_number ? (
                       <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-stone-600">
@@ -534,7 +521,7 @@ export function RepeatTicketPage() {
                       <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-400">Customer</p>
                       <p className="inline-flex items-center gap-2 font-medium text-stone-900">
                         <FontAwesomeIcon icon={faUser} className="h-3.5 w-3.5 text-stone-400" />
-                        {ensureRepeatCustomerName(selectedRepeatTicket.customer_name || "") || "Walk-in repeat ticket"}
+                        {getRepeatTicketCustomerName(selectedRepeatTicket.customer_name)}
                       </p>
                     </div>
                     <div className="space-y-1">
@@ -708,7 +695,7 @@ export function RepeatTicketPage() {
                           >
                             <div className="flex flex-wrap items-center gap-3">
                               <p className="text-xl font-semibold text-stone-950">
-                                {ensureRepeatCustomerName(repeatTicket.customer_name || "") || "Walk-in repeat ticket"}
+                                {getRepeatTicketCode(repeatTicket)}
                               </p>
                               <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${getStatusTone(repeatTicket.current_status)}`}>
                                 {getStatusLabel(repeatTicket.current_status)}
@@ -775,6 +762,7 @@ export function RepeatTicketPage() {
                               {formatAmount(repeatTicket.total_amount)}
                             </span>
                             <span>{repeatTicket.item_count} entries</span>
+                            <span>{getRepeatTicketCustomerName(repeatTicket.customer_name)}</span>
                             <span>{formatRepeatTicketDate(repeatTicket.created_at)}</span>
                             {repeatTicket.generated_ticket_number ? (
                               <span>{repeatTicket.generated_ticket_number}</span>
