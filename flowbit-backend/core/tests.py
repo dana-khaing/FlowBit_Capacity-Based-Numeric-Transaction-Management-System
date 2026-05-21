@@ -2613,6 +2613,69 @@ class PrivateWorkflowAPITests(APITestCase):
         self.assertEqual(listed_repeat_ticket['generated_ticket_id'], generated_ticket.id)
         self.assertEqual(listed_repeat_ticket['generated_ticket_number'], generated_ticket.ticket_number)
 
+    def test_repeat_ticket_without_customer_name_generates_using_repeat_code(self):
+        create_response = self.client.post(
+            '/api/repeat-tickets/',
+            {
+                'customer_name': '',
+                'items': [
+                    {
+                        'identifier': self.identifier.id,
+                        'amount': '50.00',
+                        'amount_uses_allocation_basis': False,
+                        'use_permutations': False,
+                        'position': 0,
+                    },
+                ],
+            },
+            format='json',
+        )
+
+        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
+        repeat_ticket_id = create_response.data['id']
+        self.assertEqual(create_response.data['repeat_code'], 'REP-00001')
+
+        generate_response = self.client.post(
+            f'/api/repeat-tickets/{repeat_ticket_id}/generate/',
+            {},
+            format='json',
+        )
+
+        self.assertEqual(generate_response.status_code, status.HTTP_201_CREATED)
+        generated_ticket = Ticket.objects.get(pk=generate_response.data['ticket_id'])
+        self.assertEqual(generated_ticket.customer_name, 'REP-00001')
+
+    def test_repeat_ticket_with_customer_name_generates_using_rep_prefix(self):
+        create_response = self.client.post(
+            '/api/repeat-tickets/',
+            {
+                'customer_name': 'Dana',
+                'items': [
+                    {
+                        'identifier': self.identifier.id,
+                        'amount': '50.00',
+                        'amount_uses_allocation_basis': False,
+                        'use_permutations': False,
+                        'position': 0,
+                    },
+                ],
+            },
+            format='json',
+        )
+
+        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
+        repeat_ticket_id = create_response.data['id']
+
+        generate_response = self.client.post(
+            f'/api/repeat-tickets/{repeat_ticket_id}/generate/',
+            {},
+            format='json',
+        )
+
+        self.assertEqual(generate_response.status_code, status.HTTP_201_CREATED)
+        generated_ticket = Ticket.objects.get(pk=generate_response.data['ticket_id'])
+        self.assertEqual(generated_ticket.customer_name, 'REP-Dana')
+
     def test_repeat_ticket_can_be_created_with_identifier_number_only(self):
         create_response = self.client.post(
             '/api/repeat-tickets/',
