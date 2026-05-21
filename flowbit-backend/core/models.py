@@ -1139,6 +1139,7 @@ class RepeatTicket(models.Model):
         on_delete=models.CASCADE,
         related_name='repeat_tickets',
     )
+    serial_number = models.PositiveIntegerField(null=True, blank=True, db_index=True)
     customer_name = models.CharField(max_length=150, blank=True, null=True)
     notes = models.TextField(blank=True, null=True)
     version = models.PositiveIntegerField(default=1)
@@ -1149,9 +1150,38 @@ class RepeatTicket(models.Model):
         ordering = ['-updated_at', '-created_at']
         verbose_name = "Repeat Ticket"
         verbose_name_plural = "Repeat Tickets"
+        constraints = [
+            models.UniqueConstraint(
+                fields=['created_by', 'serial_number'],
+                name='unique_repeat_ticket_serial_per_user',
+            ),
+        ]
 
     def __str__(self):
-        return self.customer_name or f"Repeat Ticket #{self.pk}"
+        return self.repeat_code or self.customer_name or f"Repeat Ticket #{self.pk}"
+
+    @property
+    def repeat_code(self):
+        if not self.serial_number:
+            return None
+        return f"REP-{self.serial_number:05d}"
+
+    @classmethod
+    def next_serial_number_for_user(cls, user):
+        used_numbers = set(
+            cls.objects.filter(created_by=user, serial_number__isnull=False)
+            .values_list('serial_number', flat=True)
+        )
+        next_number = 1
+        while next_number in used_numbers:
+            next_number += 1
+        return next_number
+
+    def assign_serial_number(self):
+        if self.serial_number:
+            return self.serial_number
+        self.serial_number = self.next_serial_number_for_user(self.created_by)
+        return self.serial_number
 
     def bump_version(self, save=True):
         self.version += 1
