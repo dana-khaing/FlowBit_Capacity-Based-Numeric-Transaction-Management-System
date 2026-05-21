@@ -666,7 +666,7 @@ export function RepeatTicketPage() {
         headerClassName="hidden"
         layoutClassName="print:block"
         workspaceClassName="print:hidden"
-        asideClassName="print:block"
+        asideClassName="print:block xl:pt-[17.5rem]"
         aside={
           <section className="ticket-history-print-shell h-[calc(100vh-18rem)] min-h-[34rem] overflow-y-auto rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] print:h-auto print:max-h-none print:overflow-visible print:rounded-none print:border-0 print:p-0 print:shadow-none sm:p-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
