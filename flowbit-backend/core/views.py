@@ -824,6 +824,23 @@ def _build_repeat_ticket_generation_payload(repeat_ticket):
     }
 
 
+def _summarize_repeat_ticket_overflow(prepared_items):
+    overflow_items = []
+    total_overflow_amount = Decimal('0.00')
+    for prepared_item in prepared_items:
+        overflow_amount = prepared_item['preview']['overflow_amount']
+        if overflow_amount <= 0:
+            continue
+        overflow_items.append(
+            {
+                'identifier_number': prepared_item['identifier'].number,
+                'overflow_amount': str(overflow_amount),
+            }
+        )
+        total_overflow_amount += overflow_amount
+    return overflow_items, total_overflow_amount
+
+
 def _sync_repeat_ticket_from_ticket(*, repeat_ticket, ticket, generation=None):
     visible_transactions = list(
         ticket.transactions.filter(is_refunded=False).select_related('identifier').order_by('id')
@@ -5830,7 +5847,10 @@ class RepeatTicketViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='generate')
     def generate(self, request, pk=None):
         repeat_ticket = self.get_object()
-        result, status_code = self._generate_repeat_ticket(repeat_ticket)
+        result, status_code = self._generate_repeat_ticket(
+            repeat_ticket,
+            confirm_spill_over=request.data.get('confirm_spill_over'),
+        )
         return Response(result, status=status_code)
 
     @action(detail=False, methods=['post'], url_path='generate-all')
@@ -5875,7 +5895,7 @@ class RepeatTicketViewSet(viewsets.ModelViewSet):
             status=status.HTTP_200_OK,
         )
 
-    def _generate_repeat_ticket(self, repeat_ticket, open_period=None):
+    def _generate_repeat_ticket(self, repeat_ticket, open_period=None, confirm_spill_over=False):
         open_period = open_period or Period.get_open_period()
         if not open_period:
             return {"detail": "No open period available."}, status.HTTP_400_BAD_REQUEST
@@ -5888,15 +5908,6 @@ class RepeatTicketViewSet(viewsets.ModelViewSet):
             owner=self.request.user,
         ).exists():
             return {"detail": "No active ledgers available in the current open period."}, status.HTTP_400_BAD_REQUEST
-
-        generation, _created = RepeatTicketGeneration.objects.get_or_create(
-            repeat_ticket=repeat_ticket,
-            period=open_period,
-            defaults={
-                'status': RepeatTicketGeneration.STATUS_UNSUCCESSFUL,
-                'source_version': repeat_ticket.version,
-            },
-        )
 
         current_status = repeat_ticket.current_status_for_period(open_period)
         if current_status in {RepeatTicketGeneration.STATUS_GENERATED, RepeatTicketGeneration.STATUS_UPDATED}:
@@ -5913,6 +5924,27 @@ class RepeatTicketViewSet(viewsets.ModelViewSet):
                 period=open_period,
                 items=payload['items'],
                 allow_partial=False,
+            )
+            overflow_items, total_overflow_amount = _summarize_repeat_ticket_overflow(prepared_items)
+            allow_spill_over = confirm_spill_over
+            if isinstance(allow_spill_over, str):
+                allow_spill_over = allow_spill_over.strip().lower() in {'true', '1', 'yes'}
+            if overflow_items and not allow_spill_over:
+                return {
+                    'repeat_ticket_id': repeat_ticket.id,
+                    'status': 'CONFIRM_REQUIRED',
+                    'detail': 'This repeat ticket will create spill over.',
+                    'overflow_items': overflow_items,
+                    'total_overflow_amount': str(total_overflow_amount),
+                }, status.HTTP_200_OK
+
+            generation, _created = RepeatTicketGeneration.objects.get_or_create(
+                repeat_ticket=repeat_ticket,
+                period=open_period,
+                defaults={
+                    'status': RepeatTicketGeneration.STATUS_UNSUCCESSFUL,
+                    'source_version': repeat_ticket.version,
+                },
             )
             with db_transaction.atomic():
                 ticket, created_items = _create_ticket_from_prepared_items(

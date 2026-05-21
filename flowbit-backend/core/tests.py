@@ -2771,6 +2771,70 @@ class PrivateWorkflowAPITests(APITestCase):
             RepeatTicketGeneration.STATUS_UNSUCCESSFUL,
         )
 
+    def test_repeat_ticket_generate_requires_spill_over_confirmation(self):
+        repeat_ticket_response = self.client.post(
+            '/api/repeat-tickets/',
+            {
+                'customer_name': 'Overflow Confirm Customer',
+                'items': [
+                    {
+                        'identifier': self.identifier.id,
+                        'amount': '150.00',
+                        'amount_uses_allocation_basis': False,
+                        'use_permutations': False,
+                        'position': 0,
+                    },
+                ],
+            },
+            format='json',
+        )
+        repeat_ticket_id = repeat_ticket_response.data['id']
+
+        response = self.client.post(
+            f'/api/repeat-tickets/{repeat_ticket_id}/generate/',
+            {},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['status'], 'CONFIRM_REQUIRED')
+        self.assertEqual(response.data['repeat_ticket_id'], repeat_ticket_id)
+        self.assertEqual(response.data['overflow_items'][0]['identifier_number'], self.identifier.number)
+
+        list_response = self.client.get('/api/repeat-tickets/')
+        listed_repeat_ticket = next(item for item in list_response.data if item['id'] == repeat_ticket_id)
+        self.assertEqual(listed_repeat_ticket['current_status'], 'NEW')
+
+    def test_repeat_ticket_generate_can_continue_after_spill_over_confirmation(self):
+        repeat_ticket_response = self.client.post(
+            '/api/repeat-tickets/',
+            {
+                'customer_name': 'Overflow Process Customer',
+                'items': [
+                    {
+                        'identifier': self.identifier.id,
+                        'amount': '150.00',
+                        'amount_uses_allocation_basis': False,
+                        'use_permutations': False,
+                        'position': 0,
+                    },
+                ],
+            },
+            format='json',
+        )
+        repeat_ticket_id = repeat_ticket_response.data['id']
+
+        response = self.client.post(
+            f'/api/repeat-tickets/{repeat_ticket_id}/generate/',
+            {
+                'confirm_spill_over': True,
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['status'], RepeatTicketGeneration.STATUS_GENERATED)
+
     def test_repeat_ticket_status_returns_new_again_for_next_period(self):
         repeat_ticket_response = self.client.post(
             '/api/repeat-tickets/',
