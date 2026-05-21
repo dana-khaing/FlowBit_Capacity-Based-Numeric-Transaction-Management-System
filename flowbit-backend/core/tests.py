@@ -2397,7 +2397,8 @@ class PrivateWorkflowAPITests(APITestCase):
             password='password123',
         )
         self.approver.profile.role = 'admin'
-        self.approver.profile.save(update_fields=['role', 'updated_at'])
+        self.approver.profile.set_master_override_password('override-123')
+        self.approver.profile.save(update_fields=['role', 'master_override_password', 'updated_at'])
         self.other_user = User.objects.create_user(
             username='other_user',
             password='password123',
@@ -2541,7 +2542,7 @@ class PrivateWorkflowAPITests(APITestCase):
     def test_ticket_list_can_filter_refunded_tickets(self):
         refund_response = self.client.post(
             f'/api/tickets/{self.active_ticket.ticket_number}/refund/',
-            {'action': 'refund_ticket'},
+            {'action': 'refund_ticket', 'admin_override_code': 'override-123'},
             format='json',
         )
         self.assertEqual(refund_response.status_code, status.HTTP_200_OK)
@@ -2986,6 +2987,7 @@ class PrivateWorkflowAPITests(APITestCase):
             f'/api/tickets/{generated_ticket.ticket_number}/refund/',
             {
                 'action': 'refund_transaction',
+                'admin_override_code': 'override-123',
                 'transaction_id': generated_transaction.id,
                 'sync_repeat_ticket': True,
             },
@@ -3029,6 +3031,7 @@ class PrivateWorkflowAPITests(APITestCase):
             f'/api/overflows/{overflow.id}/resolve/',
             {
                 'action': 'refund_overflow_only',
+                'admin_override_code': 'override-123',
                 'sync_repeat_ticket': True,
             },
             format='json',
@@ -3639,7 +3642,7 @@ class PrivateWorkflowAPITests(APITestCase):
     def test_ticket_refund_can_succeed_without_spill_over(self):
         response = self.client.post(
             f'/api/tickets/{self.active_ticket.ticket_number}/refund/',
-            {'action': 'refund_ticket'},
+            {'action': 'refund_ticket', 'admin_override_code': 'override-123'},
             format='json',
         )
 
@@ -3648,6 +3651,26 @@ class PrivateWorkflowAPITests(APITestCase):
         self.active_transaction.refresh_from_db()
         self.assertTrue(self.active_ticket.is_refunded)
         self.assertTrue(self.active_transaction.is_refunded)
+
+    def test_ticket_refund_requires_admin_override_code_for_admin_user(self):
+        response = self.client.post(
+            f'/api/tickets/{self.active_ticket.ticket_number}/refund/',
+            {'action': 'refund_ticket'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data['detail'], 'Admin override code is required for refund actions.')
+
+    def test_ticket_refund_rejects_incorrect_admin_override_code_for_admin_user(self):
+        response = self.client.post(
+            f'/api/tickets/{self.active_ticket.ticket_number}/refund/',
+            {'action': 'refund_ticket', 'admin_override_code': 'wrong-code'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data['detail'], 'Admin override code is incorrect.')
 
     def test_identifier_detail_keeps_reserve_capacity_when_frozen_for_all_ledgers(self):
         IdentifierLedgerFreeze.objects.create(
@@ -3698,6 +3721,7 @@ class PrivateWorkflowAPITests(APITestCase):
             f'/api/tickets/{self.active_ticket.ticket_number}/refund/',
             {
                 'action': 'refund_transaction',
+                'admin_override_code': 'override-123',
                 'transaction_id': self.active_transaction.id,
             },
             format='json',
@@ -3730,6 +3754,7 @@ class PrivateWorkflowAPITests(APITestCase):
             f'/api/tickets/{self.active_ticket.ticket_number}/refund/',
             {
                 'action': 'refund_transaction',
+                'admin_override_code': 'override-123',
                 'transaction_id': second_transaction.id,
             },
             format='json',
@@ -3747,7 +3772,7 @@ class PrivateWorkflowAPITests(APITestCase):
 
         response = self.client.post(
             f'/api/overflows/{overflow.id}/resolve/',
-            {'action': 'refund_overflow_only'},
+            {'action': 'refund_overflow_only', 'admin_override_code': 'override-123'},
             format='json',
         )
 
@@ -3766,13 +3791,14 @@ class PrivateWorkflowAPITests(APITestCase):
 
         refund_ticket_response = self.client.post(
             f'/api/tickets/{self.active_ticket.ticket_number}/refund/',
-            {'action': 'refund_ticket'},
+            {'action': 'refund_ticket', 'admin_override_code': 'override-123'},
             format='json',
         )
         refund_transaction_response = self.client.post(
             f'/api/tickets/{self.active_ticket.ticket_number}/refund/',
             {
                 'action': 'refund_transaction',
+                'admin_override_code': 'override-123',
                 'transaction_id': self.active_transaction.id,
             },
             format='json',
@@ -3793,7 +3819,7 @@ class PrivateWorkflowAPITests(APITestCase):
 
         response = self.client.post(
             f'/api/overflows/{overflow.id}/resolve/',
-            {'action': 'refund_overflow_only'},
+            {'action': 'refund_overflow_only', 'admin_override_code': 'override-123'},
             format='json',
         )
 
@@ -3819,7 +3845,7 @@ class PrivateWorkflowAPITests(APITestCase):
 
         response = self.client.post(
             f'/api/overflows/{overflow.id}/resolve/',
-            {'action': 'refund_overflow_only'},
+            {'action': 'refund_overflow_only', 'admin_override_code': 'override-123'},
             format='json',
         )
 
@@ -3830,7 +3856,7 @@ class PrivateWorkflowAPITests(APITestCase):
     def test_fully_refunded_ticket_still_appears_in_active_period_history(self):
         response = self.client.post(
             f'/api/tickets/{self.active_ticket.ticket_number}/refund/',
-            {'action': 'refund_ticket'},
+            {'action': 'refund_ticket', 'admin_override_code': 'override-123'},
             format='json',
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -3853,7 +3879,7 @@ class PrivateWorkflowAPITests(APITestCase):
     def test_ticket_refund_audit_includes_ticket_summary(self):
         response = self.client.post(
             f'/api/tickets/{self.active_ticket.ticket_number}/refund/',
-            {'action': 'refund_ticket'},
+            {'action': 'refund_ticket', 'admin_override_code': 'override-123'},
             format='json',
         )
 
@@ -4122,7 +4148,7 @@ class PrivateWorkflowAPITests(APITestCase):
 
         return_response = self.client.post(
             f'/api/overflows/{overflow.id}/resolve/',
-            {'action': 'refund_overflow_only'},
+            {'action': 'refund_overflow_only', 'admin_override_code': 'override-123'},
             format='json',
         )
 
@@ -4160,7 +4186,7 @@ class PrivateWorkflowAPITests(APITestCase):
         )
         self.client.post(
             f'/api/overflows/{overflow.id}/resolve/',
-            {'action': 'refund_overflow_only'},
+            {'action': 'refund_overflow_only', 'admin_override_code': 'override-123'},
             format='json',
         )
 
@@ -4217,7 +4243,7 @@ class PrivateWorkflowAPITests(APITestCase):
 
         return_response = self.client.post(
             f'/api/overflows/{overkill.id}/resolve/',
-            {'action': 'refund_overflow_only'},
+            {'action': 'refund_overflow_only', 'admin_override_code': 'override-123'},
             format='json',
         )
 
@@ -4274,7 +4300,7 @@ class PrivateWorkflowAPITests(APITestCase):
 
         return_response = self.client.post(
             f'/api/overflows/{consumed_cso.id}/resolve/',
-            {'action': 'refund_overflow_only'},
+            {'action': 'refund_overflow_only', 'admin_override_code': 'override-123'},
             format='json',
         )
 
@@ -4344,7 +4370,7 @@ class PrivateWorkflowAPITests(APITestCase):
 
         refund_response = self.client.post(
             f'/api/tickets/{consume_ticket.ticket_number}/refund/',
-            {'action': 'refund_ticket'},
+            {'action': 'refund_ticket', 'admin_override_code': 'override-123'},
             format='json',
         )
 
