@@ -752,7 +752,6 @@ export function RepeatTicketPage() {
       >
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">Tickets</p>
                 <h1 className="mt-2 text-3xl font-semibold text-stone-950">Repeat Tickets</h1>
                 <p className="mt-3 max-w-3xl text-sm leading-6 text-stone-500">
                   Save reusable ticket templates here, independent from periods and archive rules. When a new active period opens, generate them into real active tickets without losing the saved repeat tickets.
