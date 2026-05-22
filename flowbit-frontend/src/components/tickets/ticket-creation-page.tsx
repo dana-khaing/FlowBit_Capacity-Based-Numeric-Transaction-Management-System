@@ -234,6 +234,10 @@ function formatEntryCount(count: number) {
   return `${count} ${count === 1 ? "entry" : "entries"}`;
 }
 
+function isDraftItemCompletelyEmpty(item: Pick<TicketDraftItem, "identifierNumber" | "amount">) {
+  return item.identifierNumber.trim() === "" && item.amount.trim() === "";
+}
+
 export function TicketCreationPage() {
   const [customerName, setCustomerName] = useState("");
   const [items, setItems] = useState<TicketDraftItem[]>([createDraftItem()]);
@@ -310,11 +314,14 @@ export function TicketCreationPage() {
           null,
         identifierError:
           hasAttemptedSubmit &&
+          !isDraftItemCompletelyEmpty(item) &&
           !identifierMap.get(normalizeIdentifierNumber(item.identifierNumber))
             ? "Choose a valid identifier."
             : null,
         amountError:
-          hasAttemptedSubmit && !getEffectiveTicketAmount(item)
+          hasAttemptedSubmit &&
+          !isDraftItemCompletelyEmpty(item) &&
+          !getEffectiveTicketAmount(item)
             ? "Enter an amount greater than zero."
             : null,
       })),
@@ -696,17 +703,17 @@ export function TicketCreationPage() {
     partial?: Partial<TicketDraftItem>,
     focusField: "identifier" | "amount" = "identifier",
   ) {
-    let nextItemId = "";
     setItems((current) => {
       const lastItem = current[current.length - 1];
       const nextItem = createDraftItem({
         amountUsesAllocationBasis: lastItem?.amountUsesAllocationBasis ?? false,
         ...partial,
       });
-      nextItemId = nextItem.id;
+
+      setPendingFocus({ itemId: nextItem.id, field: focusField });
+
       return [...current, nextItem];
     });
-    setPendingFocus({ itemId: nextItemId, field: focusField });
   }
 
   function duplicateItem(itemId: string) {
@@ -928,6 +935,10 @@ export function TicketCreationPage() {
     const overflowDetails: Array<{ identifier: string; amount: number }> = [];
 
     for (const item of items) {
+      if (isDraftItemCompletelyEmpty(item)) {
+        continue;
+      }
+
       const identifier = identifierMap.get(
         normalizeIdentifierNumber(item.identifierNumber),
       );
