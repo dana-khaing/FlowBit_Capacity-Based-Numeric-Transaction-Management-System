@@ -295,6 +295,7 @@ export function TicketCreationPage() {
   const ticketFieldRefs = useRef<
     Record<string, { identifier: HTMLInputElement | null; amount: HTMLInputElement | null }>
   >({});
+  const inFlightCapacityRequests = useRef<Set<number>>(new Set());
 
   const {
     activePeriod,
@@ -514,6 +515,11 @@ export function TicketCreationPage() {
   }, [hasActivePeriod, activePeriod?.id]);
 
   useEffect(() => {
+    setIdentifierCapacityMap({});
+    inFlightCapacityRequests.current.clear();
+  }, [activePeriod?.id]);
+
+  useEffect(() => {
     const matchedIdentifiers = resolvedItems
       .map((item) => item.matchedIdentifier)
       .filter((identifier): identifier is FlowBitIdentifierOption => identifier !== null);
@@ -525,7 +531,19 @@ export function TicketCreationPage() {
     let isMounted = true;
     const uniqueIdentifiers = Array.from(
       new Map(matchedIdentifiers.map((identifier) => [identifier.id, identifier])).values(),
+    ).filter(
+      (identifier) =>
+        !identifierCapacityMap[identifier.id] &&
+        !inFlightCapacityRequests.current.has(identifier.id),
     );
+
+    if (!uniqueIdentifiers.length) {
+      return;
+    }
+
+    uniqueIdentifiers.forEach((identifier) => {
+      inFlightCapacityRequests.current.add(identifier.id);
+    });
 
     Promise.all(
       uniqueIdentifiers.map(async (identifier) => {
@@ -561,12 +579,17 @@ export function TicketCreationPage() {
           ...Object.fromEntries(results),
         }));
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => {
+        uniqueIdentifiers.forEach((identifier) => {
+          inFlightCapacityRequests.current.delete(identifier.id);
+        });
+      });
 
     return () => {
       isMounted = false;
     };
-  }, [resolvedItems]);
+  }, [identifierCapacityMap, resolvedItems]);
 
   function setItemState(
     itemId: string,
