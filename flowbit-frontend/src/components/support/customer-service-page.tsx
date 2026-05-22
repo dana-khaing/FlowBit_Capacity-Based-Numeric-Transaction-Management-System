@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AppSectionPage } from "@/components/app/app-section-page";
 import { useCurrentUserState } from "@/components/auth/current-user-context";
 import { fetchCurrentUser, getStoredUser, type AuthUser } from "@/lib/auth-client";
@@ -64,9 +64,33 @@ export function CustomerServicePage() {
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const shouldForceScrollRef = useRef(false);
 
-  async function loadCases(preferredCaseId?: number | null) {
-    setIsLoadingCases(true);
+  function scrollMessagesToBottom(behavior: ScrollBehavior = "smooth") {
+    const container = messagesContainerRef.current;
+    if (!container) {
+      return;
+    }
+    container.scrollTo({
+      top: container.scrollHeight,
+      behavior,
+    });
+  }
+
+  function isNearBottom() {
+    const container = messagesContainerRef.current;
+    if (!container) {
+      return true;
+    }
+    const threshold = 96;
+    return container.scrollHeight - container.scrollTop - container.clientHeight <= threshold;
+  }
+
+  async function loadCases(preferredCaseId?: number | null, options?: { silent?: boolean }) {
+    if (!options?.silent) {
+      setIsLoadingCases(true);
+    }
     setErrorMessage("");
     try {
       const nextCases = await fetchSupportCases();
@@ -78,7 +102,9 @@ export function CustomerServicePage() {
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to load customer service cases.");
     } finally {
-      setIsLoadingCases(false);
+      if (!options?.silent) {
+        setIsLoadingCases(false);
+      }
     }
   }
 
@@ -110,6 +136,7 @@ export function CustomerServicePage() {
 
     let active = true;
     setIsLoadingDetail(true);
+    shouldForceScrollRef.current = true;
     setErrorMessage("");
     fetchSupportCase(selectedCaseId)
       .then((detail) => {
@@ -132,6 +159,22 @@ export function CustomerServicePage() {
       active = false;
     };
   }, [selectedCaseId]);
+
+  useEffect(() => {
+    if (!selectedCase) {
+      return;
+    }
+
+    if (shouldForceScrollRef.current) {
+      shouldForceScrollRef.current = false;
+      requestAnimationFrame(() => scrollMessagesToBottom("auto"));
+      return;
+    }
+
+    if (isNearBottom()) {
+      requestAnimationFrame(() => scrollMessagesToBottom("smooth"));
+    }
+  }, [selectedCase?.messages.length, selectedCase]);
 
   const filteredCases = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
@@ -187,9 +230,10 @@ export function CustomerServicePage() {
     try {
       await replyToSupportCase(selectedCaseId, replyDraft);
       setReplyDraft("");
+      shouldForceScrollRef.current = true;
       const refreshedCase = await fetchSupportCase(selectedCaseId);
       setSelectedCase(normalizeSupportCaseDetail(refreshedCase));
-      await loadCases(selectedCaseId);
+      await loadCases(selectedCaseId, { silent: true });
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to send reply.");
     } finally {
@@ -212,7 +256,7 @@ export function CustomerServicePage() {
       );
       const refreshedCase = await fetchSupportCase(selectedCaseId);
       setSelectedCase(normalizeSupportCaseDetail(refreshedCase));
-      await loadCases(selectedCaseId);
+      await loadCases(selectedCaseId, { silent: true });
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to update case status.");
     } finally {
@@ -367,7 +411,7 @@ export function CustomerServicePage() {
                   </button>
                 </div>
 
-                <div className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto pr-1 thin-scrollbar">
+                <div ref={messagesContainerRef} className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto pr-1 thin-scrollbar">
                   {isLoadingDetail ? (
                     <div className="rounded-[20px] border border-dashed border-stone-300 bg-stone-50 px-4 py-8 text-center text-sm text-stone-500">
                       Loading case detail...
