@@ -4,6 +4,7 @@ import { getStoredToken } from "@/lib/auth-client";
 export type FlowBitOverflow = {
   id: number;
   transaction: number | null;
+  repeat_ticket_id: number | null;
   ticket_number: string | null;
   customer_name: string | null;
   order_number: string | null;
@@ -232,12 +233,14 @@ export async function resolveOverflowAction(payload: {
   overflowId: number;
   action: "refund_overflow_only" | "refund_transaction" | "refund_ticket";
   adminOverrideCode?: string;
+  syncRepeatTicket?: boolean;
 }) {
   return apiRequest<{ message: string }>(`/overflows/${payload.overflowId}/resolve/`, {
     method: "POST",
     headers: authHeaders(),
     body: JSON.stringify({
       action: payload.action,
+      ...(payload.syncRepeatTicket ? { sync_repeat_ticket: true } : {}),
       ...(payload.adminOverrideCode
         ? { admin_override_code: payload.adminOverrideCode }
         : {}),

@@ -26,13 +26,16 @@ export function AppSectionPage({
   asideClassName,
 }: AppSectionPageProps) {
   const hasAside = Boolean(aside) || showDefaultAside;
+  const sectionLabel = workspaceLabel ?? title;
 
   return (
     <WorkspaceShell>
       <div className="mx-auto w-full max-w-[1800px] px-4 py-3 sm:px-6 lg:px-8 lg:py-5">
         <section className={`${hasAside ? "grid gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(320px,0.9fr)]" : ""} ${layoutClassName ?? ""}`}>
           <article className={`rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6 ${workspaceClassName ?? ""}`}>
-            <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">{workspaceLabel ?? title}</p>
+            {sectionLabel ? (
+              <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-400">{sectionLabel}</p>
+            ) : null}
             <div className="mt-4">{children}</div>
           </article>
 

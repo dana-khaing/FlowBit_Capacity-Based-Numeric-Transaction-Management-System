@@ -34,6 +34,8 @@ from core.models import (
     Transaction,
     SupportCase,
     SupportMessage,
+    RepeatTicket,
+    RepeatTicketGeneration,
 )
 from flowbit_backend.db_config import build_database_config
 
@@ -169,6 +171,47 @@ class OperationalDataPurgeCommandTests(APITestCase):
 
 
 class IdentifierBootstrapTests(APITestCase):
+    def test_identifier_options_bootstrap_identifiers_without_standard_ledger(self):
+        user = User.objects.create_user(username='options_owner', password='password123')
+        self.client.force_authenticate(user=user)
+
+        self.assertEqual(Identifier.objects.count(), 0)
+
+        response = self.client.get('/api/identifiers/options/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1000)
+        self.assertEqual(Identifier.objects.count(), 1000)
+        self.assertEqual(response.data[0]['number'], '000')
+        self.assertEqual(response.data[-1]['number'], '999')
+
+    def test_repeat_ticket_create_bootstraps_identifiers_without_standard_ledger(self):
+        user = User.objects.create_user(username='repeat_bootstrap_owner', password='password123')
+        self.client.force_authenticate(user=user)
+
+        self.assertEqual(Identifier.objects.count(), 0)
+
+        response = self.client.post(
+            '/api/repeat-tickets/',
+            {
+                'customer_name': 'Bootstrap Repeat',
+                'items': [
+                    {
+                        'identifier_number': '101',
+                        'amount': '50.00',
+                        'amount_uses_allocation_basis': False,
+                        'use_permutations': False,
+                        'position': 0,
+                    },
+                ],
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(Identifier.objects.count(), 1000)
+        self.assertEqual(response.data['items'][0]['identifier_number'], '101')
+
     def test_first_standard_ledger_creates_identifiers_even_if_reserve_exists(self):
         owner = User.objects.create_user(username='ledger_owner', password='password123')
         period = Period.objects.create(
@@ -2354,7 +2397,8 @@ class PrivateWorkflowAPITests(APITestCase):
             password='password123',
         )
         self.approver.profile.role = 'admin'
-        self.approver.profile.save(update_fields=['role', 'updated_at'])
+        self.approver.profile.set_master_override_password('override-123')
+        self.approver.profile.save(update_fields=['role', 'master_override_password', 'updated_at'])
         self.other_user = User.objects.create_user(
             username='other_user',
             password='password123',
@@ -2498,7 +2542,7 @@ class PrivateWorkflowAPITests(APITestCase):
     def test_ticket_list_can_filter_refunded_tickets(self):
         refund_response = self.client.post(
             f'/api/tickets/{self.active_ticket.ticket_number}/refund/',
-            {'action': 'refund_ticket'},
+            {'action': 'refund_ticket', 'admin_override_code': 'override-123'},
             format='json',
         )
         self.assertEqual(refund_response.status_code, status.HTTP_200_OK)
@@ -2513,6 +2557,492 @@ class PrivateWorkflowAPITests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['count'], 1)
         self.assertEqual(response.data['results'][0]['ticket_number'], self.active_ticket.ticket_number)
+
+    def test_repeat_ticket_can_be_created_and_generated_into_active_ticket(self):
+        create_response = self.client.post(
+            '/api/repeat-tickets/',
+            {
+                'customer_name': 'Repeat Customer',
+                'notes': 'Monthly template',
+                'items': [
+                    {
+                        'identifier': self.identifier.id,
+                        'amount': '50.00',
+                        'amount_uses_allocation_basis': False,
+                        'use_permutations': False,
+                        'position': 0,
+                    },
+                    {
+                        'identifier': self.second_identifier.id,
+                        'amount': '40.00',
+                        'amount_uses_allocation_basis': False,
+                        'use_permutations': False,
+                        'position': 1,
+                    },
+                ],
+            },
+            format='json',
+        )
+
+        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
+        repeat_ticket_id = create_response.data['id']
+
+        generate_response = self.client.post(
+            f'/api/repeat-tickets/{repeat_ticket_id}/generate/',
+            {},
+            format='json',
+        )
+
+        self.assertEqual(generate_response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(generate_response.data['status'], 'GENERATED')
+        generated_ticket = Ticket.objects.get(pk=generate_response.data['ticket_id'])
+        self.assertEqual(generated_ticket.created_by, self.approver)
+        self.assertEqual(generated_ticket.transactions.count(), 2)
+
+        repeat_ticket = RepeatTicket.objects.get(pk=repeat_ticket_id)
+        generation = RepeatTicketGeneration.objects.get(
+            repeat_ticket=repeat_ticket,
+            period=self.active_period,
+        )
+        self.assertEqual(generation.ticket_id, generated_ticket.id)
+        self.assertEqual(generation.status, RepeatTicketGeneration.STATUS_GENERATED)
+
+        list_response = self.client.get('/api/repeat-tickets/')
+        self.assertEqual(list_response.status_code, status.HTTP_200_OK)
+        listed_repeat_ticket = next(item for item in list_response.data if item['id'] == repeat_ticket_id)
+        self.assertEqual(listed_repeat_ticket['current_status'], 'GENERATED')
+        self.assertEqual(listed_repeat_ticket['generated_ticket_id'], generated_ticket.id)
+        self.assertEqual(listed_repeat_ticket['generated_ticket_number'], generated_ticket.ticket_number)
+
+    def test_repeat_ticket_without_customer_name_generates_using_repeat_code(self):
+        create_response = self.client.post(
+            '/api/repeat-tickets/',
+            {
+                'customer_name': '',
+                'items': [
+                    {
+                        'identifier': self.identifier.id,
+                        'amount': '50.00',
+                        'amount_uses_allocation_basis': False,
+                        'use_permutations': False,
+                        'position': 0,
+                    },
+                ],
+            },
+            format='json',
+        )
+
+        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
+        repeat_ticket_id = create_response.data['id']
+        self.assertEqual(create_response.data['repeat_code'], 'REP-00001')
+
+        generate_response = self.client.post(
+            f'/api/repeat-tickets/{repeat_ticket_id}/generate/',
+            {},
+            format='json',
+        )
+
+        self.assertEqual(generate_response.status_code, status.HTTP_201_CREATED)
+        generated_ticket = Ticket.objects.get(pk=generate_response.data['ticket_id'])
+        self.assertEqual(generated_ticket.customer_name, 'REP-00001')
+
+    def test_repeat_ticket_with_customer_name_generates_using_rep_prefix(self):
+        create_response = self.client.post(
+            '/api/repeat-tickets/',
+            {
+                'customer_name': 'Dana',
+                'items': [
+                    {
+                        'identifier': self.identifier.id,
+                        'amount': '50.00',
+                        'amount_uses_allocation_basis': False,
+                        'use_permutations': False,
+                        'position': 0,
+                    },
+                ],
+            },
+            format='json',
+        )
+
+        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
+        repeat_ticket_id = create_response.data['id']
+
+        generate_response = self.client.post(
+            f'/api/repeat-tickets/{repeat_ticket_id}/generate/',
+            {},
+            format='json',
+        )
+
+        self.assertEqual(generate_response.status_code, status.HTTP_201_CREATED)
+        generated_ticket = Ticket.objects.get(pk=generate_response.data['ticket_id'])
+        self.assertEqual(generated_ticket.customer_name, 'REP-Dana')
+
+    def test_repeat_ticket_can_be_created_with_identifier_number_only(self):
+        create_response = self.client.post(
+            '/api/repeat-tickets/',
+            {
+                'customer_name': 'Number Only Repeat',
+                'items': [
+                    {
+                        'identifier_number': '101',
+                        'amount': '50.00',
+                        'amount_uses_allocation_basis': False,
+                        'use_permutations': False,
+                        'position': 0,
+                    },
+                ],
+            },
+            format='json',
+        )
+
+        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(create_response.data['items'][0]['identifier_number'], '101')
+
+    def test_repeat_ticket_assigns_per_user_serial_code_and_reuses_gaps(self):
+        first_response = self.client.post(
+            '/api/repeat-tickets/',
+            {
+                'customer_name': 'First Repeat',
+                'items': [
+                    {
+                        'identifier': self.identifier.id,
+                        'amount': '50.00',
+                        'amount_uses_allocation_basis': False,
+                        'use_permutations': False,
+                        'position': 0,
+                    },
+                ],
+            },
+            format='json',
+        )
+        second_response = self.client.post(
+            '/api/repeat-tickets/',
+            {
+                'customer_name': 'Second Repeat',
+                'items': [
+                    {
+                        'identifier': self.second_identifier.id,
+                        'amount': '40.00',
+                        'amount_uses_allocation_basis': False,
+                        'use_permutations': False,
+                        'position': 0,
+                    },
+                ],
+            },
+            format='json',
+        )
+
+        self.assertEqual(first_response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(second_response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(first_response.data['repeat_code'], 'REP-00001')
+        self.assertEqual(second_response.data['repeat_code'], 'REP-00002')
+
+        delete_response = self.client.delete(f"/api/repeat-tickets/{first_response.data['id']}/")
+        self.assertEqual(delete_response.status_code, status.HTTP_204_NO_CONTENT)
+
+        third_response = self.client.post(
+            '/api/repeat-tickets/',
+            {
+                'customer_name': 'Third Repeat',
+                'items': [
+                    {
+                        'identifier': self.identifier.id,
+                        'amount': '30.00',
+                        'amount_uses_allocation_basis': False,
+                        'use_permutations': False,
+                        'position': 0,
+                    },
+                ],
+            },
+            format='json',
+        )
+
+        self.assertEqual(third_response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(third_response.data['repeat_code'], 'REP-00001')
+
+    def test_repeat_ticket_generate_all_skips_generated_and_collects_unsuccessful(self):
+        generated_repeat = self.client.post(
+            '/api/repeat-tickets/',
+            {
+                'customer_name': 'Already Generated',
+                'items': [
+                    {
+                        'identifier': self.identifier.id,
+                        'amount': '40.00',
+                        'amount_uses_allocation_basis': False,
+                        'use_permutations': False,
+                        'position': 0,
+                    },
+                ],
+            },
+            format='json',
+        )
+        ready_repeat = self.client.post(
+            '/api/repeat-tickets/',
+            {
+                'customer_name': 'Ready Repeat',
+                'items': [
+                    {
+                        'identifier': self.second_identifier.id,
+                        'amount': '45.00',
+                        'amount_uses_allocation_basis': False,
+                        'use_permutations': False,
+                        'position': 0,
+                    },
+                ],
+            },
+            format='json',
+        )
+        failing_repeat = self.client.post(
+            '/api/repeat-tickets/',
+            {
+                'customer_name': 'Permutation Failure',
+                'items': [
+                    {
+                        'identifier': self.identifier.id,
+                        'amount': '20.00',
+                        'amount_uses_allocation_basis': False,
+                        'use_permutations': True,
+                        'position': 0,
+                    },
+                ],
+            },
+            format='json',
+        )
+
+        self.assertEqual(generated_repeat.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(ready_repeat.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(failing_repeat.status_code, status.HTTP_201_CREATED)
+
+        first_generate = self.client.post(
+            f"/api/repeat-tickets/{generated_repeat.data['id']}/generate/",
+            {},
+            format='json',
+        )
+        self.assertEqual(first_generate.status_code, status.HTTP_201_CREATED)
+
+        response = self.client.post('/api/repeat-tickets/generate-all/', {}, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data['generated']), 1)
+        self.assertEqual(response.data['generated'][0]['repeat_ticket_id'], ready_repeat.data['id'])
+        self.assertEqual(len(response.data['skipped']), 1)
+        self.assertEqual(response.data['skipped'][0]['repeat_ticket_id'], generated_repeat.data['id'])
+        self.assertEqual(len(response.data['unsuccessful']), 1)
+        self.assertEqual(response.data['unsuccessful'][0]['repeat_ticket_id'], failing_repeat.data['id'])
+        self.assertEqual(
+            response.data['unsuccessful'][0]['status'],
+            RepeatTicketGeneration.STATUS_UNSUCCESSFUL,
+        )
+
+    def test_repeat_ticket_generate_requires_spill_over_confirmation(self):
+        repeat_ticket_response = self.client.post(
+            '/api/repeat-tickets/',
+            {
+                'customer_name': 'Overflow Confirm Customer',
+                'items': [
+                    {
+                        'identifier': self.identifier.id,
+                        'amount': '150.00',
+                        'amount_uses_allocation_basis': False,
+                        'use_permutations': False,
+                        'position': 0,
+                    },
+                ],
+            },
+            format='json',
+        )
+        repeat_ticket_id = repeat_ticket_response.data['id']
+
+        response = self.client.post(
+            f'/api/repeat-tickets/{repeat_ticket_id}/generate/',
+            {},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['status'], 'CONFIRM_REQUIRED')
+        self.assertEqual(response.data['repeat_ticket_id'], repeat_ticket_id)
+        self.assertEqual(response.data['overflow_items'][0]['identifier_number'], self.identifier.number)
+
+        list_response = self.client.get('/api/repeat-tickets/')
+        listed_repeat_ticket = next(item for item in list_response.data if item['id'] == repeat_ticket_id)
+        self.assertEqual(listed_repeat_ticket['current_status'], 'NEW')
+
+    def test_repeat_ticket_generate_can_continue_after_spill_over_confirmation(self):
+        repeat_ticket_response = self.client.post(
+            '/api/repeat-tickets/',
+            {
+                'customer_name': 'Overflow Process Customer',
+                'items': [
+                    {
+                        'identifier': self.identifier.id,
+                        'amount': '150.00',
+                        'amount_uses_allocation_basis': False,
+                        'use_permutations': False,
+                        'position': 0,
+                    },
+                ],
+            },
+            format='json',
+        )
+        repeat_ticket_id = repeat_ticket_response.data['id']
+
+        response = self.client.post(
+            f'/api/repeat-tickets/{repeat_ticket_id}/generate/',
+            {
+                'confirm_spill_over': True,
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['status'], RepeatTicketGeneration.STATUS_GENERATED)
+
+    def test_repeat_ticket_status_returns_new_again_for_next_period(self):
+        repeat_ticket_response = self.client.post(
+            '/api/repeat-tickets/',
+            {
+                'customer_name': 'Recurring Customer',
+                'items': [
+                    {
+                        'identifier': self.identifier.id,
+                        'amount': '40.00',
+                        'amount_uses_allocation_basis': False,
+                        'use_permutations': False,
+                        'position': 0,
+                    },
+                ],
+            },
+            format='json',
+        )
+        self.assertEqual(repeat_ticket_response.status_code, status.HTTP_201_CREATED)
+        repeat_ticket_id = repeat_ticket_response.data['id']
+
+        generate_response = self.client.post(
+            f'/api/repeat-tickets/{repeat_ticket_id}/generate/',
+            {},
+            format='json',
+        )
+        self.assertEqual(generate_response.status_code, status.HTTP_201_CREATED)
+
+        self.active_period.close(closed_at=timezone.now())
+        next_period = Period.objects.create(
+            name='Next Active Period',
+            start_date=timezone.make_aware(datetime(2027, 1, 1, 0, 0, 0)),
+            end_date=timezone.make_aware(datetime(2027, 12, 31, 23, 59, 59)),
+            is_open=True,
+        )
+        Ledger.objects.create(
+            owner=self.approver,
+            period=next_period,
+            name='Next Current Ledger',
+            end_date=next_period.end_date,
+            limit_per_identifier=Decimal('200.00'),
+            priority=1,
+            is_active=True,
+        )
+
+        list_response = self.client.get('/api/repeat-tickets/')
+        self.assertEqual(list_response.status_code, status.HTTP_200_OK)
+        listed_repeat_ticket = next(item for item in list_response.data if item['id'] == repeat_ticket_id)
+        self.assertEqual(listed_repeat_ticket['current_status'], 'NEW')
+        self.assertIsNone(listed_repeat_ticket['generated_ticket_id'])
+
+    def test_ticket_transaction_refund_can_sync_repeat_ticket_template(self):
+        repeat_ticket_response = self.client.post(
+            '/api/repeat-tickets/',
+            {
+                'customer_name': 'Sync Customer',
+                'items': [
+                    {
+                        'identifier': self.identifier.id,
+                        'amount': '50.00',
+                        'amount_uses_allocation_basis': False,
+                        'use_permutations': False,
+                        'position': 0,
+                    },
+                    {
+                        'identifier': self.second_identifier.id,
+                        'amount': '40.00',
+                        'amount_uses_allocation_basis': False,
+                        'use_permutations': False,
+                        'position': 1,
+                    },
+                ],
+            },
+            format='json',
+        )
+        repeat_ticket_id = repeat_ticket_response.data['id']
+
+        generate_response = self.client.post(
+            f'/api/repeat-tickets/{repeat_ticket_id}/generate/',
+            {},
+            format='json',
+        )
+        generated_ticket = Ticket.objects.get(pk=generate_response.data['ticket_id'])
+        generated_transaction = generated_ticket.transactions.get(identifier=self.identifier)
+
+        refund_response = self.client.post(
+            f'/api/tickets/{generated_ticket.ticket_number}/refund/',
+            {
+                'action': 'refund_transaction',
+                'admin_override_code': 'override-123',
+                'transaction_id': generated_transaction.id,
+                'sync_repeat_ticket': True,
+            },
+            format='json',
+        )
+
+        self.assertEqual(refund_response.status_code, status.HTTP_200_OK)
+        repeat_ticket = RepeatTicket.objects.get(pk=repeat_ticket_id)
+        repeat_items = list(repeat_ticket.items.order_by('position').values_list('identifier__number', 'amount'))
+        self.assertEqual(repeat_items, [(self.second_identifier.number, Decimal('40.00'))])
+
+    def test_overflow_refund_can_sync_repeat_ticket_template_amount(self):
+        repeat_ticket_response = self.client.post(
+            '/api/repeat-tickets/',
+            {
+                'customer_name': 'Overflow Sync Customer',
+                'items': [
+                    {
+                        'identifier': self.identifier.id,
+                        'amount': '150.00',
+                        'amount_uses_allocation_basis': False,
+                        'use_permutations': False,
+                        'position': 0,
+                    },
+                ],
+            },
+            format='json',
+        )
+        repeat_ticket_id = repeat_ticket_response.data['id']
+
+        generate_response = self.client.post(
+            f'/api/repeat-tickets/{repeat_ticket_id}/generate/',
+            {},
+            format='json',
+        )
+        generated_ticket = Ticket.objects.get(pk=generate_response.data['ticket_id'])
+        generated_transaction = generated_ticket.transactions.get(identifier=self.identifier)
+        overflow = generated_transaction.overflows.get(status=Overflow.STATUS_TCSO)
+
+        refund_response = self.client.post(
+            f'/api/overflows/{overflow.id}/resolve/',
+            {
+                'action': 'refund_overflow_only',
+                'admin_override_code': 'override-123',
+                'sync_repeat_ticket': True,
+            },
+            format='json',
+        )
+
+        self.assertEqual(refund_response.status_code, status.HTTP_200_OK)
+        generated_ticket.refresh_from_db()
+        repeat_ticket = RepeatTicket.objects.get(pk=repeat_ticket_id)
+        repeat_item = repeat_ticket.items.get()
+        self.assertEqual(repeat_item.identifier.number, self.identifier.number)
+        self.assertEqual(repeat_item.amount, generated_ticket.total_amount)
 
     def test_ticket_list_can_sort_by_amount_desc(self):
         higher_ticket = Ticket.objects.create(
@@ -3112,7 +3642,7 @@ class PrivateWorkflowAPITests(APITestCase):
     def test_ticket_refund_can_succeed_without_spill_over(self):
         response = self.client.post(
             f'/api/tickets/{self.active_ticket.ticket_number}/refund/',
-            {'action': 'refund_ticket'},
+            {'action': 'refund_ticket', 'admin_override_code': 'override-123'},
             format='json',
         )
 
@@ -3121,6 +3651,26 @@ class PrivateWorkflowAPITests(APITestCase):
         self.active_transaction.refresh_from_db()
         self.assertTrue(self.active_ticket.is_refunded)
         self.assertTrue(self.active_transaction.is_refunded)
+
+    def test_ticket_refund_requires_admin_override_code_for_admin_user(self):
+        response = self.client.post(
+            f'/api/tickets/{self.active_ticket.ticket_number}/refund/',
+            {'action': 'refund_ticket'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data['detail'], 'Admin override code is required for refund actions.')
+
+    def test_ticket_refund_rejects_incorrect_admin_override_code_for_admin_user(self):
+        response = self.client.post(
+            f'/api/tickets/{self.active_ticket.ticket_number}/refund/',
+            {'action': 'refund_ticket', 'admin_override_code': 'wrong-code'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data['detail'], 'Admin override code is incorrect.')
 
     def test_identifier_detail_keeps_reserve_capacity_when_frozen_for_all_ledgers(self):
         IdentifierLedgerFreeze.objects.create(
@@ -3171,6 +3721,7 @@ class PrivateWorkflowAPITests(APITestCase):
             f'/api/tickets/{self.active_ticket.ticket_number}/refund/',
             {
                 'action': 'refund_transaction',
+                'admin_override_code': 'override-123',
                 'transaction_id': self.active_transaction.id,
             },
             format='json',
@@ -3203,6 +3754,7 @@ class PrivateWorkflowAPITests(APITestCase):
             f'/api/tickets/{self.active_ticket.ticket_number}/refund/',
             {
                 'action': 'refund_transaction',
+                'admin_override_code': 'override-123',
                 'transaction_id': second_transaction.id,
             },
             format='json',
@@ -3220,7 +3772,7 @@ class PrivateWorkflowAPITests(APITestCase):
 
         response = self.client.post(
             f'/api/overflows/{overflow.id}/resolve/',
-            {'action': 'refund_overflow_only'},
+            {'action': 'refund_overflow_only', 'admin_override_code': 'override-123'},
             format='json',
         )
 
@@ -3239,13 +3791,14 @@ class PrivateWorkflowAPITests(APITestCase):
 
         refund_ticket_response = self.client.post(
             f'/api/tickets/{self.active_ticket.ticket_number}/refund/',
-            {'action': 'refund_ticket'},
+            {'action': 'refund_ticket', 'admin_override_code': 'override-123'},
             format='json',
         )
         refund_transaction_response = self.client.post(
             f'/api/tickets/{self.active_ticket.ticket_number}/refund/',
             {
                 'action': 'refund_transaction',
+                'admin_override_code': 'override-123',
                 'transaction_id': self.active_transaction.id,
             },
             format='json',
@@ -3266,7 +3819,7 @@ class PrivateWorkflowAPITests(APITestCase):
 
         response = self.client.post(
             f'/api/overflows/{overflow.id}/resolve/',
-            {'action': 'refund_overflow_only'},
+            {'action': 'refund_overflow_only', 'admin_override_code': 'override-123'},
             format='json',
         )
 
@@ -3292,7 +3845,7 @@ class PrivateWorkflowAPITests(APITestCase):
 
         response = self.client.post(
             f'/api/overflows/{overflow.id}/resolve/',
-            {'action': 'refund_overflow_only'},
+            {'action': 'refund_overflow_only', 'admin_override_code': 'override-123'},
             format='json',
         )
 
@@ -3303,7 +3856,7 @@ class PrivateWorkflowAPITests(APITestCase):
     def test_fully_refunded_ticket_still_appears_in_active_period_history(self):
         response = self.client.post(
             f'/api/tickets/{self.active_ticket.ticket_number}/refund/',
-            {'action': 'refund_ticket'},
+            {'action': 'refund_ticket', 'admin_override_code': 'override-123'},
             format='json',
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -3326,7 +3879,7 @@ class PrivateWorkflowAPITests(APITestCase):
     def test_ticket_refund_audit_includes_ticket_summary(self):
         response = self.client.post(
             f'/api/tickets/{self.active_ticket.ticket_number}/refund/',
-            {'action': 'refund_ticket'},
+            {'action': 'refund_ticket', 'admin_override_code': 'override-123'},
             format='json',
         )
 
@@ -3595,7 +4148,7 @@ class PrivateWorkflowAPITests(APITestCase):
 
         return_response = self.client.post(
             f'/api/overflows/{overflow.id}/resolve/',
-            {'action': 'refund_overflow_only'},
+            {'action': 'refund_overflow_only', 'admin_override_code': 'override-123'},
             format='json',
         )
 
@@ -3633,7 +4186,7 @@ class PrivateWorkflowAPITests(APITestCase):
         )
         self.client.post(
             f'/api/overflows/{overflow.id}/resolve/',
-            {'action': 'refund_overflow_only'},
+            {'action': 'refund_overflow_only', 'admin_override_code': 'override-123'},
             format='json',
         )
 
@@ -3690,7 +4243,7 @@ class PrivateWorkflowAPITests(APITestCase):
 
         return_response = self.client.post(
             f'/api/overflows/{overkill.id}/resolve/',
-            {'action': 'refund_overflow_only'},
+            {'action': 'refund_overflow_only', 'admin_override_code': 'override-123'},
             format='json',
         )
 
@@ -3747,7 +4300,7 @@ class PrivateWorkflowAPITests(APITestCase):
 
         return_response = self.client.post(
             f'/api/overflows/{consumed_cso.id}/resolve/',
-            {'action': 'refund_overflow_only'},
+            {'action': 'refund_overflow_only', 'admin_override_code': 'override-123'},
             format='json',
         )
 
@@ -3817,7 +4370,7 @@ class PrivateWorkflowAPITests(APITestCase):
 
         refund_response = self.client.post(
             f'/api/tickets/{consume_ticket.ticket_number}/refund/',
-            {'action': 'refund_ticket'},
+            {'action': 'refund_ticket', 'admin_override_code': 'override-123'},
             format='json',
         )
 

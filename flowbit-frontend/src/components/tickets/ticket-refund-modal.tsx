@@ -10,12 +10,14 @@ type TicketRefundModalProps = {
   ticket: FlowBitTicketDetail | null;
   requireOverrideCode: boolean;
   adminOverrideCode: string;
+  syncRepeatTicket: boolean;
   busyAction:
     | null
     | { kind: "ticket"; id: number }
     | { kind: "transaction"; id: number }
     | { kind: "overflow"; id: number };
   onCodeChange: (value: string) => void;
+  onSyncRepeatTicketChange: (value: boolean) => void;
   onClose: () => void;
   onRefundTicket: () => void;
   onRefundTransaction: (transactionId: number) => void;
@@ -44,8 +46,10 @@ export function TicketRefundModal({
   ticket,
   requireOverrideCode,
   adminOverrideCode,
+  syncRepeatTicket,
   busyAction,
   onCodeChange,
+  onSyncRepeatTicketChange,
   onClose,
   onRefundTicket,
   onRefundTransaction,
@@ -81,6 +85,10 @@ export function TicketRefundModal({
 
   function handleConfirmRefund() {
     if (!confirmAction) {
+      return;
+    }
+
+    if (requireOverrideCode && !adminOverrideCode.trim()) {
       return;
     }
 
@@ -128,6 +136,19 @@ export function TicketRefundModal({
               placeholder="Enter override code"
               disabled={Boolean(busyAction)}
             />
+          </label>
+        ) : null}
+
+        {ticket.repeat_ticket_id ? (
+          <label className="mt-5 flex items-start gap-3 rounded-[20px] border border-stone-900/8 bg-stone-50 px-4 py-3 text-sm text-stone-600">
+            <input
+              type="checkbox"
+              checked={syncRepeatTicket}
+              onChange={(event) => onSyncRepeatTicketChange(event.target.checked)}
+              disabled={Boolean(busyAction)}
+              className="mt-1 h-4 w-4 rounded border-stone-300"
+            />
+            <span>Also update the linked repeat ticket template.</span>
           </label>
         ) : null}
 
@@ -270,6 +291,20 @@ export function TicketRefundModal({
               <p className="mt-2 text-sm leading-6 text-stone-500">
                 {confirmAction.label}. This action will reverse the selected ticket records.
               </p>
+              {requireOverrideCode ? (
+                <label className="mt-5 block space-y-2">
+                  <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+                    Admin override code
+                  </span>
+                  <Input
+                    type="password"
+                    value={adminOverrideCode}
+                    onChange={(event) => onCodeChange(event.target.value)}
+                    placeholder="Enter override code"
+                    disabled={Boolean(busyAction)}
+                  />
+                </label>
+              ) : null}
               <div className="mt-5 flex justify-end gap-3">
                 <Button
                   variant="outline"
@@ -278,7 +313,10 @@ export function TicketRefundModal({
                 >
                   Cancel
                 </Button>
-                <Button onClick={handleConfirmRefund} disabled={Boolean(busyAction)}>
+                <Button
+                  onClick={handleConfirmRefund}
+                  disabled={Boolean(busyAction) || (requireOverrideCode && !adminOverrideCode.trim())}
+                >
                   Confirm refund
                 </Button>
               </div>

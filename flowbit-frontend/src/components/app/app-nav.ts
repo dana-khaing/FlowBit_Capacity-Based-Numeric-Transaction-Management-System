@@ -10,6 +10,7 @@ import {
   faCalendarDays,
   faBell,
   faPlus,
+  faRotate,
   faTriangleExclamation,
 } from "@fortawesome/free-solid-svg-icons";
 
@@ -22,6 +23,7 @@ export const primaryNavItems = [
   { label: "Period", href: "/periods", icon: faCalendarDays },
   { label: "Export", href: "/export-ledger", icon: faFolderOpen },
   { label: "Archive", href: "/archive", icon: faBoxArchive },
+  { label: "Repeat Tickets", href: "/repeat-tickets", icon: faRotate },
   { label: "Admin Panel", href: "/admin", icon: faAddressCard },
   { label: "Profile", href: "/profile", icon: faIdBadge },
   { label: "Notifications", href: "/notifications", icon: faBell },

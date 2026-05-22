@@ -69,6 +69,19 @@ def push_dashboard_refresh_for_user(user_id: int):
     )
 
 
+def push_repeat_tickets_refresh_for_user(user_id: int):
+    channel_layer = get_channel_layer()
+    if channel_layer is None:
+        return
+    async_to_sync(channel_layer.group_send)(
+        notification_group_name(user_id),
+        {
+            'type': 'notification.message',
+            'payload': {'type': 'repeat_tickets.refresh'},
+        },
+    )
+
+
 def push_dashboard_refresh_for_users(user_ids):
     for user_id in {user_id for user_id in user_ids if user_id}:
         push_dashboard_refresh_for_user(user_id)
