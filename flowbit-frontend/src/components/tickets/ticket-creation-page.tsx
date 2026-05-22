@@ -26,6 +26,7 @@ import { Input } from "@/components/ui/input";
 import { usePeriodState } from "@/components/period/use-period-state";
 import { fetchLedgers, type FlowBitLedger } from "@/lib/ledger-client";
 import {
+  type AllocationPreview,
   createTicket,
   fetchIdentifierCapacity,
   fetchTicketDetail,
@@ -237,6 +238,12 @@ function formatEntryCount(count: number) {
 function isDraftItemCompletelyEmpty(item: Pick<TicketDraftItem, "identifierNumber" | "amount">) {
   return item.identifierNumber.trim() === "" && item.amount.trim() === "";
 }
+
+type ResolvedItemPreview = {
+  primaryPreview: AllocationPreview;
+  permutationDetails: NonNullable<TicketDraftItem["previewPermutationDetails"]>;
+  targetIdentifiers: FlowBitIdentifierOption[];
+};
 
 export function TicketCreationPage() {
   const [customerName, setCustomerName] = useState("");
@@ -776,6 +783,80 @@ export function TicketCreationPage() {
     addItem(undefined, "identifier");
   }
 
+  async function resolveItemPreviewState(
+    item: TicketDraftItem,
+  ): Promise<ResolvedItemPreview> {
+    const amount = getEffectiveTicketAmount(item);
+    const manualAllocations = buildManualAllocations(item);
+    const targetIdentifierNumbers =
+      item.permutationIdentifiers && item.permutationIdentifiers.length
+        ? item.permutationIdentifiers
+        : [normalizeIdentifierNumber(item.identifierNumber)];
+    const targetIdentifiers = targetIdentifierNumbers.map((targetIdentifierNumber) => {
+      const targetIdentifier = identifierMap.get(targetIdentifierNumber);
+      if (!targetIdentifier) {
+        throw new Error(`Identifier ${targetIdentifierNumber} is not available.`);
+      }
+      return targetIdentifier;
+    });
+
+    const canReuseCachedPreview =
+      Boolean(item.preview) &&
+      !item.previewError &&
+      (targetIdentifiers.length === 1 ||
+        item.previewPermutationDetails?.length === targetIdentifiers.length);
+
+    if (canReuseCachedPreview && item.preview) {
+      return {
+        primaryPreview: item.preview,
+        permutationDetails:
+          targetIdentifiers.length === 1
+            ? [
+                {
+                  identifier: targetIdentifiers[0].number,
+                  overflowAmount: item.preview.overflow_amount,
+                  hasOverflow: item.preview.has_overflow,
+                },
+              ]
+            : targetIdentifiers.map((targetIdentifier, index) => ({
+                identifier: targetIdentifier.number,
+                overflowAmount:
+                  item.previewPermutationDetails?.[index]?.overflowAmount || "0",
+                hasOverflow:
+                  item.previewPermutationDetails?.[index]?.hasOverflow || false,
+              })),
+        targetIdentifiers,
+      };
+    }
+
+    let primaryPreview: AllocationPreview | null = null;
+    const permutationDetails: NonNullable<TicketDraftItem["previewPermutationDetails"]> = [];
+
+    for (const targetIdentifier of targetIdentifiers) {
+      const preview = await previewTicketItemAllocation({
+        identifier: targetIdentifier.id,
+        total_amount: amount,
+        ...(manualAllocations ? { manual_allocations: manualAllocations } : {}),
+      });
+
+      if (!primaryPreview) {
+        primaryPreview = preview;
+      }
+
+      permutationDetails.push({
+        identifier: targetIdentifier.number,
+        overflowAmount: preview.overflow_amount,
+        hasOverflow: preview.has_overflow,
+      });
+    }
+
+    if (!primaryPreview) {
+      throw new Error("Preview could not be generated for this ticket line.");
+    }
+
+    return { primaryPreview, permutationDetails, targetIdentifiers };
+  }
+
   async function previewItem(itemId: string) {
     if (!hasWorkingLedgers) {
       setToast({
@@ -959,54 +1040,31 @@ export function TicketCreationPage() {
         return null;
       }
 
-      const manualAllocations = buildManualAllocations(item);
-      const targetIdentifierNumbers =
-        item.permutationIdentifiers && item.permutationIdentifiers.length
-          ? item.permutationIdentifiers
-          : [normalizeIdentifierNumber(item.identifierNumber)];
       try {
-        let primaryPreview: TicketDraftItem["preview"] = null;
-        const permutationDetails: NonNullable<TicketDraftItem["previewPermutationDetails"]> = [];
+        const manualAllocations = buildManualAllocations(item);
+        const { primaryPreview, permutationDetails, targetIdentifiers } =
+          await resolveItemPreviewState(item);
 
-        for (const targetIdentifierNumber of targetIdentifierNumbers) {
-          const targetIdentifier = identifierMap.get(targetIdentifierNumber);
-          if (!targetIdentifier) {
-            throw new Error(`Identifier ${targetIdentifierNumber} is not available.`);
-          }
-
-          const preview = await previewTicketItemAllocation({
-            identifier: targetIdentifier.id,
-            total_amount: amount,
-            ...(manualAllocations ? { manual_allocations: manualAllocations } : {}),
-          });
-
-          if (!primaryPreview) {
-            primaryPreview = preview;
-          }
-
-          permutationDetails.push({
-            identifier: targetIdentifier.number,
-            overflowAmount: preview.overflow_amount,
-            hasOverflow: preview.has_overflow,
-          });
-
-          if (preview.has_overflow) {
+        permutationDetails.forEach((detail) => {
+          if (detail.hasOverflow) {
             overflowEntryCount += 1;
-            const overflowValue = Number(preview.overflow_amount) || 0;
+            const overflowValue = Number(detail.overflowAmount) || 0;
             overflowAmount += overflowValue;
             overflowDetails.push({
-              identifier: targetIdentifier.number,
+              identifier: detail.identifier,
               amount: overflowValue,
             });
           }
+        });
 
+        targetIdentifiers.forEach((targetIdentifier) => {
           payloadItems.push({
             identifier: targetIdentifier.id,
             amount,
             allow_overflow: true,
             ...(manualAllocations ? { manual_allocations: manualAllocations } : {}),
           });
-        }
+        });
 
         const totalOverflow = permutationDetails.reduce(
           (sum, detail) => sum + (detail.hasOverflow ? Number(detail.overflowAmount) || 0 : 0),
