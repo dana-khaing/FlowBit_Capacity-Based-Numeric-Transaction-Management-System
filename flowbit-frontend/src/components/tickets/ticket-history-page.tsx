@@ -73,6 +73,7 @@ export function TicketHistoryPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [showRefundModal, setShowRefundModal] = useState(false);
   const [adminOverrideCode, setAdminOverrideCode] = useState("");
+  const [syncRepeatTicket, setSyncRepeatTicket] = useState(false);
   const [busyRefundAction, setBusyRefundAction] = useState<null | {
     kind: "ticket" | "transaction" | "overflow";
     id: number;
@@ -260,9 +261,7 @@ export function TicketHistoryPage() {
   }
 
   async function runOverflowRefundAction(overflowId: number, kind: "overflow") {
-    const user = currentUserState?.user;
-    const requireOverrideCode = user?.role !== "admin";
-    if (requireOverrideCode && !adminOverrideCode.trim()) {
+    if (!adminOverrideCode.trim()) {
       setToast({
         type: "error",
         message: "Admin override code is required for refund actions.",
@@ -276,6 +275,7 @@ export function TicketHistoryPage() {
         overflowId,
         action: "refund_overflow_only",
         adminOverrideCode: adminOverrideCode.trim() || undefined,
+        syncRepeatTicket,
       });
       await refreshTicketHistoryState();
       setToast({
@@ -284,6 +284,7 @@ export function TicketHistoryPage() {
       });
       setShowRefundModal(false);
       setAdminOverrideCode("");
+      setSyncRepeatTicket(false);
       notifyDashboardUpdated();
     } catch (error) {
       const message =
@@ -303,9 +304,7 @@ export function TicketHistoryPage() {
       return;
     }
 
-    const user = currentUserState?.user;
-    const requireOverrideCode = user?.role !== "admin";
-    if (requireOverrideCode && !adminOverrideCode.trim()) {
+    if (!adminOverrideCode.trim()) {
       setToast({
         type: "error",
         message: "Admin override code is required for refund actions.",
@@ -321,6 +320,7 @@ export function TicketHistoryPage() {
         action,
         transactionId,
         adminOverrideCode: adminOverrideCode.trim() || undefined,
+        syncRepeatTicket,
       });
       await refreshTicketHistoryState();
       setToast({
@@ -329,6 +329,7 @@ export function TicketHistoryPage() {
       });
       setShowRefundModal(false);
       setAdminOverrideCode("");
+      setSyncRepeatTicket(false);
       notifyDashboardUpdated();
     } catch (error) {
       const message =
@@ -553,13 +554,16 @@ export function TicketHistoryPage() {
       <TicketRefundModal
         open={showRefundModal}
         ticket={selectedTicket}
-        requireOverrideCode={currentUserState?.user?.role !== "admin"}
+        requireOverrideCode={true}
         adminOverrideCode={adminOverrideCode}
+        syncRepeatTicket={syncRepeatTicket}
         busyAction={busyRefundAction}
         onCodeChange={setAdminOverrideCode}
+        onSyncRepeatTicketChange={setSyncRepeatTicket}
         onClose={() => {
           setShowRefundModal(false);
           setAdminOverrideCode("");
+          setSyncRepeatTicket(false);
         }}
         onRefundTicket={() => runTicketRefundAction("refund_ticket", "ticket")}
         onRefundTransaction={(transactionId) =>

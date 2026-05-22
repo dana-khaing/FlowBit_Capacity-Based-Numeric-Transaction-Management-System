@@ -1,6 +1,6 @@
 import { apiRequest, getApiBaseUrl } from "@/lib/api";
 import { getStoredToken } from "@/lib/auth-client";
-import { DASHBOARD_UPDATED_EVENT } from "@/components/app/workspace-events";
+import { DASHBOARD_UPDATED_EVENT, REPEAT_TICKETS_UPDATED_EVENT } from "@/components/app/workspace-events";
 
 export type FlowBitNotification = {
   id: number;
@@ -99,6 +99,13 @@ function dispatchDashboardUpdated() {
   window.dispatchEvent(new Event(DASHBOARD_UPDATED_EVENT));
 }
 
+function dispatchRepeatTicketsUpdated() {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.dispatchEvent(new Event(REPEAT_TICKETS_UPDATED_EVENT));
+}
+
 function getNotificationWebSocketUrl() {
   const token = getStoredToken();
   if (!token) {
@@ -128,6 +135,10 @@ function connectNotificationSocket() {
       const payload = JSON.parse(event.data) as { type?: string };
       if (payload.type === "dashboard.refresh") {
         dispatchDashboardUpdated();
+        return;
+      }
+      if (payload.type === "repeat_tickets.refresh") {
+        dispatchRepeatTicketsUpdated();
         return;
       }
     } catch {

@@ -71,6 +71,7 @@ type LedgerViewPageProps = {
 
 const IDENTIFIERS_PER_PAGE = 100;
 type FreezeTargetRow = FlowBitLedgerView["identifiers"][number] | null;
+type LedgerIdentifierFilter = "all" | "available" | "full" | "empty" | "freeze";
 
 export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
   const [toast, setToast] = useState<ToastState>(null);
@@ -78,6 +79,7 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
   const [ledgerView, setLedgerView] = useState<FlowBitLedgerView | null>(null);
   const [selectedView, setSelectedView] = useState<string>(String(ledgerId));
   const [ledgerViewSearch, setLedgerViewSearch] = useState("");
+  const [identifierFilter, setIdentifierFilter] = useState<LedgerIdentifierFilter>("all");
   const [currentPage, setCurrentPage] = useState(1);
   const [freezeTarget, setFreezeTarget] = useState<FreezeTargetRow>(null);
   const [isFreezeSaving, setIsFreezeSaving] = useState(false);
@@ -138,18 +140,38 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
     }
 
     const query = ledgerViewSearch.trim();
-    if (!query) {
-      return ledgerView.identifiers;
-    }
+    return ledgerView.identifiers.filter((identifierRow) => {
+      if (query && !identifierRow.number.includes(query)) {
+        return false;
+      }
 
-    return ledgerView.identifiers.filter((identifierRow) =>
-      identifierRow.number.includes(query),
-    );
-  }, [ledgerView, ledgerViewSearch]);
+      if (identifierFilter === "full") {
+        return identifierRow.is_full;
+      }
+
+      if (identifierFilter === "empty") {
+        return Number(identifierRow.allocated_amount) <= 0;
+      }
+
+      if (identifierFilter === "freeze") {
+        return identifierRow.is_frozen;
+      }
+
+      if (identifierFilter === "available") {
+        return (
+          !identifierRow.is_full &&
+          !identifierRow.is_frozen &&
+          Number(identifierRow.allocated_amount) > 0
+        );
+      }
+
+      return true;
+    });
+  }, [identifierFilter, ledgerView, ledgerViewSearch]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [ledgerViewSearch, ledgerId]);
+  }, [identifierFilter, ledgerViewSearch, ledgerId]);
 
   const totalPages = Math.max(1, Math.ceil(filteredLedgerIdentifiers.length / IDENTIFIERS_PER_PAGE));
   const paginatedIdentifiers = useMemo(() => {
@@ -469,13 +491,32 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
             </div>
 
             <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <Input
-                value={ledgerViewSearch}
-                onChange={(event) => setLedgerViewSearch(event.target.value.replace(/\D/g, "").slice(0, 3))}
-                placeholder="Search identifier"
-                className="max-w-xs bg-white"
-                disabled={isLoading}
-              />
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <Input
+                  value={ledgerViewSearch}
+                  onChange={(event) => setLedgerViewSearch(event.target.value.replace(/\D/g, "").slice(0, 3))}
+                  placeholder="Search identifier"
+                  className="max-w-xs bg-white"
+                  disabled={isLoading}
+                />
+                <label className="flex min-w-0 items-center rounded-[18px] border border-stone-900/10 bg-white px-4">
+                  <span className="mr-3 text-xs font-semibold uppercase tracking-[0.14em] text-stone-400">
+                    Filter
+                  </span>
+                  <select
+                    value={identifierFilter}
+                    onChange={(event) => setIdentifierFilter(event.target.value as LedgerIdentifierFilter)}
+                    className="h-11 min-w-[160px] bg-transparent text-sm text-stone-700 outline-none"
+                    disabled={isLoading}
+                  >
+                    <option value="all">All</option>
+                    <option value="available">Available</option>
+                    <option value="full">Full</option>
+                    <option value="empty">Empty</option>
+                    <option value="freeze">Freeze</option>
+                  </select>
+                </label>
+              </div>
               {isArchiveReadOnly ? (
                 <span className="inline-flex items-center gap-2 rounded-full bg-stone-100 px-4 py-3 text-xs font-semibold uppercase tracking-[0.16em] text-stone-600">
                   Read only archive
@@ -639,7 +680,7 @@ export function LedgerViewPage({ ledgerId }: LedgerViewPageProps) {
                 </div>
               ) : (
                 <div className="rounded-[22px] border border-dashed border-stone-300 bg-stone-50 px-4 py-4 text-sm text-stone-500">
-                  No identifiers matched "{ledgerViewSearch}".
+                  No identifiers matched "{ledgerViewSearch || identifierFilter}".
                 </div>
               )}
             </div>
