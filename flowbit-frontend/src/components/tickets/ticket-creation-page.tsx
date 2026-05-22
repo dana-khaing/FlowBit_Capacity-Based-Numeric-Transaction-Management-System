@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faArrowUpRightFromSquare,
@@ -281,6 +281,9 @@ export function TicketCreationPage() {
     entryCount: number;
     totalAmount: string;
   } | null>(null);
+  const ticketFieldRefs = useRef<
+    Record<string, { identifier: HTMLInputElement | null; amount: HTMLInputElement | null }>
+  >({});
 
   const {
     activePeriod,
@@ -344,6 +347,42 @@ export function TicketCreationPage() {
     [activeLedgers],
   );
   const hasWorkingLedgers = workingLedgers.length > 0;
+
+  useEffect(() => {
+    if (!pendingFocus) {
+      return;
+    }
+
+    let frameId = 0;
+
+    const focusPendingField = () => {
+      const targetInput =
+        ticketFieldRefs.current[pendingFocus.itemId]?.[pendingFocus.field];
+      if (!targetInput) {
+        return;
+      }
+
+      targetInput.focus();
+      targetInput.select();
+      setPendingFocus(null);
+    };
+
+    frameId = window.requestAnimationFrame(focusPendingField);
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [items, pendingFocus]);
+
+  function handleTicketFieldRefReady(
+    itemId: string,
+    field: "identifier" | "amount",
+    element: HTMLInputElement | null,
+  ) {
+    if (!ticketFieldRefs.current[itemId]) {
+      ticketFieldRefs.current[itemId] = { identifier: null, amount: null };
+    }
+
+    ticketFieldRefs.current[itemId][field] = element;
+  }
 
   function getCustomerDisplayName(value: string | null | undefined) {
     const normalized = (value ?? "").trim();
@@ -1295,10 +1334,10 @@ export function TicketCreationPage() {
                         pendingFocus?.itemId === item.id ? pendingFocus.field : null
                       }
                       canRemove={resolvedItems.length > 1}
+                      onFieldRefReady={handleTicketFieldRefReady}
                       onFieldChange={handleFieldChange}
                       onAllocationModeChange={handleAllocationModeChange}
                       onManualAmountChange={handleManualAmountChange}
-                      onAutoFocusHandled={() => setPendingFocus(null)}
                       onToggleAmountMode={handleToggleAmountMode}
                       onTogglePermutations={toggleIdentifierPermutations}
                       onTakeAll={handleTakeAll}

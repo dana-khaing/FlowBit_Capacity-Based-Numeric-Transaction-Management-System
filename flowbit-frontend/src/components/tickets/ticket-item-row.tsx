@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faArrowRotateRight,
@@ -55,10 +55,14 @@ type TicketItemRowProps = {
   allocationBasisAmount: string;
   autoFocusField?: "identifier" | "amount" | null;
   canRemove: boolean;
+  onFieldRefReady?: (
+    itemId: string,
+    field: "identifier" | "amount",
+    element: HTMLInputElement | null,
+  ) => void;
   onFieldChange: (itemId: string, field: "identifierNumber" | "amount", value: string) => void;
   onAllocationModeChange: (itemId: string, mode: "default" | "manual") => void;
   onManualAmountChange: (itemId: string, ledgerId: number, value: string) => void;
-  onAutoFocusHandled: () => void;
   onToggleAmountMode: (itemId: string) => void;
   onTogglePermutations: (itemId: string) => void;
   onTakeAll: (itemId: string) => void;
@@ -82,10 +86,10 @@ export function TicketItemRow({
   allocationBasisAmount,
   autoFocusField,
   canRemove,
+  onFieldRefReady,
   onFieldChange,
   onAllocationModeChange,
   onManualAmountChange,
-  onAutoFocusHandled,
   onToggleAmountMode,
   onTogglePermutations,
   onTakeAll,
@@ -109,20 +113,6 @@ export function TicketItemRow({
   const isReserveOnlyCapacity = freezeStatus === "all" && hasRemainingCapacity;
   const isFullyFrozenWithoutCapacity = freezeStatus === "all" && hasLoadedCapacity && !hasRemainingCapacity;
   const hasPartialFreeze = freezeStatus === "partial";
-
-  useEffect(() => {
-    if (!autoFocusField) {
-      return;
-    }
-
-    if (autoFocusField === "identifier") {
-      identifierInputRef.current?.focus();
-    } else {
-      amountInputRef.current?.focus();
-    }
-
-    onAutoFocusHandled();
-  }, [autoFocusField, onAutoFocusHandled]);
 
   return (
     <div className="rounded-[26px] border border-stone-900/8 bg-white p-4 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-5">
@@ -148,11 +138,15 @@ export function TicketItemRow({
             Identifier
           </span>
           <Input
-            ref={identifierInputRef}
+            ref={(element) => {
+              identifierInputRef.current = element;
+              onFieldRefReady?.(item.id, "identifier", element);
+            }}
             list={datalistId}
             inputMode="numeric"
             pattern="[0-9]*"
             value={item.identifierNumber}
+            autoFocus={autoFocusField === "identifier"}
             onChange={(event) => onFieldChange(item.id, "identifierNumber", event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Enter") {
@@ -177,10 +171,14 @@ export function TicketItemRow({
           <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Amount</span>
           <div className="flex gap-2">
             <Input
-              ref={amountInputRef}
+              ref={(element) => {
+                amountInputRef.current = element;
+                onFieldRefReady?.(item.id, "amount", element);
+              }}
               inputMode="numeric"
               pattern="[0-9]*"
               value={item.amount}
+              autoFocus={autoFocusField === "amount"}
               onChange={(event) => onFieldChange(item.id, "amount", event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === "Enter") {
