@@ -124,21 +124,6 @@ export function TicketRefundModal({
           Choose whether to refund the full ticket, a transaction, or a single spill-over item.
         </p>
 
-        {requireOverrideCode ? (
-          <label className="mt-5 block space-y-2">
-            <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
-              Admin override code
-            </span>
-            <Input
-              type="password"
-              value={adminOverrideCode}
-              onChange={(event) => onCodeChange(event.target.value)}
-              placeholder="Enter override code"
-              disabled={Boolean(busyAction)}
-            />
-          </label>
-        ) : null}
-
         {ticket.repeat_ticket_id ? (
           <label className="mt-5 flex items-start gap-3 rounded-[20px] border border-stone-900/8 bg-stone-50 px-4 py-3 text-sm text-stone-600">
             <input
