@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AppSectionPage } from "@/components/app/app-section-page";
 import { useCurrentUserState } from "@/components/auth/current-user-context";
+import { fetchCurrentUser, getStoredUser, type AuthUser } from "@/lib/auth-client";
 import {
   closeSupportCase,
   createSupportCase,
@@ -46,7 +47,9 @@ function statusTone(status: "OPEN" | "CLOSED") {
 
 export function CustomerServicePage() {
   const currentUserState = useCurrentUserState();
-  const isAdmin = currentUserState?.user?.role === "admin";
+  const [user, setUser] = useState<AuthUser | null>(getStoredUser());
+  const effectiveUser = currentUserState?.user ?? user;
+  const isAdmin = effectiveUser?.role === "admin";
 
   const [cases, setCases] = useState<FlowBitSupportCase[]>([]);
   const [selectedCaseId, setSelectedCaseId] = useState<number | null>(null);
@@ -61,9 +64,33 @@ export function CustomerServicePage() {
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const shouldForceScrollRef = useRef(false);
 
-  async function loadCases(preferredCaseId?: number | null) {
-    setIsLoadingCases(true);
+  function scrollMessagesToBottom(behavior: ScrollBehavior = "smooth") {
+    const container = messagesContainerRef.current;
+    if (!container) {
+      return;
+    }
+    container.scrollTo({
+      top: container.scrollHeight,
+      behavior,
+    });
+  }
+
+  function isNearBottom() {
+    const container = messagesContainerRef.current;
+    if (!container) {
+      return true;
+    }
+    const threshold = 96;
+    return container.scrollHeight - container.scrollTop - container.clientHeight <= threshold;
+  }
+
+  async function loadCases(preferredCaseId?: number | null, options?: { silent?: boolean }) {
+    if (!options?.silent) {
+      setIsLoadingCases(true);
+    }
     setErrorMessage("");
     try {
       const nextCases = await fetchSupportCases();
@@ -75,13 +102,30 @@ export function CustomerServicePage() {
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to load customer service cases.");
     } finally {
-      setIsLoadingCases(false);
+      if (!options?.silent) {
+        setIsLoadingCases(false);
+      }
     }
   }
 
   useEffect(() => {
     loadCases();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    fetchCurrentUser()
+      .then((nextUser) => {
+        if (active) {
+          setUser(nextUser);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -92,6 +136,7 @@ export function CustomerServicePage() {
 
     let active = true;
     setIsLoadingDetail(true);
+    shouldForceScrollRef.current = true;
     setErrorMessage("");
     fetchSupportCase(selectedCaseId)
       .then((detail) => {
@@ -114,6 +159,22 @@ export function CustomerServicePage() {
       active = false;
     };
   }, [selectedCaseId]);
+
+  useEffect(() => {
+    if (!selectedCase) {
+      return;
+    }
+
+    if (shouldForceScrollRef.current) {
+      shouldForceScrollRef.current = false;
+      requestAnimationFrame(() => scrollMessagesToBottom("auto"));
+      return;
+    }
+
+    if (isNearBottom()) {
+      requestAnimationFrame(() => scrollMessagesToBottom("smooth"));
+    }
+  }, [selectedCase?.messages.length, selectedCase]);
 
   const filteredCases = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
@@ -169,9 +230,10 @@ export function CustomerServicePage() {
     try {
       await replyToSupportCase(selectedCaseId, replyDraft);
       setReplyDraft("");
+      shouldForceScrollRef.current = true;
       const refreshedCase = await fetchSupportCase(selectedCaseId);
       setSelectedCase(normalizeSupportCaseDetail(refreshedCase));
-      await loadCases(selectedCaseId);
+      await loadCases(selectedCaseId, { silent: true });
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to send reply.");
     } finally {
@@ -194,7 +256,7 @@ export function CustomerServicePage() {
       );
       const refreshedCase = await fetchSupportCase(selectedCaseId);
       setSelectedCase(normalizeSupportCaseDetail(refreshedCase));
-      await loadCases(selectedCaseId);
+      await loadCases(selectedCaseId, { silent: true });
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to update case status.");
     } finally {
@@ -304,9 +366,6 @@ export function CustomerServicePage() {
                           {item.status}
                         </span>
                       </div>
-                      <p className={`mt-3 line-clamp-2 text-sm leading-6 ${isSelected ? "text-stone-200" : "text-stone-500"}`}>
-                        {item.last_message_preview || "No messages yet."}
-                      </p>
                       <div className={`mt-3 flex flex-wrap items-center gap-3 text-xs font-semibold uppercase tracking-[0.14em] ${isSelected ? "text-stone-300" : "text-stone-400"}`}>
                         <span>{item.message_count} message{item.message_count === 1 ? "" : "s"}</span>
                         <span>{formatDateTime(item.last_message_at || item.created_at)}</span>
@@ -349,40 +408,55 @@ export function CustomerServicePage() {
                   </button>
                 </div>
 
-                <div className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto pr-1 thin-scrollbar">
+                <div
+                  ref={messagesContainerRef}
+                  className="mt-4 min-h-0 flex-1 overflow-y-auto rounded-[24px] border border-stone-900/8 bg-[#f6f3ee] px-3 py-4 thin-scrollbar sm:px-4"
+                >
                   {isLoadingDetail ? (
                     <div className="rounded-[20px] border border-dashed border-stone-300 bg-stone-50 px-4 py-8 text-center text-sm text-stone-500">
                       Loading case detail...
                     </div>
                   ) : selectedMessages.length ? (
-                    selectedMessages.map((message) => {
-                      const isMine = message.sender === currentUserState?.user?.id;
+                    <div className="space-y-3">
+                    {selectedMessages.map((message) => {
+                      const isMine = isAdmin
+                        ? message.is_admin_sender
+                        : message.sender === effectiveUser?.id;
                       return (
                         <div
                           key={message.id}
-                          className={`flex ${isMine ? "justify-end" : "justify-start"}`}
+                          className={`flex w-full ${isMine ? "justify-end" : "justify-start"}`}
                         >
                           <div
-                            className={`min-w-0 max-w-[88%] overflow-hidden rounded-[22px] px-4 py-4 ${
+                            className={`min-w-0 max-w-[78%] overflow-hidden px-4 py-3 shadow-[0_8px_20px_rgba(28,24,20,0.05)] ${
                               isMine
-                                ? "bg-stone-950 text-white"
+                                ? "ml-auto rounded-[22px_22px_8px_22px] bg-stone-950 text-white"
                                 : message.is_admin_sender
-                                  ? "bg-emerald-50 text-stone-900"
-                                  : "bg-[#f5f2eb] text-stone-900"
+                                  ? "mr-auto rounded-[22px_22px_22px_8px] bg-[#e7f6ef] text-stone-900"
+                                  : "mr-auto rounded-[22px_22px_22px_8px] bg-white text-stone-900"
                             }`}
                           >
-                            <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em]">
-                              <span>{message.sender_full_name}</span>
-                              {message.is_admin_sender ? <span className="rounded-full bg-white/70 px-2 py-1 text-[10px] text-emerald-700">Admin</span> : null}
-                              <span className={isMine ? "text-stone-300" : "text-stone-400"}>{formatDateTime(message.created_at)}</span>
+                            <div className={`flex flex-wrap items-center gap-2 text-[11px] ${isMine ? "justify-end" : "justify-start"}`}>
+                              <span className={`font-semibold ${isMine ? "text-stone-100" : "text-stone-700"}`}>
+                                {message.sender_full_name}
+                              </span>
+                              {message.is_admin_sender ? (
+                                <span className="rounded-full bg-white/75 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-emerald-700">
+                                  Admin
+                                </span>
+                              ) : null}
+                              <span className={isMine ? "text-stone-300" : "text-stone-400"}>
+                                {formatDateTime(message.created_at)}
+                              </span>
                             </div>
-                            <p className={`mt-3 whitespace-pre-wrap break-words text-sm leading-6 ${isMine ? "text-stone-100" : "text-stone-700"}`}>
+                            <p className={`mt-2 whitespace-pre-wrap break-words text-sm leading-6 ${isMine ? "text-right text-stone-100" : "text-left text-stone-700"}`}>
                               {message.body}
                             </p>
                           </div>
                         </div>
                       );
-                    })
+                    })}
+                    </div>
                   ) : (
                     <div className="rounded-[20px] border border-dashed border-stone-300 bg-stone-50 px-4 py-8 text-center text-sm text-stone-500">
                       No messages in this case yet.
@@ -390,7 +464,7 @@ export function CustomerServicePage() {
                   )}
                 </div>
 
-                <div className="mt-4 border-t border-stone-900/8 pt-4">
+                <div className="mt-4 rounded-[22px] border border-stone-900/8 bg-[#f8f6f2] p-3">
                   <div className="space-y-3">
                     <textarea
                       value={replyDraft}
@@ -398,9 +472,14 @@ export function CustomerServicePage() {
                       placeholder="Write your reply"
                       rows={1}
                       disabled={selectedCase.status === "CLOSED"}
-                      className="h-20 w-full resize-none rounded-[18px] border border-stone-900/10 bg-[#f8f6f2] px-4 py-2.5 text-sm leading-5 text-stone-900 outline-none transition focus:border-stone-400 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="h-20 w-full resize-none rounded-[18px] border border-stone-900/10 bg-white px-4 py-2.5 text-sm leading-5 text-stone-900 outline-none transition focus:border-stone-400 disabled:cursor-not-allowed disabled:opacity-60"
                     />
-                    <div className="flex justify-end">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-xs text-stone-500">
+                        {selectedCase.status === "CLOSED"
+                          ? "Reopen the case to continue the conversation."
+                          : "Replies stay in this shared thread for both sides."}
+                      </p>
                       <button
                         type="button"
                         onClick={handleReply}
