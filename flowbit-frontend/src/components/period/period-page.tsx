@@ -526,7 +526,7 @@ export function PeriodPage() {
                 ? "Delete period"
                 : "Save changes"
         }
-        showCodeInput={false}
+        showCodeInput={true}
         busy={isSaving}
         onCodeChange={setOverrideCode}
         onCancel={() => {
