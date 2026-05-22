@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AppSectionPage } from "@/components/app/app-section-page";
 import { useCurrentUserState } from "@/components/auth/current-user-context";
+import { fetchCurrentUser, getStoredUser, type AuthUser } from "@/lib/auth-client";
 import {
   closeSupportCase,
   createSupportCase,
@@ -46,7 +47,9 @@ function statusTone(status: "OPEN" | "CLOSED") {
 
 export function CustomerServicePage() {
   const currentUserState = useCurrentUserState();
-  const isAdmin = currentUserState?.user?.role === "admin";
+  const [user, setUser] = useState<AuthUser | null>(getStoredUser());
+  const effectiveUser = currentUserState?.user ?? user;
+  const isAdmin = effectiveUser?.role === "admin";
 
   const [cases, setCases] = useState<FlowBitSupportCase[]>([]);
   const [selectedCaseId, setSelectedCaseId] = useState<number | null>(null);
@@ -82,6 +85,21 @@ export function CustomerServicePage() {
   useEffect(() => {
     loadCases();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    fetchCurrentUser()
+      .then((nextUser) => {
+        if (active) {
+          setUser(nextUser);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -356,27 +374,29 @@ export function CustomerServicePage() {
                     </div>
                   ) : selectedMessages.length ? (
                     selectedMessages.map((message) => {
-                      const isMine = message.sender === currentUserState?.user?.id;
+                      const isMine = isAdmin
+                        ? message.is_admin_sender
+                        : message.sender === effectiveUser?.id;
                       return (
                         <div
                           key={message.id}
-                          className={`flex ${isMine ? "justify-end" : "justify-start"}`}
+                          className={`flex w-full ${isMine ? "justify-end" : "justify-start"}`}
                         >
                           <div
-                            className={`min-w-0 max-w-[88%] overflow-hidden rounded-[22px] px-4 py-4 ${
+                            className={`min-w-0 max-w-[76%] overflow-hidden rounded-[22px] px-4 py-4 shadow-[0_6px_18px_rgba(28,24,20,0.04)] ${
                               isMine
-                                ? "bg-stone-950 text-white"
+                                ? "ml-auto bg-stone-950 text-white"
                                 : message.is_admin_sender
-                                  ? "bg-emerald-50 text-stone-900"
-                                  : "bg-[#f5f2eb] text-stone-900"
+                                  ? "mr-auto bg-emerald-50 text-stone-900"
+                                  : "mr-auto bg-[#f5f2eb] text-stone-900"
                             }`}
                           >
-                            <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em]">
+                            <div className={`flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] ${isMine ? "justify-end" : "justify-start"}`}>
                               <span>{message.sender_full_name}</span>
                               {message.is_admin_sender ? <span className="rounded-full bg-white/70 px-2 py-1 text-[10px] text-emerald-700">Admin</span> : null}
                               <span className={isMine ? "text-stone-300" : "text-stone-400"}>{formatDateTime(message.created_at)}</span>
                             </div>
-                            <p className={`mt-3 whitespace-pre-wrap break-words text-sm leading-6 ${isMine ? "text-stone-100" : "text-stone-700"}`}>
+                            <p className={`mt-3 whitespace-pre-wrap break-words text-sm leading-6 ${isMine ? "text-right text-stone-100" : "text-left text-stone-700"}`}>
                               {message.body}
                             </p>
                           </div>
