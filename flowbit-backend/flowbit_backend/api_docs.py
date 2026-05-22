@@ -29,7 +29,7 @@ Operational notes:
 - Realtime notifications are delivered over `/ws/notifications/`
 - Admin-only routes remain protected outside `DEBUG`
 """.strip(),
-    version="0.1.0-beta",
+    version="1.0-beta",
     public=True,
     permission_classes=[DocsAccessPermission],
     renderer_classes=[JSONOpenAPIRenderer],
