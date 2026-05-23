@@ -117,14 +117,15 @@ export function TicketRefundModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/30 px-4"
-      onClick={closeModal}
-    >
+    <>
       <div
-        className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_18px_48px_rgba(24,24,24,0.18)] sm:p-6"
-        onClick={(event) => event.stopPropagation()}
+        className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/30 px-4"
+        onClick={closeModal}
       >
+        <div
+          className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_18px_48px_rgba(24,24,24,0.18)] sm:p-6"
+          onClick={(event) => event.stopPropagation()}
+        >
         <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-500">
           Refund
         </p>
@@ -270,106 +271,107 @@ export function TicketRefundModal({
           </div>
         ) : null}
 
-        <div className="mt-5 flex justify-end">
-          <Button variant="outline" onClick={closeModal} disabled={Boolean(busyAction)}>
-            Close
-          </Button>
+          <div className="mt-5 flex justify-end">
+            <Button variant="outline" onClick={closeModal} disabled={Boolean(busyAction)}>
+              Close
+            </Button>
+          </div>
         </div>
+      </div>
 
-        {confirmAction ? (
+      {confirmAction ? (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-stone-950/40 px-4"
+          onClick={() => setConfirmAction(null)}
+        >
           <div
-            className="absolute inset-0 overflow-y-auto rounded-[28px] bg-stone-950/30 px-4 py-6"
-            onClick={() => setConfirmAction(null)}
+            className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-[24px] border border-stone-900/8 bg-white p-5 shadow-[0_18px_48px_rgba(24,24,24,0.18)]"
+            onClick={(event) => event.stopPropagation()}
           >
-            <div
-              className="mx-auto my-auto w-full max-w-lg rounded-[24px] border border-stone-900/8 bg-white p-5 shadow-[0_18px_48px_rgba(24,24,24,0.18)]"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-500">
-                Confirmation
-              </p>
-              <h3 className="mt-2 text-xl font-semibold text-stone-950">
-                Confirm refund
-              </h3>
-              <p className="mt-2 text-sm leading-6 text-stone-500">
-                {confirmAction.label}. This action will reverse the selected ticket records.
-              </p>
-              {confirmAction.requiresCsoChoice ? (
-                <div className="mt-5 space-y-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
-                    Approved spill-over handling
-                  </p>
-                  <button
-                    type="button"
-                    className={`flex w-full items-center justify-between rounded-[20px] border px-4 py-4 text-left transition ${
-                      csoRefundMode === "return_to_tcso"
-                        ? "border-stone-950 bg-stone-100"
-                        : "border-stone-900/8 bg-stone-50 hover:border-stone-900/20"
-                    }`}
-                    onClick={() => setCsoRefundMode("return_to_tcso")}
-                  >
-                    <div>
-                      <p className="font-semibold text-stone-950">Change back to TCSO</p>
-                      <p className="mt-1 text-sm text-stone-500">
-                        Keep the transaction amount unchanged and move approved spill-over back to pending.
-                      </p>
-                    </div>
-                  </button>
-                  <button
-                    type="button"
-                    className={`flex w-full items-center justify-between rounded-[20px] border px-4 py-4 text-left transition ${
-                      csoRefundMode === "refund_spill_over"
-                        ? "border-stone-950 bg-stone-100"
-                        : "border-stone-900/8 bg-stone-50 hover:border-stone-900/20"
-                    }`}
-                    onClick={() => setCsoRefundMode("refund_spill_over")}
-                  >
-                    <div>
-                      <p className="font-semibold text-stone-950">Refund spill-over</p>
-                      <p className="mt-1 text-sm text-stone-500">
-                        Move approved spill-over into overkill and reduce the active transaction amount.
-                      </p>
-                    </div>
-                  </button>
-                </div>
-              ) : null}
-              {requireOverrideCode ? (
-                <label className="mt-5 block space-y-2">
-                  <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
-                    Admin override code
-                  </span>
-                  <Input
-                    type="password"
-                    value={adminOverrideCode}
-                    onChange={(event) => onCodeChange(event.target.value)}
-                    placeholder="Enter override code"
-                    disabled={Boolean(busyAction)}
-                  />
-                </label>
-              ) : null}
-              <div className="mt-5 flex justify-end gap-3">
-                <Button
-                  variant="outline"
-                  onClick={() => setConfirmAction(null)}
-                  disabled={Boolean(busyAction)}
+            <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-500">
+              Confirmation
+            </p>
+            <h3 className="mt-2 text-xl font-semibold text-stone-950">
+              Confirm refund
+            </h3>
+            <p className="mt-2 text-sm leading-6 text-stone-500">
+              {confirmAction.label}. This action will reverse the selected ticket records.
+            </p>
+            {confirmAction.requiresCsoChoice ? (
+              <div className="mt-5 space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+                  Approved spill-over handling
+                </p>
+                <button
+                  type="button"
+                  className={`flex w-full items-center justify-between rounded-[20px] border px-4 py-4 text-left transition ${
+                    csoRefundMode === "return_to_tcso"
+                      ? "border-stone-950 bg-stone-100"
+                      : "border-stone-900/8 bg-stone-50 hover:border-stone-900/20"
+                  }`}
+                  onClick={() => setCsoRefundMode("return_to_tcso")}
                 >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleConfirmRefund}
-                  disabled={
-                    Boolean(busyAction) ||
-                    (confirmAction.requiresCsoChoice && !csoRefundMode) ||
-                    (requireOverrideCode && !adminOverrideCode.trim())
-                  }
+                  <div>
+                    <p className="font-semibold text-stone-950">Change back to TCSO</p>
+                    <p className="mt-1 text-sm text-stone-500">
+                      Keep the transaction amount unchanged and move approved spill-over back to pending.
+                    </p>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  className={`flex w-full items-center justify-between rounded-[20px] border px-4 py-4 text-left transition ${
+                    csoRefundMode === "refund_spill_over"
+                      ? "border-stone-950 bg-stone-100"
+                      : "border-stone-900/8 bg-stone-50 hover:border-stone-900/20"
+                  }`}
+                  onClick={() => setCsoRefundMode("refund_spill_over")}
                 >
-                  Confirm refund
-                </Button>
+                  <div>
+                    <p className="font-semibold text-stone-950">Refund spill-over</p>
+                    <p className="mt-1 text-sm text-stone-500">
+                      Move approved spill-over into overkill and reduce the active transaction amount.
+                    </p>
+                  </div>
+                </button>
               </div>
+            ) : null}
+            {requireOverrideCode ? (
+              <label className="mt-5 block space-y-2">
+                <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+                  Admin override code
+                </span>
+                <Input
+                  type="password"
+                  value={adminOverrideCode}
+                  onChange={(event) => onCodeChange(event.target.value)}
+                  placeholder="Enter override code"
+                  disabled={Boolean(busyAction)}
+                />
+              </label>
+            ) : null}
+            <div className="mt-5 flex justify-end gap-3">
+              <Button
+                variant="outline"
+                onClick={() => setConfirmAction(null)}
+                disabled={Boolean(busyAction)}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleConfirmRefund}
+                disabled={
+                  Boolean(busyAction) ||
+                  (confirmAction.requiresCsoChoice && !csoRefundMode) ||
+                  (requireOverrideCode && !adminOverrideCode.trim())
+                }
+              >
+                Confirm refund
+              </Button>
             </div>
           </div>
-        ) : null}
-      </div>
-    </div>
+        </div>
+      ) : null}
+    </>
   );
 }
