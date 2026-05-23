@@ -19,9 +19,15 @@ type TicketRefundModalProps = {
   onCodeChange: (value: string) => void;
   onSyncRepeatTicketChange: (value: boolean) => void;
   onClose: () => void;
-  onRefundTicket: () => void;
-  onRefundTransaction: (transactionId: number) => void;
-  onRefundOverflow: (overflowId: number) => void;
+  onRefundTicket: (csoRefundMode?: "return_to_tcso" | "refund_spill_over") => void;
+  onRefundTransaction: (
+    transactionId: number,
+    csoRefundMode?: "return_to_tcso" | "refund_spill_over",
+  ) => void;
+  onRefundOverflow: (
+    overflowId: number,
+    csoRefundMode?: "return_to_tcso" | "refund_spill_over",
+  ) => void;
 };
 
 function formatAmount(value: string) {
@@ -37,9 +43,9 @@ function formatAmount(value: string) {
 }
 
 type ConfirmRefundAction =
-  | { kind: "ticket"; label: string }
-  | { kind: "transaction"; id: number; label: string }
-  | { kind: "overflow"; id: number; label: string };
+  | { kind: "ticket"; label: string; requiresCsoChoice?: boolean }
+  | { kind: "transaction"; id: number; label: string; requiresCsoChoice?: boolean }
+  | { kind: "overflow"; id: number; label: string; requiresCsoChoice?: boolean };
 
 export function TicketRefundModal({
   open,
@@ -73,14 +79,19 @@ export function TicketRefundModal({
       })),
   );
   const [confirmAction, setConfirmAction] = useState<ConfirmRefundAction | null>(null);
+  const [csoRefundMode, setCsoRefundMode] = useState<
+    "return_to_tcso" | "refund_spill_over" | ""
+  >("");
 
   function closeModal() {
     setConfirmAction(null);
+    setCsoRefundMode("");
     onClose();
   }
 
   function openConfirmation(action: ConfirmRefundAction) {
     setConfirmAction(action);
+    setCsoRefundMode("");
   }
 
   function handleConfirmRefund() {
@@ -93,27 +104,28 @@ export function TicketRefundModal({
     }
 
     if (confirmAction.kind === "ticket") {
-      onRefundTicket();
+      onRefundTicket(csoRefundMode || undefined);
       return;
     }
 
     if (confirmAction.kind === "transaction") {
-      onRefundTransaction(confirmAction.id);
+      onRefundTransaction(confirmAction.id, csoRefundMode || undefined);
       return;
     }
 
-    onRefundOverflow(confirmAction.id);
+    onRefundOverflow(confirmAction.id, csoRefundMode || undefined);
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/30 px-4"
-      onClick={closeModal}
-    >
+    <>
       <div
-        className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_18px_48px_rgba(24,24,24,0.18)] sm:p-6"
-        onClick={(event) => event.stopPropagation()}
+        className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/30 px-4"
+        onClick={closeModal}
       >
+        <div
+          className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_18px_48px_rgba(24,24,24,0.18)] sm:p-6"
+          onClick={(event) => event.stopPropagation()}
+        >
         <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-500">
           Refund
         </p>
@@ -123,21 +135,6 @@ export function TicketRefundModal({
         <p className="mt-2 text-sm leading-6 text-stone-500">
           Choose whether to refund the full ticket, a transaction, or a single spill-over item.
         </p>
-
-        {requireOverrideCode ? (
-          <label className="mt-5 block space-y-2">
-            <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
-              Admin override code
-            </span>
-            <Input
-              type="password"
-              value={adminOverrideCode}
-              onChange={(event) => onCodeChange(event.target.value)}
-              placeholder="Enter override code"
-              disabled={Boolean(busyAction)}
-            />
-          </label>
-        ) : null}
 
         {ticket.repeat_ticket_id ? (
           <label className="mt-5 flex items-start gap-3 rounded-[20px] border border-stone-900/8 bg-stone-50 px-4 py-3 text-sm text-stone-600">
@@ -165,11 +162,14 @@ export function TicketRefundModal({
                 variant="outline"
                 className="rounded-[18px]"
                 onClick={() =>
-                  openConfirmation({
-                    kind: "ticket",
-                    label: `Refund the full ticket ${ticket.ticket_number}`,
-                  })
-                }
+                      openConfirmation({
+                        kind: "ticket",
+                        label: `Refund the full ticket ${ticket.ticket_number}`,
+                        requiresCsoChoice: ticket.transactions.some((transaction) =>
+                          transaction.overflows.some((overflow) => overflow.status === "CSO"),
+                        ),
+                      })
+                    }
                 disabled={Boolean(busyAction)}
               >
                 {busyAction?.kind === "ticket" ? "Refunding..." : "Refund ticket"}
@@ -209,6 +209,9 @@ export function TicketRefundModal({
                         kind: "transaction",
                         id: transaction.id,
                         label: `Refund transaction ${transaction.order_number}`,
+                        requiresCsoChoice: transaction.overflows.some(
+                          (overflow) => overflow.status === "CSO",
+                        ),
                       })
                     }
                     disabled={Boolean(busyAction)}
@@ -253,6 +256,7 @@ export function TicketRefundModal({
                         kind: "overflow",
                         id: overflow.id,
                         label: `Refund spill over for ${overflow.identifierNumber}`,
+                        requiresCsoChoice: overflow.status === "CSO",
                       })
                     }
                     disabled={Boolean(busyAction)}
@@ -267,63 +271,107 @@ export function TicketRefundModal({
           </div>
         ) : null}
 
-        <div className="mt-5 flex justify-end">
-          <Button variant="outline" onClick={closeModal} disabled={Boolean(busyAction)}>
-            Close
-          </Button>
+          <div className="mt-5 flex justify-end">
+            <Button variant="outline" onClick={closeModal} disabled={Boolean(busyAction)}>
+              Close
+            </Button>
+          </div>
         </div>
+      </div>
 
-        {confirmAction ? (
+      {confirmAction ? (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-stone-950/40 px-4"
+          onClick={() => setConfirmAction(null)}
+        >
           <div
-            className="absolute inset-0 flex items-center justify-center rounded-[28px] bg-stone-950/30 px-4"
-            onClick={() => setConfirmAction(null)}
+            className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-[24px] border border-stone-900/8 bg-white p-5 shadow-[0_18px_48px_rgba(24,24,24,0.18)]"
+            onClick={(event) => event.stopPropagation()}
           >
-            <div
-              className="w-full max-w-lg rounded-[24px] border border-stone-900/8 bg-white p-5 shadow-[0_18px_48px_rgba(24,24,24,0.18)]"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-500">
-                Confirmation
-              </p>
-              <h3 className="mt-2 text-xl font-semibold text-stone-950">
-                Confirm refund
-              </h3>
-              <p className="mt-2 text-sm leading-6 text-stone-500">
-                {confirmAction.label}. This action will reverse the selected ticket records.
-              </p>
-              {requireOverrideCode ? (
-                <label className="mt-5 block space-y-2">
-                  <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
-                    Admin override code
-                  </span>
-                  <Input
-                    type="password"
-                    value={adminOverrideCode}
-                    onChange={(event) => onCodeChange(event.target.value)}
-                    placeholder="Enter override code"
-                    disabled={Boolean(busyAction)}
-                  />
-                </label>
-              ) : null}
-              <div className="mt-5 flex justify-end gap-3">
-                <Button
-                  variant="outline"
-                  onClick={() => setConfirmAction(null)}
-                  disabled={Boolean(busyAction)}
+            <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-500">
+              Confirmation
+            </p>
+            <h3 className="mt-2 text-xl font-semibold text-stone-950">
+              Confirm refund
+            </h3>
+            <p className="mt-2 text-sm leading-6 text-stone-500">
+              {confirmAction.label}. This action will reverse the selected ticket records.
+            </p>
+            {confirmAction.requiresCsoChoice ? (
+              <div className="mt-5 space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+                  Approved spill-over handling
+                </p>
+                <button
+                  type="button"
+                  className={`flex w-full items-center justify-between rounded-[20px] border px-4 py-4 text-left transition ${
+                    csoRefundMode === "return_to_tcso"
+                      ? "border-stone-950 bg-stone-100"
+                      : "border-stone-900/8 bg-stone-50 hover:border-stone-900/20"
+                  }`}
+                  onClick={() => setCsoRefundMode("return_to_tcso")}
                 >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleConfirmRefund}
-                  disabled={Boolean(busyAction) || (requireOverrideCode && !adminOverrideCode.trim())}
+                  <div>
+                    <p className="font-semibold text-stone-950">Change back to TCSO</p>
+                    <p className="mt-1 text-sm text-stone-500">
+                      Keep the transaction amount unchanged and move approved spill-over back to pending.
+                    </p>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  className={`flex w-full items-center justify-between rounded-[20px] border px-4 py-4 text-left transition ${
+                    csoRefundMode === "refund_spill_over"
+                      ? "border-stone-950 bg-stone-100"
+                      : "border-stone-900/8 bg-stone-50 hover:border-stone-900/20"
+                  }`}
+                  onClick={() => setCsoRefundMode("refund_spill_over")}
                 >
-                  Confirm refund
-                </Button>
+                  <div>
+                    <p className="font-semibold text-stone-950">Refund spill-over</p>
+                    <p className="mt-1 text-sm text-stone-500">
+                      Move approved spill-over into overkill and reduce the active transaction amount.
+                    </p>
+                  </div>
+                </button>
               </div>
+            ) : null}
+            {requireOverrideCode ? (
+              <label className="mt-5 block space-y-2">
+                <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+                  Admin override code
+                </span>
+                <Input
+                  type="password"
+                  value={adminOverrideCode}
+                  onChange={(event) => onCodeChange(event.target.value)}
+                  placeholder="Enter override code"
+                  disabled={Boolean(busyAction)}
+                />
+              </label>
+            ) : null}
+            <div className="mt-5 flex justify-end gap-3">
+              <Button
+                variant="outline"
+                onClick={() => setConfirmAction(null)}
+                disabled={Boolean(busyAction)}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleConfirmRefund}
+                disabled={
+                  Boolean(busyAction) ||
+                  (confirmAction.requiresCsoChoice && !csoRefundMode) ||
+                  (requireOverrideCode && !adminOverrideCode.trim())
+                }
+              >
+                Confirm refund
+              </Button>
             </div>
           </div>
-        ) : null}
-      </div>
-    </div>
+        </div>
+      ) : null}
+    </>
   );
 }
