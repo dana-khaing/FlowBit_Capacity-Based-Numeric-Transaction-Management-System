@@ -260,7 +260,11 @@ export function TicketHistoryPage() {
     }
   }
 
-  async function runOverflowRefundAction(overflowId: number, kind: "overflow") {
+  async function runOverflowRefundAction(
+    overflowId: number,
+    kind: "overflow",
+    csoRefundMode?: "return_to_tcso" | "refund_spill_over",
+  ) {
     if (!adminOverrideCode.trim()) {
       setToast({
         type: "error",
@@ -275,6 +279,7 @@ export function TicketHistoryPage() {
         overflowId,
         action: "refund_overflow_only",
         adminOverrideCode: adminOverrideCode.trim() || undefined,
+        csoRefundMode,
         syncRepeatTicket,
       });
       await refreshTicketHistoryState();
@@ -299,6 +304,7 @@ export function TicketHistoryPage() {
     action: "refund_ticket" | "refund_transaction",
     kind: "ticket" | "transaction",
     transactionId?: number,
+    csoRefundMode?: "return_to_tcso" | "refund_spill_over",
   ) {
     if (!selectedTicketNumber) {
       return;
@@ -320,6 +326,7 @@ export function TicketHistoryPage() {
         action,
         transactionId,
         adminOverrideCode: adminOverrideCode.trim() || undefined,
+        csoRefundMode,
         syncRepeatTicket,
       });
       await refreshTicketHistoryState();
@@ -565,16 +572,19 @@ export function TicketHistoryPage() {
           setAdminOverrideCode("");
           setSyncRepeatTicket(false);
         }}
-        onRefundTicket={() => runTicketRefundAction("refund_ticket", "ticket")}
-        onRefundTransaction={(transactionId) =>
+        onRefundTicket={(csoRefundMode) =>
+          runTicketRefundAction("refund_ticket", "ticket", undefined, csoRefundMode)
+        }
+        onRefundTransaction={(transactionId, csoRefundMode) =>
           runTicketRefundAction(
             "refund_transaction",
             "transaction",
             transactionId,
+            csoRefundMode,
           )
         }
-        onRefundOverflow={(overflowId) =>
-          runOverflowRefundAction(overflowId, "overflow")
+        onRefundOverflow={(overflowId, csoRefundMode) =>
+          runOverflowRefundAction(overflowId, "overflow", csoRefundMode)
         }
       />
 

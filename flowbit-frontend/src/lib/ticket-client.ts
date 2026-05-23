@@ -165,6 +165,7 @@ export async function resolveOverflowAction(payload: {
   overflowId: number;
   action: "refund_overflow_only" | "refund_transaction" | "refund_ticket";
   adminOverrideCode?: string;
+  csoRefundMode?: "return_to_tcso" | "refund_spill_over";
   syncRepeatTicket?: boolean;
 }) {
   return apiRequest<{ message: string }>(`/overflows/${payload.overflowId}/resolve/`, {
@@ -172,6 +173,7 @@ export async function resolveOverflowAction(payload: {
     headers: authHeaders(),
     body: JSON.stringify({
       action: payload.action,
+      ...(payload.csoRefundMode ? { cso_refund_mode: payload.csoRefundMode } : {}),
       ...(payload.syncRepeatTicket ? { sync_repeat_ticket: true } : {}),
       ...(payload.adminOverrideCode
         ? { admin_override_code: payload.adminOverrideCode }
@@ -185,6 +187,7 @@ export async function resolveTicketRefundAction(payload: {
   action: "refund_ticket" | "refund_transaction";
   transactionId?: number;
   adminOverrideCode?: string;
+  csoRefundMode?: "return_to_tcso" | "refund_spill_over";
   syncRepeatTicket?: boolean;
 }) {
   return apiRequest<{ message: string }>(`/tickets/${payload.ticketNumber}/refund/`, {
@@ -193,6 +196,7 @@ export async function resolveTicketRefundAction(payload: {
     body: JSON.stringify({
       action: payload.action,
       ...(payload.transactionId ? { transaction_id: payload.transactionId } : {}),
+      ...(payload.csoRefundMode ? { cso_refund_mode: payload.csoRefundMode } : {}),
       ...(payload.syncRepeatTicket ? { sync_repeat_ticket: true } : {}),
       ...(payload.adminOverrideCode
         ? { admin_override_code: payload.adminOverrideCode }

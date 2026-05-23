@@ -233,6 +233,7 @@ export async function resolveOverflowAction(payload: {
   overflowId: number;
   action: "refund_overflow_only" | "refund_transaction" | "refund_ticket";
   adminOverrideCode?: string;
+  csoRefundMode?: "return_to_tcso" | "refund_spill_over";
   syncRepeatTicket?: boolean;
 }) {
   return apiRequest<{ message: string }>(`/overflows/${payload.overflowId}/resolve/`, {
@@ -240,6 +241,7 @@ export async function resolveOverflowAction(payload: {
     headers: authHeaders(),
     body: JSON.stringify({
       action: payload.action,
+      ...(payload.csoRefundMode ? { cso_refund_mode: payload.csoRefundMode } : {}),
       ...(payload.syncRepeatTicket ? { sync_repeat_ticket: true } : {}),
       ...(payload.adminOverrideCode
         ? { admin_override_code: payload.adminOverrideCode }

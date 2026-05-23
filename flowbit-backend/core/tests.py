@@ -3786,6 +3786,140 @@ class PrivateWorkflowAPITests(APITestCase):
             ).exists()
         )
 
+    def test_ticket_refund_with_cso_can_change_back_to_tcso_without_reducing_total(self):
+        refund_ticket = Ticket.objects.create(
+            customer_name='Ticket CSO Return',
+            created_by=self.approver,
+        )
+        refund_transaction = Transaction.objects.create(
+            ticket=refund_ticket,
+            identifier=self.second_identifier,
+            total_amount=Decimal('400.00'),
+            created_by=self.approver,
+        )
+        overflow = Overflow.objects.get(transaction=refund_transaction, status=Overflow.STATUS_TCSO)
+        self.client.post(
+            f'/api/overflows/{overflow.id}/approve/',
+            {
+                'amount_to_approve': '300.00',
+                'collaborator_ids': [self.collaborator.id],
+            },
+            format='json',
+        )
+
+        response = self.client.post(
+            f'/api/tickets/{refund_ticket.ticket_number}/refund/',
+            {
+                'action': 'refund_ticket',
+                'admin_override_code': 'override-123',
+                'cso_refund_mode': 'return_to_tcso',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        refund_ticket.refresh_from_db()
+        refund_transaction.refresh_from_db()
+        overflow.refresh_from_db()
+        self.assertFalse(refund_ticket.is_refunded)
+        self.assertFalse(refund_transaction.is_refunded)
+        self.assertEqual(overflow.status, Overflow.STATUS_TCSO)
+        self.assertEqual(refund_transaction.total_amount, Decimal('400.00'))
+        self.assertEqual(refund_ticket.total_amount, Decimal('400.00'))
+
+        detail_response = self.client.get(f'/api/tickets/{refund_ticket.ticket_number}/')
+        self.assertEqual(detail_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(Decimal(detail_response.data['total_amount']), Decimal('400.00'))
+
+    def test_return_to_tcso_restores_transaction_total_if_old_bug_already_reduced_it(self):
+        refund_ticket = Ticket.objects.create(
+            customer_name='Ticket CSO Restore',
+            created_by=self.approver,
+        )
+        refund_transaction = Transaction.objects.create(
+            ticket=refund_ticket,
+            identifier=self.second_identifier,
+            total_amount=Decimal('400.00'),
+            created_by=self.approver,
+        )
+        overflow = Overflow.objects.get(transaction=refund_transaction, status=Overflow.STATUS_TCSO)
+        self.client.post(
+            f'/api/overflows/{overflow.id}/approve/',
+            {
+                'amount_to_approve': '300.00',
+                'collaborator_ids': [self.collaborator.id],
+            },
+            format='json',
+        )
+
+        refund_transaction.total_amount = Decimal('160.00')
+        refund_transaction.save(update_fields=['total_amount'])
+
+        response = self.client.post(
+            f'/api/tickets/{refund_ticket.ticket_number}/refund/',
+            {
+                'action': 'refund_ticket',
+                'admin_override_code': 'override-123',
+                'cso_refund_mode': 'return_to_tcso',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        refund_transaction.refresh_from_db()
+        refund_ticket.refresh_from_db()
+        detail_response = self.client.get(f'/api/tickets/{refund_ticket.ticket_number}/')
+        self.assertEqual(detail_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(refund_transaction.total_amount, Decimal('400.00'))
+        self.assertEqual(Decimal(detail_response.data['total_amount']), Decimal('400.00'))
+
+    def test_ticket_transaction_refund_with_cso_can_refund_spill_over_into_overkill(self):
+        refund_ticket = Ticket.objects.create(
+            customer_name='Transaction CSO Refund',
+            created_by=self.approver,
+        )
+        refund_transaction = Transaction.objects.create(
+            ticket=refund_ticket,
+            identifier=self.second_identifier,
+            total_amount=Decimal('400.00'),
+            created_by=self.approver,
+        )
+        overflow = Overflow.objects.get(transaction=refund_transaction, status=Overflow.STATUS_TCSO)
+        self.client.post(
+            f'/api/overflows/{overflow.id}/approve/',
+            {
+                'amount_to_approve': '300.00',
+                'collaborator_ids': [self.collaborator.id],
+            },
+            format='json',
+        )
+
+        response = self.client.post(
+            f'/api/tickets/{refund_ticket.ticket_number}/refund/',
+            {
+                'action': 'refund_transaction',
+                'transaction_id': refund_transaction.id,
+                'admin_override_code': 'override-123',
+                'cso_refund_mode': 'refund_spill_over',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        refund_ticket.refresh_from_db()
+        refund_transaction.refresh_from_db()
+        self.assertFalse(refund_ticket.is_refunded)
+        self.assertFalse(refund_transaction.is_refunded)
+        self.assertEqual(refund_transaction.total_amount, Decimal('160.00'))
+        self.assertEqual(refund_ticket.total_amount, Decimal('160.00'))
+        overkill = Overflow.objects.get(
+            identifier=self.second_identifier,
+            owner=self.approver,
+            period=self.active_period,
+            status=Overflow.STATUS_OVERKILL,
+        )
+        self.assertEqual(overkill.amount_to_approve, Decimal('300.00'))
+
     def test_ticket_refunds_are_blocked_after_period_pre_close(self):
         self.active_period.apply_pre_close(triggered_at=timezone.now(), acting_user=self.approver)
 
@@ -4127,7 +4261,7 @@ class PrivateWorkflowAPITests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(response.data['detail'], 'Ticket creation is locked after the pre-close time is reached.')
 
-    def test_returning_cso_overflow_moves_it_back_to_tcso(self):
+    def test_returning_cso_overflow_moves_it_back_to_tcso_without_reducing_total(self):
         tx = Transaction.objects.create(
             ticket=Ticket.objects.create(customer_name='Return CSO Ticket', created_by=self.approver),
             identifier=self.second_identifier,
@@ -4148,24 +4282,73 @@ class PrivateWorkflowAPITests(APITestCase):
 
         return_response = self.client.post(
             f'/api/overflows/{overflow.id}/resolve/',
-            {'action': 'refund_overflow_only', 'admin_override_code': 'override-123'},
+            {
+                'action': 'refund_overflow_only',
+                'admin_override_code': 'override-123',
+                'cso_refund_mode': 'return_to_tcso',
+            },
             format='json',
         )
 
         self.assertEqual(return_response.status_code, status.HTTP_200_OK)
         overflow.refresh_from_db()
+        tx.refresh_from_db()
         tx.ticket.refresh_from_db()
         self.assertEqual(overflow.status, Overflow.STATUS_TCSO)
         self.assertIsNone(overflow.approved_at)
         self.assertIsNone(overflow.amount_to_approve)
-        self.assertEqual(overflow.refund_amount, Decimal('300.00'))
-        self.assertEqual(tx.ticket.total_amount, Decimal('160.00'))
+        self.assertIsNone(overflow.refunded_at)
+        self.assertIsNone(overflow.refund_amount)
+        self.assertEqual(tx.total_amount, Decimal('400.00'))
+        self.assertEqual(tx.ticket.total_amount, Decimal('400.00'))
         self.assertFalse(
             IdentifierCapacityAdjustment.objects.filter(
                 overflow=overflow,
                 adjustment_type=IdentifierCapacityAdjustment.TYPE_REFUND_CSO,
             ).exists()
         )
+
+    def test_refunding_cso_spill_over_moves_it_to_overkill_and_reduces_total(self):
+        tx = Transaction.objects.create(
+            ticket=Ticket.objects.create(customer_name='Refund CSO Ticket', created_by=self.approver),
+            identifier=self.second_identifier,
+            total_amount=Decimal('400.00'),
+            created_by=self.approver,
+        )
+        overflow = Overflow.objects.get(transaction=tx, status=Overflow.STATUS_TCSO)
+
+        self.client.post(
+            f'/api/overflows/{overflow.id}/approve/',
+            {
+                'amount_to_approve': '300.00',
+                'collaborator_ids': [self.collaborator.id],
+            },
+            format='json',
+        )
+
+        refund_response = self.client.post(
+            f'/api/overflows/{overflow.id}/resolve/',
+            {
+                'action': 'refund_overflow_only',
+                'admin_override_code': 'override-123',
+                'cso_refund_mode': 'refund_spill_over',
+            },
+            format='json',
+        )
+
+        self.assertEqual(refund_response.status_code, status.HTTP_200_OK)
+        tx.refresh_from_db()
+        tx.ticket.refresh_from_db()
+        self.assertEqual(tx.total_amount, Decimal('160.00'))
+        self.assertEqual(tx.ticket.total_amount, Decimal('160.00'))
+        overkill = Overflow.objects.get(
+            identifier=self.second_identifier,
+            owner=self.approver,
+            period=self.active_period,
+            status=Overflow.STATUS_OVERKILL,
+        )
+        self.assertEqual(overkill.amount_to_approve, Decimal('300.00'))
+        self.assertEqual(list(overkill.collaborators.values_list('id', flat=True)), [self.collaborator.id])
 
     def test_reapproving_returned_cso_restores_active_total(self):
         tx = Transaction.objects.create(
@@ -4186,7 +4369,11 @@ class PrivateWorkflowAPITests(APITestCase):
         )
         self.client.post(
             f'/api/overflows/{overflow.id}/resolve/',
-            {'action': 'refund_overflow_only', 'admin_override_code': 'override-123'},
+            {
+                'action': 'refund_overflow_only',
+                'admin_override_code': 'override-123',
+                'cso_refund_mode': 'return_to_tcso',
+            },
             format='json',
         )
 
@@ -4201,11 +4388,81 @@ class PrivateWorkflowAPITests(APITestCase):
 
         self.assertEqual(reapprove_response.status_code, status.HTTP_200_OK)
         overflow.refresh_from_db()
+        tx.refresh_from_db()
         tx.ticket.refresh_from_db()
         self.assertEqual(overflow.status, Overflow.STATUS_CSO)
         self.assertIsNone(overflow.refunded_at)
         self.assertIsNone(overflow.refund_amount)
+        self.assertEqual(tx.total_amount, Decimal('400.00'))
         self.assertEqual(tx.ticket.total_amount, Decimal('400.00'))
+
+    def test_refund_transaction_on_cso_can_change_back_to_tcso(self):
+        tx = Transaction.objects.create(
+            ticket=Ticket.objects.create(customer_name='Refund Tx CSO Ticket', created_by=self.approver),
+            identifier=self.second_identifier,
+            total_amount=Decimal('400.00'),
+            created_by=self.approver,
+        )
+        overflow = Overflow.objects.get(transaction=tx, status=Overflow.STATUS_TCSO)
+        self.client.post(
+            f'/api/overflows/{overflow.id}/approve/',
+            {
+                'amount_to_approve': '300.00',
+                'collaborator_ids': [self.collaborator.id],
+            },
+            format='json',
+        )
+
+        response = self.client.post(
+            f'/api/overflows/{overflow.id}/resolve/',
+            {
+                'action': 'refund_transaction',
+                'admin_override_code': 'override-123',
+                'cso_refund_mode': 'return_to_tcso',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        overflow.refresh_from_db()
+        tx.refresh_from_db()
+        self.assertFalse(tx.is_refunded)
+        self.assertEqual(overflow.status, Overflow.STATUS_TCSO)
+        self.assertEqual(tx.total_amount, Decimal('400.00'))
+
+    def test_refund_ticket_on_cso_can_refund_spill_over_into_overkill(self):
+        tx = Transaction.objects.create(
+            ticket=Ticket.objects.create(customer_name='Refund Ticket CSO Ticket', created_by=self.approver),
+            identifier=self.second_identifier,
+            total_amount=Decimal('400.00'),
+            created_by=self.approver,
+        )
+        overflow = Overflow.objects.get(transaction=tx, status=Overflow.STATUS_TCSO)
+        self.client.post(
+            f'/api/overflows/{overflow.id}/approve/',
+            {
+                'amount_to_approve': '300.00',
+                'collaborator_ids': [self.collaborator.id],
+            },
+            format='json',
+        )
+
+        response = self.client.post(
+            f'/api/overflows/{overflow.id}/resolve/',
+            {
+                'action': 'refund_ticket',
+                'admin_override_code': 'override-123',
+                'cso_refund_mode': 'refund_spill_over',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        tx.refresh_from_db()
+        tx.ticket.refresh_from_db()
+        self.assertFalse(tx.is_refunded)
+        self.assertEqual(tx.total_amount, Decimal('160.00'))
+        self.assertEqual(tx.ticket.total_amount, Decimal('160.00'))
 
     def test_returning_overkill_removes_it_and_clears_reserve_capacity(self):
         tx = Transaction.objects.create(
