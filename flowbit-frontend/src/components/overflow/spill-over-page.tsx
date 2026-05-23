@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faArrowTrendUp,
@@ -205,6 +205,7 @@ export function SpillOverPage() {
   const [toast, setToast] = useState<ToastState>(null);
   const [activeTab, setActiveTab] = useState<"pending" | "approved" | "overkill">("pending");
   const [searchQuery, setSearchQuery] = useState("");
+  const deferredSearchQuery = useDeferredValue(searchQuery);
   const [collaboratorFilter, setCollaboratorFilter] = useState("all");
   const [approveTarget, setApproveTarget] = useState<FlowBitOverflow | null>(null);
   const [approveAmount, setApproveAmount] = useState("");
@@ -254,35 +255,58 @@ export function SpillOverPage() {
 
   useEffect(() => {
     setUser(getStoredUser());
-    fetchCurrentUser().then(setUser).catch(() => {
-      // Session guard handles invalid sessions.
-    });
+    if (!currentUserState?.user) {
+      fetchCurrentUser().then(setUser).catch(() => {
+        // Session guard handles invalid sessions.
+      });
+    }
   }, []);
 
-  async function loadPageData() {
+  useEffect(() => {
+    if (currentUserState?.user) {
+      setUser(currentUserState.user);
+    }
+  }, [currentUserState?.user]);
+
+  async function loadStaticData() {
+    try {
+      const [nextCollaborators, nextIdentifiers] = await Promise.all([
+        fetchCollaborators(),
+        fetchIdentifierOptions(),
+      ]);
+      setCollaborators(nextCollaborators);
+      setIdentifierOptions(nextIdentifiers);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Request failed.";
+      setToast({ type: "error", message });
+    }
+  }
+
+  useEffect(() => {
+    loadStaticData();
+  }, []);
+
+  async function loadOverflowQueues() {
     setIsLoading(true);
     try {
-      const [nextPending, nextApproved, nextOverkill, nextCollaborators, nextUser, nextIdentifiers] = await Promise.all([
+      const [nextPending, nextApproved, nextOverkill] = await Promise.all([
         fetchPendingOverflowPage({
           page: pendingPage,
           pageSize: 20,
-          search: searchQuery.trim(),
+          search: deferredSearchQuery.trim(),
         }),
         fetchApprovedOverflowPage({
           page: approvedPage,
           pageSize: 20,
-          search: searchQuery.trim(),
+          search: deferredSearchQuery.trim(),
           collaboratorName: collaboratorFilter === "all" ? "" : collaboratorFilter,
         }),
         fetchOverkillOverflowPage({
           page: overkillPage,
           pageSize: 20,
-          search: searchQuery.trim(),
+          search: deferredSearchQuery.trim(),
           collaboratorName: collaboratorFilter === "all" ? "" : collaboratorFilter,
         }),
-        fetchCollaborators(),
-        fetchCurrentUser(),
-        fetchIdentifierOptions(),
       ]);
       setPendingOverflows(nextPending.results);
       setApprovedRowsState(nextApproved.results);
@@ -296,9 +320,6 @@ export function SpillOverPage() {
       setPendingAmountTotal(nextPending.summary.total_amount);
       setApprovedAmountTotal(nextApproved.summary.total_amount);
       setOverkillAmountTotal(nextOverkill.summary.total_amount);
-      setCollaborators(nextCollaborators);
-      setUser(nextUser);
-      setIdentifierOptions(nextIdentifiers);
       setPageError(null);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Request failed.";
@@ -310,8 +331,8 @@ export function SpillOverPage() {
   }
 
   useEffect(() => {
-    loadPageData();
-  }, [approvedPage, collaboratorFilter, overkillPage, pendingPage, searchQuery]);
+    loadOverflowQueues();
+  }, [approvedPage, collaboratorFilter, deferredSearchQuery, overkillPage, pendingPage]);
 
   const collaboratorFilterOptions = useMemo(() => {
     return collaborators
@@ -475,7 +496,7 @@ export function SpillOverPage() {
       });
       setToast({ type: "success", message: response.message });
       resetOverkillDraft();
-      await loadPageData();
+      await loadOverflowQueues();
       notifyDashboardUpdated();
       setActiveTab("overkill");
     } catch (error) {
@@ -501,7 +522,7 @@ export function SpillOverPage() {
       setToast({ type: "success", message: response.message });
       setApproveTarget(null);
       setPendingExtraApproval(null);
-      await loadPageData();
+      await loadOverflowQueues();
       notifyDashboardUpdated();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Request failed.";
@@ -568,7 +589,7 @@ export function SpillOverPage() {
       setPendingCsoRefundChoice(null);
       setOverrideCode("");
       setSyncRepeatTicketRefund(false);
-      await loadPageData();
+      await loadOverflowQueues();
       if (
         relatedTicketNumber &&
         selectedTicketDetail?.ticket_number === relatedTicketNumber
