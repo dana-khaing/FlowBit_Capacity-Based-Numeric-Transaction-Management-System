@@ -115,18 +115,45 @@ export function CustomerServicePage() {
 
   useEffect(() => {
     let active = true;
-    fetchCurrentUser()
-      .then((nextUser) => {
-        if (active) {
-          setUser(nextUser);
-        }
-      })
-      .catch(() => {});
+    if (!currentUserState?.user) {
+      fetchCurrentUser()
+        .then((nextUser) => {
+          if (active) {
+            setUser(nextUser);
+          }
+        })
+        .catch(() => {});
+    }
 
     return () => {
       active = false;
     };
-  }, []);
+  }, [currentUserState?.user]);
+
+  useEffect(() => {
+    if (currentUserState?.user) {
+      setUser(currentUserState.user);
+    }
+  }, [currentUserState?.user]);
+
+  async function refreshCasesAndSelectedCase(preferredCaseId?: number | null) {
+    const nextSelectedId = preferredCaseId ?? selectedCaseId;
+    const [nextCases, nextDetail] = await Promise.all([
+      fetchSupportCases(),
+      nextSelectedId ? fetchSupportCase(nextSelectedId) : Promise.resolve(null),
+    ]);
+    setCases(nextCases);
+    const resolvedSelectedId =
+      nextSelectedId && nextCases.some((item) => item.id === nextSelectedId)
+        ? nextSelectedId
+        : nextCases[0]?.id ?? null;
+    setSelectedCaseId(resolvedSelectedId);
+    if (resolvedSelectedId && nextDetail && resolvedSelectedId === nextSelectedId) {
+      setSelectedCase(normalizeSupportCaseDetail(nextDetail));
+    } else if (!resolvedSelectedId) {
+      setSelectedCase(null);
+    }
+  }
 
   useEffect(() => {
     if (!selectedCaseId) {
@@ -231,9 +258,7 @@ export function CustomerServicePage() {
       await replyToSupportCase(selectedCaseId, replyDraft);
       setReplyDraft("");
       shouldForceScrollRef.current = true;
-      const refreshedCase = await fetchSupportCase(selectedCaseId);
-      setSelectedCase(normalizeSupportCaseDetail(refreshedCase));
-      await loadCases(selectedCaseId, { silent: true });
+      await refreshCasesAndSelectedCase(selectedCaseId);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to send reply.");
     } finally {
@@ -254,9 +279,7 @@ export function CustomerServicePage() {
           ? await closeSupportCase(selectedCaseId)
           : await reopenSupportCase(selectedCaseId)
       );
-      const refreshedCase = await fetchSupportCase(selectedCaseId);
-      setSelectedCase(normalizeSupportCaseDetail(refreshedCase));
-      await loadCases(selectedCaseId, { silent: true });
+      await refreshCasesAndSelectedCase(selectedCaseId);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to update case status.");
     } finally {
