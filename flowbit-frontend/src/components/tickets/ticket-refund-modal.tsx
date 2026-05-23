@@ -278,11 +278,11 @@ export function TicketRefundModal({
 
         {confirmAction ? (
           <div
-            className="absolute inset-0 flex items-center justify-center rounded-[28px] bg-stone-950/30 px-4"
+            className="absolute inset-0 overflow-y-auto rounded-[28px] bg-stone-950/30 px-4 py-6"
             onClick={() => setConfirmAction(null)}
           >
             <div
-              className="w-full max-w-lg rounded-[24px] border border-stone-900/8 bg-white p-5 shadow-[0_18px_48px_rgba(24,24,24,0.18)]"
+              className="mx-auto my-auto w-full max-w-lg rounded-[24px] border border-stone-900/8 bg-white p-5 shadow-[0_18px_48px_rgba(24,24,24,0.18)]"
               onClick={(event) => event.stopPropagation()}
             >
               <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-500">
