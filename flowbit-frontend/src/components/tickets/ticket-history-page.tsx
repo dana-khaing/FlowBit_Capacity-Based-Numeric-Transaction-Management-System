@@ -174,6 +174,19 @@ export function TicketHistoryPage() {
     refundFilter,
   ]);
 
+  async function loadTicketList(periodId: number) {
+    return fetchTicketPage({
+      periodId,
+      page: currentPage,
+      pageSize,
+      search: deferredSearchTerm,
+      refundFilter,
+      dateFrom,
+      dateTo,
+      sort: sortBy,
+    });
+  }
+
   const groupedTickets = useMemo(() => {
     const groups: Array<{ label: string; tickets: FlowBitTicketListItem[] }> =
       [];
@@ -237,25 +250,22 @@ export function TicketHistoryPage() {
   }
 
   async function refreshTicketHistoryState() {
-    if (activePeriod) {
-      const response = await fetchTicketPage({
-        periodId: activePeriod.id,
-        page: currentPage,
-        pageSize,
-        search: deferredSearchTerm,
-        refundFilter,
-        dateFrom,
-        dateTo,
-        sort: sortBy,
-      });
-      setTickets(response.results);
-      setServerTotalPages(response.total_pages);
-      setServerTicketCount(response.count);
-      setServerTotalEntries(response.summary.total_entries);
-      setServerTotalAmount(response.summary.total_amount);
+    if (!activePeriod) {
+      return;
     }
-    if (selectedTicketNumber) {
-      const detail = await fetchTicketDetail(selectedTicketNumber);
+
+    const listPromise = loadTicketList(activePeriod.id);
+    const detailPromise = selectedTicketNumber
+      ? fetchTicketDetail(selectedTicketNumber)
+      : Promise.resolve<FlowBitTicketDetail | null>(null);
+
+    const [response, detail] = await Promise.all([listPromise, detailPromise]);
+    setTickets(response.results);
+    setServerTotalPages(response.total_pages);
+    setServerTicketCount(response.count);
+    setServerTotalEntries(response.summary.total_entries);
+    setServerTotalAmount(response.summary.total_amount);
+    if (detail) {
       setSelectedTicket(detail);
     }
   }
