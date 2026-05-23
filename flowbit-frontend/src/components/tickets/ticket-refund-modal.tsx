@@ -19,9 +19,15 @@ type TicketRefundModalProps = {
   onCodeChange: (value: string) => void;
   onSyncRepeatTicketChange: (value: boolean) => void;
   onClose: () => void;
-  onRefundTicket: () => void;
-  onRefundTransaction: (transactionId: number) => void;
-  onRefundOverflow: (overflowId: number) => void;
+  onRefundTicket: (csoRefundMode?: "return_to_tcso" | "refund_spill_over") => void;
+  onRefundTransaction: (
+    transactionId: number,
+    csoRefundMode?: "return_to_tcso" | "refund_spill_over",
+  ) => void;
+  onRefundOverflow: (
+    overflowId: number,
+    csoRefundMode?: "return_to_tcso" | "refund_spill_over",
+  ) => void;
 };
 
 function formatAmount(value: string) {
@@ -37,9 +43,9 @@ function formatAmount(value: string) {
 }
 
 type ConfirmRefundAction =
-  | { kind: "ticket"; label: string }
-  | { kind: "transaction"; id: number; label: string }
-  | { kind: "overflow"; id: number; label: string };
+  | { kind: "ticket"; label: string; requiresCsoChoice?: boolean }
+  | { kind: "transaction"; id: number; label: string; requiresCsoChoice?: boolean }
+  | { kind: "overflow"; id: number; label: string; requiresCsoChoice?: boolean };
 
 export function TicketRefundModal({
   open,
@@ -73,14 +79,19 @@ export function TicketRefundModal({
       })),
   );
   const [confirmAction, setConfirmAction] = useState<ConfirmRefundAction | null>(null);
+  const [csoRefundMode, setCsoRefundMode] = useState<
+    "return_to_tcso" | "refund_spill_over" | ""
+  >("");
 
   function closeModal() {
     setConfirmAction(null);
+    setCsoRefundMode("");
     onClose();
   }
 
   function openConfirmation(action: ConfirmRefundAction) {
     setConfirmAction(action);
+    setCsoRefundMode("");
   }
 
   function handleConfirmRefund() {
@@ -93,16 +104,16 @@ export function TicketRefundModal({
     }
 
     if (confirmAction.kind === "ticket") {
-      onRefundTicket();
+      onRefundTicket(csoRefundMode || undefined);
       return;
     }
 
     if (confirmAction.kind === "transaction") {
-      onRefundTransaction(confirmAction.id);
+      onRefundTransaction(confirmAction.id, csoRefundMode || undefined);
       return;
     }
 
-    onRefundOverflow(confirmAction.id);
+    onRefundOverflow(confirmAction.id, csoRefundMode || undefined);
   }
 
   return (
@@ -150,11 +161,14 @@ export function TicketRefundModal({
                 variant="outline"
                 className="rounded-[18px]"
                 onClick={() =>
-                  openConfirmation({
-                    kind: "ticket",
-                    label: `Refund the full ticket ${ticket.ticket_number}`,
-                  })
-                }
+                      openConfirmation({
+                        kind: "ticket",
+                        label: `Refund the full ticket ${ticket.ticket_number}`,
+                        requiresCsoChoice: ticket.transactions.some((transaction) =>
+                          transaction.overflows.some((overflow) => overflow.status === "CSO"),
+                        ),
+                      })
+                    }
                 disabled={Boolean(busyAction)}
               >
                 {busyAction?.kind === "ticket" ? "Refunding..." : "Refund ticket"}
@@ -194,6 +208,9 @@ export function TicketRefundModal({
                         kind: "transaction",
                         id: transaction.id,
                         label: `Refund transaction ${transaction.order_number}`,
+                        requiresCsoChoice: transaction.overflows.some(
+                          (overflow) => overflow.status === "CSO",
+                        ),
                       })
                     }
                     disabled={Boolean(busyAction)}
@@ -238,6 +255,7 @@ export function TicketRefundModal({
                         kind: "overflow",
                         id: overflow.id,
                         label: `Refund spill over for ${overflow.identifierNumber}`,
+                        requiresCsoChoice: overflow.status === "CSO",
                       })
                     }
                     disabled={Boolean(busyAction)}
@@ -276,6 +294,45 @@ export function TicketRefundModal({
               <p className="mt-2 text-sm leading-6 text-stone-500">
                 {confirmAction.label}. This action will reverse the selected ticket records.
               </p>
+              {confirmAction.requiresCsoChoice ? (
+                <div className="mt-5 space-y-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+                    Approved spill-over handling
+                  </p>
+                  <button
+                    type="button"
+                    className={`flex w-full items-center justify-between rounded-[20px] border px-4 py-4 text-left transition ${
+                      csoRefundMode === "return_to_tcso"
+                        ? "border-stone-950 bg-stone-100"
+                        : "border-stone-900/8 bg-stone-50 hover:border-stone-900/20"
+                    }`}
+                    onClick={() => setCsoRefundMode("return_to_tcso")}
+                  >
+                    <div>
+                      <p className="font-semibold text-stone-950">Change back to TCSO</p>
+                      <p className="mt-1 text-sm text-stone-500">
+                        Keep the transaction amount unchanged and move approved spill-over back to pending.
+                      </p>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    className={`flex w-full items-center justify-between rounded-[20px] border px-4 py-4 text-left transition ${
+                      csoRefundMode === "refund_spill_over"
+                        ? "border-stone-950 bg-stone-100"
+                        : "border-stone-900/8 bg-stone-50 hover:border-stone-900/20"
+                    }`}
+                    onClick={() => setCsoRefundMode("refund_spill_over")}
+                  >
+                    <div>
+                      <p className="font-semibold text-stone-950">Refund spill-over</p>
+                      <p className="mt-1 text-sm text-stone-500">
+                        Move approved spill-over into overkill and reduce the active transaction amount.
+                      </p>
+                    </div>
+                  </button>
+                </div>
+              ) : null}
               {requireOverrideCode ? (
                 <label className="mt-5 block space-y-2">
                   <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
@@ -300,7 +357,11 @@ export function TicketRefundModal({
                 </Button>
                 <Button
                   onClick={handleConfirmRefund}
-                  disabled={Boolean(busyAction) || (requireOverrideCode && !adminOverrideCode.trim())}
+                  disabled={
+                    Boolean(busyAction) ||
+                    (confirmAction.requiresCsoChoice && !csoRefundMode) ||
+                    (requireOverrideCode && !adminOverrideCode.trim())
+                  }
                 >
                   Confirm refund
                 </Button>
