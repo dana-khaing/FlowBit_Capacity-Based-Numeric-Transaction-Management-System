@@ -3827,6 +3827,52 @@ class PrivateWorkflowAPITests(APITestCase):
         self.assertEqual(refund_transaction.total_amount, Decimal('400.00'))
         self.assertEqual(refund_ticket.total_amount, Decimal('400.00'))
 
+        detail_response = self.client.get(f'/api/tickets/{refund_ticket.ticket_number}/')
+        self.assertEqual(detail_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(Decimal(detail_response.data['total_amount']), Decimal('400.00'))
+
+    def test_return_to_tcso_restores_transaction_total_if_old_bug_already_reduced_it(self):
+        refund_ticket = Ticket.objects.create(
+            customer_name='Ticket CSO Restore',
+            created_by=self.approver,
+        )
+        refund_transaction = Transaction.objects.create(
+            ticket=refund_ticket,
+            identifier=self.second_identifier,
+            total_amount=Decimal('400.00'),
+            created_by=self.approver,
+        )
+        overflow = Overflow.objects.get(transaction=refund_transaction, status=Overflow.STATUS_TCSO)
+        self.client.post(
+            f'/api/overflows/{overflow.id}/approve/',
+            {
+                'amount_to_approve': '300.00',
+                'collaborator_ids': [self.collaborator.id],
+            },
+            format='json',
+        )
+
+        refund_transaction.total_amount = Decimal('160.00')
+        refund_transaction.save(update_fields=['total_amount'])
+
+        response = self.client.post(
+            f'/api/tickets/{refund_ticket.ticket_number}/refund/',
+            {
+                'action': 'refund_ticket',
+                'admin_override_code': 'override-123',
+                'cso_refund_mode': 'return_to_tcso',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        refund_transaction.refresh_from_db()
+        refund_ticket.refresh_from_db()
+        detail_response = self.client.get(f'/api/tickets/{refund_ticket.ticket_number}/')
+        self.assertEqual(detail_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(refund_transaction.total_amount, Decimal('400.00'))
+        self.assertEqual(Decimal(detail_response.data['total_amount']), Decimal('400.00'))
+
     def test_ticket_transaction_refund_with_cso_can_refund_spill_over_into_overkill(self):
         refund_ticket = Ticket.objects.create(
             customer_name='Transaction CSO Refund',

@@ -53,7 +53,6 @@ from .models import (
     LedgerAllocation,
     IdentifierCapacityAdjustment,
     IdentifierLedgerFreeze,
-    _is_returned_pending_overflow,
     _announce_pending_overflows,
     _notify_remaining_overkill_for_lucky_draw,
     _retry_pending_overflows,
@@ -5323,16 +5322,6 @@ class TicketListView(generics.ListAPIView):
             total=Sum('refund_amount'),
         ).values('total')[:1]
 
-        returned_overflow_total_subquery = Overflow.objects.filter(
-            transaction__ticket=OuterRef('pk'),
-            transaction__is_refunded=False,
-            status=Overflow.STATUS_TCSO,
-            refunded_at__isnull=False,
-            resolution_type=Overflow.RESOLUTION_REFUND_OVERFLOW,
-        ).values('transaction__ticket').annotate(
-            total=Sum('refund_amount'),
-        ).values('total')[:1]
-
         queryset = queryset.annotate(
             ticket_transaction_count=Count('transactions', distinct=True),
             active_spill_over_count_annotated=Count(
@@ -5360,11 +5349,6 @@ class TicketListView(generics.ListAPIView):
                 Value(Decimal('0.00')),
                 output_field=DecimalField(max_digits=14, decimal_places=2),
             ),
-            returned_overflow_total_annotated=Coalesce(
-                Subquery(returned_overflow_total_subquery),
-                Value(Decimal('0.00')),
-                output_field=DecimalField(max_digits=14, decimal_places=2),
-            ),
         ).prefetch_related(ticket_transactions).distinct()
 
         queryset = queryset.annotate(
@@ -5372,7 +5356,7 @@ class TicketListView(generics.ListAPIView):
                 Value(Decimal('0.00')),
                 ExpressionWrapper(
                     F('visible_total_amount_annotated') - ExpressionWrapper(
-                        (F('refunded_overflow_total_annotated') + F('returned_overflow_total_annotated')) / Value(Decimal('1.25')),
+                        F('refunded_overflow_total_annotated') / Value(Decimal('1.25')),
                         output_field=DecimalField(max_digits=14, decimal_places=2),
                     ),
                     output_field=DecimalField(max_digits=14, decimal_places=2),
@@ -5719,21 +5703,12 @@ def _ticket_visible_total(ticket):
 
 def _transaction_visible_request_amount(transaction_obj):
     refunded_overflow_total = Decimal('0.00')
-    returned_overflow_total = Decimal('0.00')
 
     for overflow in transaction_obj.overflows.all():
         if overflow.status == Overflow.STATUS_REFUNDED:
             refunded_overflow_total += overflow.refund_amount or Decimal('0.00')
-        elif (
-            overflow.status == Overflow.STATUS_TCSO
-            and overflow.refunded_at is not None
-            and overflow.resolution_type == Overflow.RESOLUTION_REFUND_OVERFLOW
-        ):
-            returned_overflow_total += overflow.refund_amount or Decimal('0.00')
 
-    active_total = transaction_obj.total_amount - _from_allocation_basis_amount(
-        refunded_overflow_total + returned_overflow_total
-    )
+    active_total = transaction_obj.total_amount - _from_allocation_basis_amount(refunded_overflow_total)
     if active_total < Decimal('0.00'):
         return Decimal('0.00')
     return active_total
@@ -5751,7 +5726,7 @@ def _ticket_visible_line_amount(transaction_obj):
     active_overflows = [
         overflow
         for overflow in transaction_obj.overflows.all()
-        if overflow.status != Overflow.STATUS_REFUNDED and not _is_returned_pending_overflow(overflow)
+        if overflow.status != Overflow.STATUS_REFUNDED
     ]
     overflow_total = sum(
         (
