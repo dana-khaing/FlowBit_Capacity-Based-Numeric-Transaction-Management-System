@@ -3089,6 +3089,8 @@ class OverflowViewSet(viewsets.ModelViewSet):
         if action_name in {'', 'approve'}:
             return self._approve_overflow(overflow, request)
 
+        cso_refund_mode = request.data.get('cso_refund_mode')
+
         if action_name in {'refund_overflow_only', 'refund_transaction', 'refund_ticket'}:
             if period_locked_after_lucky_draw(overflow.period):
                 return Response(
@@ -3125,6 +3127,7 @@ class OverflowViewSet(viewsets.ModelViewSet):
                     overflow,
                     helper_name=helper_name,
                     resolution_type=Overflow.RESOLUTION_REFUND_OVERFLOW,
+                    cso_refund_mode=cso_refund_mode,
                 )
             serializer_data = self.get_serializer(resolved_overflow).data if resolved_overflow is not None else None
             record_audit_log(
@@ -3138,6 +3141,7 @@ class OverflowViewSet(viewsets.ModelViewSet):
                 ),
                 changes={
                     'resolution_type': Overflow.RESOLUTION_REFUND_OVERFLOW,
+                    'cso_refund_mode': cso_refund_mode or '',
                     'ticket_number': overflow_ticket_number,
                     'transaction_id': overflow_transaction_id,
                     'order_number': overflow_order_number,
@@ -3171,11 +3175,66 @@ class OverflowViewSet(viewsets.ModelViewSet):
                         generation=repeat_generation,
                     )
             return Response({
-                "message": "Overflow refunded successfully",
+                "message": (
+                    "Overflow changed back to pending successfully"
+                    if cso_refund_mode == 'return_to_tcso'
+                    else "Overflow refunded successfully"
+                ),
                 "overflow": serializer_data,
             }, status=status.HTTP_200_OK)
 
         if action_name == 'refund_transaction':
+            if overflow.status == Overflow.STATUS_CSO and cso_refund_mode in {'return_to_tcso', 'refund_spill_over'}:
+                related_ticket = overflow.transaction.ticket if overflow.transaction_id and overflow.transaction.ticket_id else None
+                with db_transaction.atomic():
+                    refund_overflow(
+                        overflow,
+                        helper_name=helper_name,
+                        resolution_type=Overflow.RESOLUTION_REFUND_OVERFLOW,
+                        cso_refund_mode=cso_refund_mode,
+                    )
+                    if sync_repeat_ticket and related_ticket is not None:
+                        repeat_generation = RepeatTicketGeneration.objects.select_related('repeat_ticket').filter(
+                            ticket=related_ticket
+                        ).first()
+                        if repeat_generation is not None:
+                            _sync_repeat_ticket_from_ticket(
+                                repeat_ticket=repeat_generation.repeat_ticket,
+                                ticket=related_ticket,
+                                generation=repeat_generation,
+                            )
+                record_audit_log(
+                    request,
+                    'overflow.refunded',
+                    target=overflow,
+                    details=f"Resolved CSO refund flow for transaction '{overflow.transaction.order_number}'",
+                    changes={
+                        'resolution_type': Overflow.RESOLUTION_REFUND_TRANSACTION,
+                        'cso_refund_mode': cso_refund_mode,
+                        'ticket_number': overflow.transaction.ticket.ticket_number if overflow.transaction.ticket_id else '',
+                        'transaction_id': overflow.transaction.id,
+                        'order_number': overflow.transaction.order_number,
+                        'identifier_number': overflow.transaction.identifier.number,
+                    },
+                )
+                notify_refund_change(
+                    recipient=overflow.transaction.created_by,
+                    title='Spill over refunded',
+                    message=f"Approved spill over for transaction {overflow.transaction.order_number} was updated.",
+                    request_user=request.user,
+                    action_href='/spill-over',
+                    source_key=f'refund:transaction-cso:{overflow.transaction.id}:{timezone.now().isoformat()}',
+                    period=overflow.period,
+                )
+                refresh_dashboard_for_user(overflow.transaction.created_by)
+                return Response({
+                    "message": (
+                        "Approved spill over moved back to pending successfully"
+                        if cso_refund_mode == 'return_to_tcso'
+                        else "Approved spill over refunded successfully"
+                    ),
+                }, status=status.HTTP_200_OK)
+
             refund_amount = overflow.transaction.total_amount
             related_ticket = overflow.transaction.ticket if overflow.transaction_id and overflow.transaction.ticket_id else None
             with db_transaction.atomic():
@@ -3229,6 +3288,56 @@ class OverflowViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             ticket = overflow.transaction.ticket
+            if overflow.status == Overflow.STATUS_CSO and cso_refund_mode in {'return_to_tcso', 'refund_spill_over'}:
+                with db_transaction.atomic():
+                    refund_overflow(
+                        overflow,
+                        helper_name=helper_name,
+                        resolution_type=Overflow.RESOLUTION_REFUND_OVERFLOW,
+                        cso_refund_mode=cso_refund_mode,
+                    )
+                    if sync_repeat_ticket:
+                        repeat_generation = RepeatTicketGeneration.objects.select_related('repeat_ticket').filter(
+                            ticket=ticket
+                        ).first()
+                        if repeat_generation is not None:
+                            _sync_repeat_ticket_from_ticket(
+                                repeat_ticket=repeat_generation.repeat_ticket,
+                                ticket=ticket,
+                                generation=repeat_generation,
+                            )
+                record_audit_log(
+                    request,
+                    'overflow.refunded',
+                    target=overflow,
+                    details=f"Resolved CSO refund flow for ticket '{ticket.ticket_number}'",
+                    changes={
+                        'resolution_type': Overflow.RESOLUTION_REFUND_TICKET,
+                        'cso_refund_mode': cso_refund_mode,
+                        'ticket_number': ticket.ticket_number,
+                        'transaction_id': overflow.transaction.id,
+                        'order_number': overflow.transaction.order_number,
+                        'identifier_number': overflow.transaction.identifier.number,
+                    },
+                )
+                notify_refund_change(
+                    recipient=ticket.created_by,
+                    title='Spill over refunded',
+                    message=f"Approved spill over on ticket {ticket.ticket_number} was updated.",
+                    request_user=request.user,
+                    action_href='/spill-over',
+                    source_key=f'refund:ticket-cso:{ticket.id}:{timezone.now().isoformat()}',
+                    period=overflow.period,
+                )
+                refresh_dashboard_for_user(ticket.created_by)
+                return Response({
+                    "message": (
+                        "Approved spill over moved back to pending successfully"
+                        if cso_refund_mode == 'return_to_tcso'
+                        else "Approved spill over refunded successfully"
+                    ),
+                }, status=status.HTTP_200_OK)
+
             refund_summary = _ticket_refund_summary(ticket)
 
             with db_transaction.atomic():

@@ -99,6 +99,14 @@ function sanitizeWholeNumberInput(value: string) {
   return value.replace(/[^\d]/g, "");
 }
 
+function parseWholeNumberInput(value: string) {
+  const normalized = sanitizeWholeNumberInput(value);
+  if (!normalized) {
+    return NaN;
+  }
+  return Number(normalized);
+}
+
 function normalizeIdentifierNumber(value: string) {
   const digits = value.replace(/\D/g, "");
   if (!digits) {
@@ -209,6 +217,11 @@ export function SpillOverPage() {
     phone_number: "",
   });
   const [refundTarget, setRefundTarget] = useState<{
+    overflow: FlowBitOverflow;
+    action: RefundAction;
+    csoRefundMode?: "return_to_tcso" | "refund_spill_over";
+  } | null>(null);
+  const [pendingCsoRefundChoice, setPendingCsoRefundChoice] = useState<{
     overflow: FlowBitOverflow;
     action: RefundAction;
   } | null>(null);
@@ -334,7 +347,13 @@ export function SpillOverPage() {
 
   function openApproveModal(overflow: FlowBitOverflow) {
     setApproveTarget(overflow);
-    setApproveAmount(formatWholeAmount(overflow.amount_to_approve || overflow.excess_amount || ""));
+    const rawApproveAmount = overflow.amount_to_approve || overflow.excess_amount || "";
+    const parsedApproveAmount = Number(String(rawApproveAmount).replace(/,/g, ""));
+    setApproveAmount(
+      Number.isNaN(parsedApproveAmount) || parsedApproveAmount <= 0
+        ? ""
+        : formatWholeAmount(String(parsedApproveAmount)),
+    );
     const initialCollaboratorId = overflow.collaborators[0];
     setSelectedCollaboratorIds(initialCollaboratorId ? [initialCollaboratorId] : []);
     setEditingCollaboratorId(null);
@@ -376,7 +395,10 @@ export function SpillOverPage() {
     }
 
     const overflowAmount = Number(approveTarget.excess_amount || "0");
-    const nextApproveAmount = Number(approveAmount.trim() || overflowAmount);
+    const parsedApproveAmount = parseWholeNumberInput(approveAmount);
+    const nextApproveAmount = Number.isNaN(parsedApproveAmount)
+      ? overflowAmount
+      : parsedApproveAmount;
     if (nextApproveAmount > overflowAmount) {
       setPendingExtraApproval({
         overflowAmount,
@@ -473,7 +495,7 @@ export function SpillOverPage() {
     try {
       const response = await approveOverflow({
         overflowId: approveTarget.id,
-        amountToApprove: approveAmount.trim() || undefined,
+        amountToApprove: sanitizeWholeNumberInput(approveAmount) || undefined,
         collaboratorIds: selectedCollaboratorIds,
       });
       setToast({ type: "success", message: response.message });
@@ -531,19 +553,29 @@ export function SpillOverPage() {
       return;
     }
 
+    const relatedTicketNumber = refundTarget.overflow.ticket_number;
     setBusyLabel("Processing refund");
     try {
       const response = await resolveOverflowAction({
         overflowId: refundTarget.overflow.id,
         action: refundTarget.action,
         adminOverrideCode: requiresOverride ? overrideCode : undefined,
+        csoRefundMode: refundTarget.csoRefundMode,
         syncRepeatTicket: syncRepeatTicketRefund,
       });
       setToast({ type: "success", message: response.message });
       setRefundTarget(null);
+      setPendingCsoRefundChoice(null);
       setOverrideCode("");
       setSyncRepeatTicketRefund(false);
       await loadPageData();
+      if (
+        relatedTicketNumber &&
+        selectedTicketDetail?.ticket_number === relatedTicketNumber
+      ) {
+        const refreshedTicketDetail = await fetchTicketDetail(relatedTicketNumber);
+        setSelectedTicketDetail(refreshedTicketDetail);
+      }
       notifyDashboardUpdated();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Request failed.";
@@ -551,6 +583,17 @@ export function SpillOverPage() {
     } finally {
       setBusyLabel(null);
     }
+  }
+
+  function queueRefundAction(overflow: FlowBitOverflow, action: RefundAction) {
+    if (overflow.status === "CSO") {
+      setRefundPickerTarget(null);
+      setPendingCsoRefundChoice({ overflow, action });
+      return;
+    }
+
+    setRefundPickerTarget(null);
+    setRefundTarget({ overflow, action });
   }
 
   async function openTicketView(ticketNumber: string | null) {
@@ -859,7 +902,10 @@ export function SpillOverPage() {
                   inputMode="numeric"
                   pattern="[0-9]*"
                   value={approveAmount}
-                  onChange={(event) => setApproveAmount(sanitizeWholeNumberInput(event.target.value))}
+                  onChange={(event) => {
+                    const normalized = sanitizeWholeNumberInput(event.target.value);
+                    setApproveAmount(normalized ? formatWholeAmount(normalized) : "");
+                  }}
                   placeholder={formatAmount(approveTarget.excess_amount)}
                 />
               </label>
@@ -1035,6 +1081,7 @@ export function SpillOverPage() {
         onCodeChange={setOverrideCode}
         onCancel={() => {
           setRefundTarget(null);
+          setPendingCsoRefundChoice(null);
           setOverrideCode("");
           setSyncRepeatTicketRefund(false);
         }}
@@ -1053,6 +1100,69 @@ export function SpillOverPage() {
           </label>
         ) : null}
       </AdminConfirmModal>
+
+      {pendingCsoRefundChoice ? (
+        <div
+          className="fixed inset-0 z-[72] flex items-center justify-center bg-stone-950/30 px-4"
+          onClick={() => setPendingCsoRefundChoice(null)}
+        >
+          <div
+            className="w-full max-w-xl rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_18px_48px_rgba(24,24,24,0.18)] sm:p-6"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-500">Approved spill-over</p>
+            <h2 className="mt-2 text-2xl font-semibold text-stone-950">{pendingCsoRefundChoice.overflow.identifier_number}</h2>
+            <p className="mt-2 text-sm leading-6 text-stone-500">
+              This spill-over is currently approved. Choose whether you want to move it back to pending `TCSO` or refund the approved spill-over amount into overkill.
+            </p>
+            <div className="mt-5 space-y-3">
+              <button
+                type="button"
+                className="flex w-full items-center justify-between rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4 text-left transition hover:border-stone-900/20"
+                onClick={() => {
+                  setPendingCsoRefundChoice(null);
+                  setRefundTarget({
+                    overflow: pendingCsoRefundChoice.overflow,
+                    action: pendingCsoRefundChoice.action,
+                    csoRefundMode: "return_to_tcso",
+                  });
+                }}
+              >
+                <div>
+                  <p className="font-semibold text-stone-950">Change back to TCSO</p>
+                  <p className="mt-1 text-sm text-stone-500">
+                    Keep the transaction amount unchanged and move this approved spill-over back to pending.
+                  </p>
+                </div>
+              </button>
+              <button
+                type="button"
+                className="flex w-full items-center justify-between rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4 text-left transition hover:border-stone-900/20"
+                onClick={() => {
+                  setPendingCsoRefundChoice(null);
+                  setRefundTarget({
+                    overflow: pendingCsoRefundChoice.overflow,
+                    action: pendingCsoRefundChoice.action,
+                    csoRefundMode: "refund_spill_over",
+                  });
+                }}
+              >
+                <div>
+                  <p className="font-semibold text-stone-950">Refund spill-over</p>
+                  <p className="mt-1 text-sm text-stone-500">
+                    Move the approved spill-over amount into overkill and reduce the active ticket amount.
+                  </p>
+                </div>
+              </button>
+            </div>
+            <div className="mt-5 flex justify-end">
+              <Button variant="outline" onClick={() => setPendingCsoRefundChoice(null)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {selectedCollaborator ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/30 px-4"
@@ -1268,8 +1378,7 @@ export function SpillOverPage() {
                 type="button"
                 className="flex w-full items-center justify-between rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4 text-left transition hover:border-stone-900/20"
                 onClick={() => {
-                  setRefundPickerTarget(null);
-                  setRefundTarget({ overflow: refundPickerTarget, action: "refund_overflow_only" });
+                  queueRefundAction(refundPickerTarget, "refund_overflow_only");
                 }}
               >
                 <div>
@@ -1285,8 +1394,7 @@ export function SpillOverPage() {
                     type="button"
                     className="flex w-full items-center justify-between rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4 text-left transition hover:border-stone-900/20"
                     onClick={() => {
-                      setRefundPickerTarget(null);
-                      setRefundTarget({ overflow: refundPickerTarget, action: "refund_transaction" });
+                      queueRefundAction(refundPickerTarget, "refund_transaction");
                     }}
                   >
                     <div>
@@ -1300,8 +1408,7 @@ export function SpillOverPage() {
                     type="button"
                     className="flex w-full items-center justify-between rounded-[22px] border border-stone-900/8 bg-stone-50 px-4 py-4 text-left transition hover:border-stone-900/20"
                     onClick={() => {
-                      setRefundPickerTarget(null);
-                      setRefundTarget({ overflow: refundPickerTarget, action: "refund_ticket" });
+                      queueRefundAction(refundPickerTarget, "refund_ticket");
                     }}
                   >
                     <div>
