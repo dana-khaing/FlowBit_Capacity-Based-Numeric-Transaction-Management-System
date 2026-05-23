@@ -361,7 +361,6 @@ class TicketSerializer(serializers.ModelSerializer):
     def get_total_amount(self, obj):
         visible_total = Decimal('0.00')
         refunded_overflow_total = Decimal('0.00')
-        returned_overflow_total = Decimal('0.00')
 
         transactions = self._get_transactions(obj)
         for transaction in transactions:
@@ -375,16 +374,8 @@ class TicketSerializer(serializers.ModelSerializer):
                 continue
             if overflow.status == Overflow.STATUS_REFUNDED:
                 refunded_overflow_total += overflow.refund_amount or Decimal('0.00')
-            elif (
-                overflow.status == Overflow.STATUS_TCSO
-                and overflow.refunded_at is not None
-                and overflow.resolution_type == Overflow.RESOLUTION_REFUND_OVERFLOW
-            ):
-                returned_overflow_total += overflow.refund_amount or Decimal('0.00')
 
-        active_total = visible_total - _from_allocation_basis_amount(
-            refunded_overflow_total + returned_overflow_total
-        )
+        active_total = visible_total - _from_allocation_basis_amount(refunded_overflow_total)
         if active_total < Decimal('0.00'):
             return Decimal('0.00')
         return active_total

@@ -5,7 +5,8 @@ from datetime import datetime, time
 from django.db import models, transaction
 from django.contrib.auth.models import User
 from django.contrib.auth.hashers import check_password, identify_hasher, make_password
-from django.db.models import Q, Sum
+from django.db.models import Case, DecimalField, F, Q, Sum, When
+from django.db.models.functions import Coalesce
 from decimal import Decimal
 from django.core.exceptions import ValidationError
 from django.utils import timezone
@@ -1106,17 +1107,8 @@ class Ticket(models.Model):
             transaction__is_refunded=False,
             status=Overflow.STATUS_REFUNDED,
         ).aggregate(total=Sum('refund_amount'))['total'] or Decimal('0.00')
-        returned_overflow_total = Overflow.objects.filter(
-            transaction__ticket=self,
-            transaction__is_refunded=False,
-            status=Overflow.STATUS_TCSO,
-            refunded_at__isnull=False,
-            resolution_type=Overflow.RESOLUTION_REFUND_OVERFLOW,
-        ).aggregate(total=Sum('refund_amount'))['total'] or Decimal('0.00')
 
-        active_total = visible_total - _from_allocation_basis_amount(
-            refunded_overflow_total + returned_overflow_total
-        )
+        active_total = visible_total - _from_allocation_basis_amount(refunded_overflow_total)
         if active_total < Decimal('0.00'):
             return Decimal('0.00')
         return active_total
@@ -1946,6 +1938,32 @@ def _reduce_transaction_total_for_overflow_refund(overflow):
         transaction_obj.ticket.refresh_refund_state()
 
 
+def _restore_transaction_total_from_active_amounts(transaction_obj):
+    if transaction_obj is None:
+        return
+
+    allocated_total = transaction_obj.allocations.aggregate(
+        total=Sum('amount')
+    )['total'] or Decimal('0.00')
+    active_overflow_total = transaction_obj.overflows.exclude(
+        status=Overflow.STATUS_REFUNDED
+    ).aggregate(
+        total=Sum(
+            Case(
+                When(status=Overflow.STATUS_TCSO, then=F('excess_amount')),
+                default=Coalesce(F('amount_to_approve'), F('excess_amount')),
+                output_field=DecimalField(max_digits=12, decimal_places=2),
+            )
+        )
+    )['total'] or Decimal('0.00')
+
+    restored_total = _from_allocation_basis_amount(allocated_total + active_overflow_total)
+    transaction_obj.total_amount = restored_total
+    transaction_obj.save(update_fields=['total_amount'])
+    if transaction_obj.ticket_id:
+        transaction_obj.ticket.refresh_refund_state()
+
+
 def _move_approved_overflow_to_overkill(
     overflow,
     helper_name,
@@ -2078,6 +2096,8 @@ def refund_overflow(overflow, helper_name, resolution_type, refunded_at=None, cs
                 'resolution_type',
             ])
             overflow.collaborators.clear()
+            if overflow.transaction_id:
+                _restore_transaction_total_from_active_amounts(overflow.transaction)
             if period:
                 _retry_pending_overflows(period, overflow.transaction.identifier)
             return overflow
