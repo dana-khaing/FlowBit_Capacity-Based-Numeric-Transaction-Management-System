@@ -640,6 +640,10 @@ class TicketRefundActionSerializer(serializers.Serializer):
     action = serializers.ChoiceField(choices=['refund_ticket', 'refund_transaction'])
     transaction_id = serializers.IntegerField(required=False)
     sync_repeat_ticket = serializers.BooleanField(required=False, default=False)
+    cso_refund_mode = serializers.ChoiceField(
+        choices=['return_to_tcso', 'refund_spill_over'],
+        required=False,
+    )
     admin_override_code = serializers.CharField(
         write_only=True,
         required=False,
