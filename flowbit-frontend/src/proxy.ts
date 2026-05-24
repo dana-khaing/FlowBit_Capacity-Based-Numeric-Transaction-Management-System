@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { AUTH_COOKIE_NAME } from "@/lib/auth";
 
-const authRoutes = new Set(["/login", "/sign-in", "/forgot-password", "/sign-up"]);
+const authRoutes = new Set(["/login", "/sign-in", "/forgot-password", "/sign-up", "/verify-email"]);
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
