@@ -1418,6 +1418,7 @@ class RegisterSerializer(serializers.Serializer):
             password=validated_data['password'],
             first_name=first_name.strip(),
             last_name=last_name.strip(),
+            is_active=False,
         )
         profile, _ = Profile.objects.get_or_create(user=user)
         profile.phone_number = validated_data['phone_number'].strip()
@@ -1440,6 +1441,15 @@ class ChangePasswordSerializer(serializers.Serializer):
 
 
 class ForgotPasswordSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+
+class EmailVerificationConfirmSerializer(serializers.Serializer):
+    selector = serializers.UUIDField()
+    token = serializers.CharField(write_only=True)
+
+
+class ResendVerificationSerializer(serializers.Serializer):
     email = serializers.EmailField()
 
 

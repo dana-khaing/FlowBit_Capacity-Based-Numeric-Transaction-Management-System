@@ -26,6 +26,8 @@ from .views import (
     ProfileAvatarView,
     ChangePasswordView,
     ForgotPasswordView,
+    VerifyEmailView,
+    ResendVerificationView,
     ResetPasswordConfirmView,
     TicketListView,
     TicketDetailView,
@@ -60,6 +62,8 @@ urlpatterns = [
     path('auth/avatar/', ProfileAvatarView.as_view(), name='auth-avatar'),
     path('auth/change-password/', ChangePasswordView.as_view(), name='auth-change-password'),
     path('auth/forgot-password/', ForgotPasswordView.as_view(), name='auth-forgot-password'),
+    path('auth/verify-email/', VerifyEmailView.as_view(), name='auth-verify-email'),
+    path('auth/resend-verification/', ResendVerificationView.as_view(), name='auth-resend-verification'),
     path('auth/reset-password/', ResetPasswordConfirmView.as_view(), name='auth-reset-password'),
 
     path('reports/dashboard/', DashboardReportView.as_view(), name='report-dashboard'),

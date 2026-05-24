@@ -28,6 +28,7 @@ from core.models import (
     UserNotification,
     AuditLog,
     PasswordResetToken,
+    EmailVerificationToken,
     Profile,
     Collaborator,
     Ticket,
@@ -327,11 +328,17 @@ class AuthAPITests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         created_user = User.objects.get(username='new_flow_user')
         self.assertEqual(created_user.email, 'new-user@example.com')
+        self.assertFalse(created_user.is_active)
         self.assertEqual(created_user.first_name, 'New')
         self.assertEqual(created_user.last_name, 'Flow User')
         self.assertEqual(created_user.profile.phone_number, '+44-7000-000001')
         self.assertEqual(response.data['user']['phone_number'], '+44-7000-000001')
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn('Selector:', mail.outbox[0].body)
+        self.assertIn('Token:', mail.outbox[0].body)
+        self.assertTrue(EmailVerificationToken.objects.filter(user=created_user).exists())
         self.assertTrue(AuditLog.objects.filter(action='auth.register', target_id=created_user.id).exists())
+        self.assertTrue(AuditLog.objects.filter(action='auth.email_verification_requested', target_id=created_user.id).exists())
 
     def test_register_rejects_duplicate_email(self):
         response = self.client.post('/api/auth/register/', {
@@ -373,6 +380,91 @@ class AuthAPITests(APITestCase):
         self.assertIsNotNone(response.data['user']['date_joined'])
         self.assertTrue(Token.objects.filter(user=self.user, key=response.data['token']).exists())
         self.assertTrue(AuditLog.objects.filter(action='auth.login', target_id=self.user.id).exists())
+
+    def test_login_rejects_unverified_account_even_with_correct_password(self):
+        self.client.post('/api/auth/register/', {
+            'full_name': 'Pending User',
+            'username': 'pending_user',
+            'email': 'pending@example.com',
+            'phone_number': '+44-7000-000004',
+            'password': 'strong-pass-456',
+            'confirm_password': 'strong-pass-456',
+        }, format='json')
+
+        response = self.client.post('/api/auth/login/', {
+            'username': 'pending_user',
+            'password': 'strong-pass-456',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['detail'], 'Verify your email before logging in.')
+
+    def test_verify_email_activates_user(self):
+        self.client.post('/api/auth/register/', {
+            'full_name': 'Verify User',
+            'username': 'verify_user',
+            'email': 'verify@example.com',
+            'phone_number': '+44-7000-000005',
+            'password': 'strong-pass-456',
+            'confirm_password': 'strong-pass-456',
+        }, format='json')
+
+        created_user = User.objects.get(username='verify_user')
+        body_lines = mail.outbox[0].body.splitlines()
+        selector = next(line.split(': ', 1)[1] for line in body_lines if line.startswith('Selector: '))
+        token_value = next(line.split(': ', 1)[1] for line in body_lines if line.startswith('Token: '))
+
+        response = self.client.post('/api/auth/verify-email/', {
+            'selector': selector,
+            'token': token_value,
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        created_user.refresh_from_db()
+        self.assertTrue(created_user.is_active)
+        verification_token = EmailVerificationToken.objects.get(user=created_user)
+        self.assertIsNotNone(verification_token.used_at)
+        self.assertTrue(AuditLog.objects.filter(action='auth.email_verified', target_id=created_user.id).exists())
+
+    def test_verify_email_rejects_invalid_token(self):
+        self.client.post('/api/auth/register/', {
+            'full_name': 'Verify User',
+            'username': 'verify_user_invalid',
+            'email': 'verify-invalid@example.com',
+            'phone_number': '+44-7000-000006',
+            'password': 'strong-pass-456',
+            'confirm_password': 'strong-pass-456',
+        }, format='json')
+
+        verification_token = EmailVerificationToken.objects.get(user__username='verify_user_invalid')
+        response = self.client.post('/api/auth/verify-email/', {
+            'selector': str(verification_token.selector),
+            'token': 'wrong-token',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['detail'], 'Verification token is invalid or expired.')
+
+    def test_resend_verification_sends_new_email_for_inactive_user(self):
+        self.client.post('/api/auth/register/', {
+            'full_name': 'Resend User',
+            'username': 'resend_user',
+            'email': 'resend@example.com',
+            'phone_number': '+44-7000-000007',
+            'password': 'strong-pass-456',
+            'confirm_password': 'strong-pass-456',
+        }, format='json')
+
+        first_token = EmailVerificationToken.objects.get(user__username='resend_user')
+        response = self.client.post('/api/auth/resend-verification/', {
+            'email': 'resend@example.com',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(mail.outbox), 2)
+        first_token.refresh_from_db()
+        self.assertIsNotNone(first_token.used_at)
+        self.assertEqual(EmailVerificationToken.objects.filter(user__username='resend_user').count(), 2)
 
     def test_login_accepts_email_address(self):
         response = self.client.post('/api/auth/login/', {
