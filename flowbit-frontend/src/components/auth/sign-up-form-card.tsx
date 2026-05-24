@@ -12,7 +12,7 @@ import { registerAccount } from "@/lib/auth-client";
 
 const signUpNotes = [
   "Fill in your account details carefully before submitting.",
-  "After your account is created, sign in with your new credentials to continue.",
+  "After your account is created, verify your email before you can log in.",
   "Contact your administrator if you need help with account access or approval.",
 ];
 
@@ -71,7 +71,7 @@ export function SignUpFormCard() {
 
     try {
       await registerAccount(formValues);
-      router.push("/login?signup=success");
+      router.push(`/login?signup=verify-email&email=${encodeURIComponent(formValues.email.trim())}`);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to create your account.");
     } finally {
@@ -190,7 +190,7 @@ export function SignUpFormCard() {
       </div>
 
       <p className="mt-5 text-sm leading-7 text-stone-600">
-        After your account is created, you will return to the login flow and sign in with your new account details.
+        After your account is created, FlowBit will send a verification link to your email address before login is allowed.
       </p>
 
       <Card className="mt-8 rounded-[24px] bg-[#f5f1ea]">

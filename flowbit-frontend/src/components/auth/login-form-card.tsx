@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { KEEP_SIGNED_IN_KEY } from "@/lib/auth";
-import { loginWithGoogle, loginWithPassword } from "@/lib/auth-client";
+import { loginWithGoogle, loginWithPassword, resendVerificationEmail } from "@/lib/auth-client";
 import { GoogleSignInButton } from "./google-sign-in-button";
 
 const accessNotes = [
@@ -23,10 +23,15 @@ export function LoginFormCard() {
   const router = useRouter();
   const [keepSignedIn, setKeepSignedIn] = useState(false);
   const [showSignUpSuccess, setShowSignUpSuccess] = useState(false);
+  const [showVerifyEmailNotice, setShowVerifyEmailNotice] = useState(false);
   const [credentials, setCredentials] = useState({ username: "", password: "" });
+  const [verificationEmail, setVerificationEmail] = useState("");
   const [fieldErrors, setFieldErrors] = useState<{ username?: string; password?: string }>({});
   const [errorMessage, setErrorMessage] = useState("");
+  const [resendMessage, setResendMessage] = useState("");
+  const [resendError, setResendError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isResending, setIsResending] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -34,8 +39,15 @@ export function LoginFormCard() {
     }
 
     setKeepSignedIn(window.localStorage.getItem(KEEP_SIGNED_IN_KEY) === "true");
-    setShowSignUpSuccess(new URLSearchParams(window.location.search).get("signup") === "success");
+    const params = new URLSearchParams(window.location.search);
+    const signupState = params.get("signup");
+    const signupEmail = params.get("email") || "";
+    setShowSignUpSuccess(signupState === "success");
+    setShowVerifyEmailNotice(signupState === "verify-email");
+    setVerificationEmail(signupEmail);
   }, []);
+
+  const showVerificationHelp = showVerifyEmailNotice || errorMessage === "Verify your email before logging in.";
 
   function handleKeepSignedInChange(nextChecked: boolean) {
     setKeepSignedIn(nextChecked);
@@ -62,6 +74,8 @@ export function LoginFormCard() {
 
   async function handleLogin() {
     setErrorMessage("");
+    setResendError("");
+    setResendMessage("");
     if (!validateForm()) {
       return;
     }
@@ -76,9 +90,37 @@ export function LoginFormCard() {
       router.push("/");
       router.refresh();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to sign in.");
+      const message = error instanceof Error ? error.message : "Unable to sign in.";
+      setErrorMessage(message);
+      if (message === "Verify your email before logging in." && !verificationEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(credentials.username.trim())) {
+        setVerificationEmail(credentials.username.trim());
+      }
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function handleResendVerification() {
+    setResendError("");
+    setResendMessage("");
+
+    if (!verificationEmail.trim()) {
+      setResendError("Enter your email address.");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(verificationEmail.trim())) {
+      setResendError("Enter a valid email address.");
+      return;
+    }
+
+    setIsResending(true);
+    try {
+      const response = await resendVerificationEmail(verificationEmail.trim());
+      setResendMessage(response.message);
+    } catch (error) {
+      setResendError(error instanceof Error ? error.message : "Unable to resend verification email.");
+    } finally {
+      setIsResending(false);
     }
   }
 
@@ -129,9 +171,42 @@ export function LoginFormCard() {
         </div>
       ) : null}
 
+      {showVerifyEmailNotice ? (
+        <div className="mt-6 rounded-[20px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Account created. Check your email for the verification link before logging in.
+        </div>
+      ) : null}
+
       {errorMessage ? (
         <div className="mt-6 rounded-[20px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
           {errorMessage}
+        </div>
+      ) : null}
+
+      {showVerificationHelp ? (
+        <div className="mt-6 rounded-[24px] border border-stone-200 bg-stone-50 px-4 py-4 text-sm text-stone-700">
+          <p className="font-medium text-stone-900">Need another verification email?</p>
+          <p className="mt-1 text-stone-600">Enter the email address for this account and FlowBit will send a fresh verification link.</p>
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+            <div className="flex-1">
+              <AuthInput
+                label="Verification email"
+                type="email"
+                placeholder="Enter your email address"
+                autoComplete="email"
+                error={resendError}
+                value={verificationEmail}
+                onChange={(event) => {
+                  setVerificationEmail(event.target.value);
+                  setResendError("");
+                }}
+              />
+            </div>
+            <Button className="sm:self-end" size="lg" onClick={handleResendVerification} disabled={isResending}>
+              {isResending ? "Sending..." : "Resend verification"}
+            </Button>
+          </div>
+          {resendMessage ? <p className="mt-3 text-sm text-emerald-700">{resendMessage}</p> : null}
         </div>
       ) : null}
 
