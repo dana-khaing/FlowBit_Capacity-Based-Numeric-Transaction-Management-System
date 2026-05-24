@@ -42,6 +42,11 @@ type PasswordResetPayload = {
   new_password: string;
 };
 
+type EmailVerificationPayload = {
+  selector: string;
+  token: string;
+};
+
 type ProfileUpdatePayload = {
   full_name: string;
   username: string;
@@ -124,6 +129,20 @@ export async function registerAccount(payload: RegisterPayload) {
   return apiRequest<{ message: string; user: AuthUser }>("/auth/register/", {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+export async function verifyEmailAddress(payload: EmailVerificationPayload) {
+  return apiRequest<{ message: string }>("/auth/verify-email/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function resendVerificationEmail(email: string) {
+  return apiRequest<{ message: string }>("/auth/resend-verification/", {
+    method: "POST",
+    body: JSON.stringify({ email }),
   });
 }
 
