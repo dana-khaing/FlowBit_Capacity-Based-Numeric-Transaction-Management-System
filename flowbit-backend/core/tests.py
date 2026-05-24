@@ -805,6 +805,34 @@ class AuthAPITests(APITestCase):
         self.assertEqual(first_response.status_code, status.HTTP_200_OK)
         self.assertEqual(second_response.status_code, status.HTTP_400_BAD_REQUEST)
 
+    def test_reset_password_does_not_activate_unverified_account(self):
+        self.client.post('/api/auth/register/', {
+            'full_name': 'Reset Pending User',
+            'username': 'reset_pending_user',
+            'email': 'reset-pending@example.com',
+            'phone_number': '+44-7000-000008',
+            'password': 'strong-pass-456',
+            'confirm_password': 'strong-pass-456',
+        }, format='json')
+
+        self.client.post('/api/auth/forgot-password/', {
+            'email': 'reset-pending@example.com',
+        }, format='json')
+
+        body_lines = mail.outbox[-1].body.splitlines()
+        selector = next(line.split(': ', 1)[1] for line in body_lines if line.startswith('Selector: '))
+        token_value = next(line.split(': ', 1)[1] for line in body_lines if line.startswith('Token: '))
+
+        response = self.client.post('/api/auth/reset-password/', {
+            'selector': selector,
+            'token': token_value,
+            'new_password': 'new-reset-pass-456',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        pending_user = User.objects.get(username='reset_pending_user')
+        self.assertFalse(pending_user.is_active)
+
 
 class RolePermissionTests(APITestCase):
     def setUp(self):
