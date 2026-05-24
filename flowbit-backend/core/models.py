@@ -2404,3 +2404,47 @@ class PasswordResetToken(models.Model):
             expires_at=timezone.now() + timezone.timedelta(hours=expiry_hours),
         )
         return reset_token, raw_token
+
+
+class EmailVerificationToken(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='email_verification_tokens')
+    selector = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    token_hash = models.CharField(max_length=128)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['selector']),
+            models.Index(fields=['expires_at']),
+        ]
+
+    def __str__(self):
+        return f"Email verification token for {self.user.username}"
+
+    @property
+    def is_active(self):
+        return self.used_at is None and self.expires_at > timezone.now()
+
+    def check_token(self, raw_token):
+        return self.is_active and check_password(raw_token, self.token_hash)
+
+    def mark_used(self, used_at=None):
+        if used_at is None:
+            used_at = timezone.now()
+        self.used_at = used_at
+        self.save(update_fields=['used_at'])
+
+    @classmethod
+    def issue_for_user(cls, user, expiry_hours=24):
+        cls.objects.filter(user=user, used_at__isnull=True).update(used_at=timezone.now())
+
+        raw_token = secrets.token_urlsafe(32)
+        verification_token = cls.objects.create(
+            user=user,
+            token_hash=make_password(raw_token),
+            expires_at=timezone.now() + timezone.timedelta(hours=expiry_hours),
+        )
+        return verification_token, raw_token

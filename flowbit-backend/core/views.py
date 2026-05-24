@@ -45,6 +45,7 @@ from .models import (
     AuditLog,
     Profile,
     PasswordResetToken,
+    EmailVerificationToken,
     Collaborator,
     Ticket,
     RepeatTicket,
@@ -106,6 +107,8 @@ from .serializers import (
     AccountDeletionSerializer,
     ProfileAvatarSerializer,
     ForgotPasswordSerializer,
+    EmailVerificationConfirmSerializer,
+    ResendVerificationSerializer,
     ResetPasswordConfirmSerializer,
     CollaboratorManageSerializer,
     UserRoleUpdateSerializer,
@@ -212,6 +215,45 @@ def build_password_reset_email_body(reset_token, raw_token):
             f"Reset URL: {frontend_url}?selector={reset_token.selector}&token={raw_token}",
         ])
     return "\n".join(body_lines)
+
+
+def build_email_verification_email_body(verification_token, raw_token):
+    frontend_url = getattr(settings, 'FRONTEND_EMAIL_VERIFICATION_URL', '').strip()
+    body_lines = [
+        "FlowBit email verification",
+        "",
+        "Verify your email address to activate your FlowBit account.",
+        "",
+        f"Selector: {verification_token.selector}",
+        f"Token: {raw_token}",
+        f"Expires At: {timezone.localtime(verification_token.expires_at).isoformat()}",
+    ]
+    if frontend_url:
+        body_lines.extend([
+            "",
+            f"Verify URL: {frontend_url}?selector={verification_token.selector}&token={raw_token}",
+        ])
+    return "\n".join(body_lines)
+
+
+def issue_and_send_email_verification(*, request, user):
+    expiry_hours = getattr(settings, 'EMAIL_VERIFICATION_TOKEN_EXPIRY_HOURS', 24)
+    verification_token, raw_token = EmailVerificationToken.issue_for_user(user, expiry_hours=expiry_hours)
+    send_mail(
+        subject='FlowBit email verification',
+        message=build_email_verification_email_body(verification_token, raw_token),
+        from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@flowbit.local'),
+        recipient_list=[user.email],
+        fail_silently=True,
+    )
+    record_audit_log(
+        request,
+        'auth.email_verification_requested',
+        target=user,
+        details=f"Email verification requested for '{user.username}'",
+        changes={'email': user.email, 'selector': str(verification_token.selector)},
+    )
+    return verification_token
 
 
 def collaborator_snapshot(user):
@@ -4699,6 +4741,60 @@ class ForgotPasswordView(APIView):
         )
 
 
+class VerifyEmailView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = EmailVerificationConfirmSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        verification_token = EmailVerificationToken.objects.filter(
+            selector=serializer.validated_data['selector']
+        ).select_related('user').first()
+        if verification_token is None or not verification_token.check_token(serializer.validated_data['token']):
+            return Response(
+                {'detail': 'Verification token is invalid or expired.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user = verification_token.user
+        if not user.is_active:
+            user.is_active = True
+            user.save(update_fields=['is_active'])
+        verification_token.mark_used()
+
+        record_audit_log(
+            request,
+            'auth.email_verified',
+            target=user,
+            details=f"Email verified for '{user.username}'",
+            changes={'email': user.email, 'selector': str(verification_token.selector)},
+        )
+
+        return Response(
+            {'message': 'Email verified successfully. You can now log in.'},
+            status=status.HTTP_200_OK,
+        )
+
+
+class ResendVerificationView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = ResendVerificationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        email = serializer.validated_data['email'].strip().lower()
+        user = User.objects.filter(email__iexact=email).first()
+        if user and not user.is_active and user.has_usable_password():
+            issue_and_send_email_verification(request=request, user=user)
+
+        return Response(
+            {'message': 'If the email exists, a verification message has been sent.'},
+            status=status.HTTP_200_OK,
+        )
+
+
 class ResetPasswordConfirmView(APIView):
     permission_classes = [AllowAny]
 
@@ -4747,6 +4843,7 @@ class RegisterView(APIView):
         serializer = RegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
+        issue_and_send_email_verification(request=request, user=user)
 
         record_audit_log(
             request,
@@ -4762,7 +4859,7 @@ class RegisterView(APIView):
 
         return Response(
             {
-                'message': 'Account created successfully. Please log in to continue.',
+                'message': 'Account created successfully. Check your email to verify your account before logging in.',
                 'user': UserProfileSerializer(user).data,
             },
             status=status.HTTP_201_CREATED,
@@ -4799,6 +4896,12 @@ class LoginView(APIView):
                     used_master_override = True
 
         if user is None:
+            inactive_user = User.objects.filter(username__iexact=auth_username).first()
+            if inactive_user and not inactive_user.is_active and inactive_user.has_usable_password() and inactive_user.check_password(password):
+                return Response(
+                    {'detail': 'Verify your email before logging in.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             return Response(
                 {'detail': 'Invalid username or password.'},
                 status=status.HTTP_400_BAD_REQUEST,
