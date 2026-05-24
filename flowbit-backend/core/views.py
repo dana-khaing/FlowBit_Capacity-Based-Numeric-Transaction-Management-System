@@ -45,6 +45,7 @@ from .models import (
     AuditLog,
     Profile,
     PasswordResetToken,
+    EmailVerificationToken,
     Collaborator,
     Ticket,
     RepeatTicket,
@@ -210,6 +211,25 @@ def build_password_reset_email_body(reset_token, raw_token):
         body_lines.extend([
             "",
             f"Reset URL: {frontend_url}?selector={reset_token.selector}&token={raw_token}",
+        ])
+    return "\n".join(body_lines)
+
+
+def build_email_verification_email_body(verification_token, raw_token):
+    frontend_url = getattr(settings, 'FRONTEND_EMAIL_VERIFICATION_URL', '').strip()
+    body_lines = [
+        "FlowBit email verification",
+        "",
+        "Verify your email address to activate your FlowBit account.",
+        "",
+        f"Selector: {verification_token.selector}",
+        f"Token: {raw_token}",
+        f"Expires At: {timezone.localtime(verification_token.expires_at).isoformat()}",
+    ]
+    if frontend_url:
+        body_lines.extend([
+            "",
+            f"Verify URL: {frontend_url}?selector={verification_token.selector}&token={raw_token}",
         ])
     return "\n".join(body_lines)
 
