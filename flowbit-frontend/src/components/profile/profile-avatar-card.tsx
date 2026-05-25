@@ -49,6 +49,9 @@ export function ProfileAvatarCard({ user, onUserChange, onNotify }: ProfileAvata
       onNotify("Profile photo updated successfully.");
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to upload profile photo.");
+      if (inputRef.current) {
+        inputRef.current.value = "";
+      }
     } finally {
       setIsUploading(false);
     }
