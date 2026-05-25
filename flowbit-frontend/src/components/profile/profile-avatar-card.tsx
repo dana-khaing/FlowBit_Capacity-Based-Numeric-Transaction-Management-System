@@ -100,55 +100,75 @@ export function ProfileAvatarCard({ user, onUserChange, onNotify }: ProfileAvata
       <div>
         <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-500">Avatar</p>
         <h2 className="mt-2 text-2xl font-semibold text-stone-950">Profile photo</h2>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-600">
+          Keep your profile recognizable with a clear square photo. Changes apply across your FlowBit workspace.
+        </p>
       </div>
 
-      <div className="mt-5 flex flex-col gap-5 sm:flex-row sm:items-center">
-        <div className="relative">
-          {previewUrl ? (
-            <img
-              src={previewUrl}
-              alt="Selected profile preview"
-              className="h-20 w-20 rounded-[28px] object-cover"
-            />
-          ) : (
-            <ProfileAvatar user={user} />
-          )}
-          {isUploading ? (
-            <div className="absolute inset-0 flex items-center justify-center rounded-[28px] bg-stone-950/55 text-white">
-              <FontAwesomeIcon icon={faSpinner} className="h-5 w-5 animate-spin" />
+      <div className="mt-6 rounded-[24px] bg-[#f8f6f2] p-5">
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-center">
+          <div className="flex items-center gap-4">
+            <div className="relative shrink-0">
+              {previewUrl ? (
+                <img
+                  src={previewUrl}
+                  alt="Selected profile preview"
+                  className="h-24 w-24 rounded-[30px] object-cover"
+                />
+              ) : (
+                <ProfileAvatar user={user} className="h-24 w-24 rounded-[30px]" textClassName="text-3xl font-semibold" />
+              )}
+              {isUploading ? (
+                <div className="absolute inset-0 flex items-center justify-center rounded-[30px] bg-stone-950/55 text-white">
+                  <FontAwesomeIcon icon={faSpinner} className="h-5 w-5 animate-spin" />
+                </div>
+              ) : null}
             </div>
-          ) : null}
-        </div>
-        <div className="flex-1">
-          <label className="inline-flex cursor-pointer items-center gap-2 rounded-[20px] border border-stone-900/10 bg-[#f8f6f2] px-4 py-3 text-sm font-semibold text-stone-700 transition hover:bg-stone-100">
-            <FontAwesomeIcon icon={selectedFile ? faRotate : faImagePortrait} className="h-4 w-4" />
-            {user.avatar_url ? "Replace photo" : "Choose photo"}
+
+            <div className="min-w-0">
+              <p className="text-lg font-semibold text-stone-950">
+                {user.full_name || user.username}
+              </p>
+              <p className="mt-1 text-sm text-stone-500">
+                {isUploading
+                  ? `Uploading ${selectedFile?.name || "photo"}...`
+                  : selectedFile
+                    ? `${selectedFile.name} selected. Uploading now.`
+                    : user.avatar_url
+                      ? "Your current profile photo is active."
+                      : "You are currently using initials as your avatar."}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-1 flex-col gap-3 lg:items-end">
             <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
-          </label>
-          <p className="mt-3 text-sm text-stone-500">
-            {isUploading
-              ? `Uploading ${selectedFile?.name || "photo"}...`
-              : selectedFile
-                ? `${selectedFile.name} selected. Uploading now.`
-                : "Upload a clear square image for the best result."}
-          </p>
-          <p className="mt-2 text-xs uppercase tracking-[0.18em] text-stone-400">
-            {previewUrl ? "Previewing selected photo" : "Image updates everywhere after upload"}
-          </p>
-          {user.avatar_url ? (
-            <div className="mt-4">
-              <Button
-                size="default"
-                variant="outline"
-                className="border-red-200 text-red-700 hover:bg-red-50"
-                onClick={() => setShowRemoveConfirm(true)}
-                disabled={isUploading || isRemoving}
-              >
-                <FontAwesomeIcon icon={faTrashCan} className="h-4 w-4" />
-                {isRemoving ? "Removing..." : "Remove photo"}
-              </Button>
+            <Button
+              size="default"
+              variant="outline"
+              className="min-w-[170px]"
+              onClick={() => inputRef.current?.click()}
+              disabled={isUploading || isRemoving}
+            >
+              <FontAwesomeIcon icon={selectedFile ? faRotate : faImagePortrait} className="h-4 w-4" />
+              {user.avatar_url ? "Replace photo" : "Choose photo"}
+            </Button>
+
+            <div className="flex flex-wrap gap-3 lg:justify-end">
+              {user.avatar_url ? (
+                <Button
+                  size="default"
+                  variant="outline"
+                  className="min-w-[170px] border-red-200 text-red-700 hover:bg-red-50"
+                  onClick={() => setShowRemoveConfirm(true)}
+                  disabled={isUploading || isRemoving}
+                >
+                  <FontAwesomeIcon icon={faTrashCan} className="h-4 w-4" />
+                  {isRemoving ? "Removing..." : "Remove photo"}
+                </Button>
+              ) : null}
             </div>
-          ) : null}
+          </div>
         </div>
       </div>
 
