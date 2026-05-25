@@ -5150,6 +5150,27 @@ class ProfileAvatarView(APIView):
             status=status.HTTP_200_OK,
         )
 
+    def delete(self, request):
+        profile, _ = Profile.objects.get_or_create(user=request.user)
+        previous_avatar = profile.avatar.name if profile.avatar else ''
+        if profile.avatar:
+            profile.avatar.delete(save=False)
+        profile.avatar = None
+        profile.save(update_fields=['avatar', 'updated_at'])
+
+        record_audit_log(
+            request,
+            'auth.avatar_removed',
+            target=request.user,
+            details=f"User '{request.user.username}' removed profile avatar",
+            changes={'before_avatar': previous_avatar, 'after_avatar': ''},
+        )
+
+        return Response(
+            {'user': UserProfileSerializer(request.user, context={'request': request}).data},
+            status=status.HTTP_200_OK,
+        )
+
 
 class UserManagementViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.DestroyModelMixin, viewsets.GenericViewSet):
     queryset = User.objects.all().order_by('username')
