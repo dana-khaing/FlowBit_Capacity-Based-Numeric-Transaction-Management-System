@@ -37,10 +37,10 @@ class Migration(migrations.Migration):
         ),
         migrations.AddIndex(
             model_name="emailverificationtoken",
-            index=models.Index(fields=["selector"], name="core_emailv_selecto_3d1c2c_idx"),
+            index=models.Index(fields=["selector"], name="core_emailv_selecto_ddf40e_idx"),
         ),
         migrations.AddIndex(
             model_name="emailverificationtoken",
-            index=models.Index(fields=["expires_at"], name="core_emailv_expires_21b7a3_idx"),
+            index=models.Index(fields=["expires_at"], name="core_emailv_expires_591e95_idx"),
         ),
     ]
