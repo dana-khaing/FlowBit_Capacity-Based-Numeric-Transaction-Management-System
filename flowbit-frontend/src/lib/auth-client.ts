@@ -258,6 +258,24 @@ export async function uploadProfileAvatar(file: File) {
   return data.user as AuthUser;
 }
 
+export async function removeProfileAvatar() {
+  const token = getStoredToken();
+  if (!token) {
+    throw new Error("No session found.");
+  }
+
+  const response = await apiRequest<{ user: AuthUser }>("/auth/avatar/", {
+    method: "DELETE",
+    headers: authHeaders(token),
+  });
+
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(response.user));
+  }
+
+  return response.user;
+}
+
 export async function logoutFromBackend() {
   const token = getStoredToken();
   if (token) {

@@ -2,8 +2,10 @@
 
 import { ChangeEvent, useEffect, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faImagePortrait, faRotate, faSpinner } from "@fortawesome/free-solid-svg-icons";
-import { uploadProfileAvatar, type AuthUser } from "@/lib/auth-client";
+import { faImagePortrait, faRotate, faSpinner, faTrashCan } from "@fortawesome/free-solid-svg-icons";
+import { Button } from "@/components/ui/button";
+import { ProfileDeleteModal } from "@/components/profile/profile-delete-modal";
+import { removeProfileAvatar, uploadProfileAvatar, type AuthUser } from "@/lib/auth-client";
 import { ProfileAvatar } from "@/components/profile/profile-avatar";
 
 type ProfileAvatarCardProps = {
@@ -17,6 +19,8 @@ export function ProfileAvatarCard({ user, onUserChange, onNotify }: ProfileAvata
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [isUploading, setIsUploading] = useState(false);
+  const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
+  const [isRemoving, setIsRemoving] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -67,6 +71,30 @@ export function ProfileAvatarCard({ user, onUserChange, onNotify }: ProfileAvata
     void uploadSelectedFile(file);
   }
 
+  async function handleRemoveAvatar() {
+    setErrorMessage("");
+    setIsRemoving(true);
+
+    try {
+      const updatedUser = await removeProfileAvatar();
+      onUserChange(updatedUser);
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
+      setPreviewUrl(null);
+      setSelectedFile(null);
+      setShowRemoveConfirm(false);
+      if (inputRef.current) {
+        inputRef.current.value = "";
+      }
+      onNotify("Profile photo removed successfully.");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to remove profile photo.");
+    } finally {
+      setIsRemoving(false);
+    }
+  }
+
   return (
     <section className="rounded-[28px] border border-stone-900/8 bg-white p-5 shadow-[0_8px_24px_rgba(28,24,20,0.04)] sm:p-6">
       <div>
@@ -107,6 +135,20 @@ export function ProfileAvatarCard({ user, onUserChange, onNotify }: ProfileAvata
           <p className="mt-2 text-xs uppercase tracking-[0.18em] text-stone-400">
             {previewUrl ? "Previewing selected photo" : "Image updates everywhere after upload"}
           </p>
+          {user.avatar_url ? (
+            <div className="mt-4">
+              <Button
+                size="default"
+                variant="outline"
+                className="border-red-200 text-red-700 hover:bg-red-50"
+                onClick={() => setShowRemoveConfirm(true)}
+                disabled={isUploading || isRemoving}
+              >
+                <FontAwesomeIcon icon={faTrashCan} className="h-4 w-4" />
+                {isRemoving ? "Removing..." : "Remove photo"}
+              </Button>
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -115,6 +157,24 @@ export function ProfileAvatarCard({ user, onUserChange, onNotify }: ProfileAvata
           {errorMessage}
         </div>
       ) : null}
+
+      <ProfileDeleteModal
+        title="Remove current profile photo?"
+        description="This clears your current avatar and switches the account back to initials everywhere in FlowBit."
+        isOpen={showRemoveConfirm}
+        onClose={() => {
+          if (!isRemoving) {
+            setShowRemoveConfirm(false);
+          }
+        }}
+        onConfirm={handleRemoveAvatar}
+        confirmLabel="Confirm photo removal"
+        isSubmitting={isRemoving}
+      >
+        <p className="text-sm leading-6 text-stone-600">
+          You can upload a new photo again at any time from this profile page.
+        </p>
+      </ProfileDeleteModal>
     </section>
   );
 }
