@@ -1,6 +1,7 @@
 from io import StringIO
 from decimal import Decimal
 from datetime import datetime, time, timedelta
+import tempfile
 from unittest.mock import patch
 
 from django.core.management import call_command
@@ -545,25 +546,65 @@ class AuthAPITests(APITestCase):
         token = Token.objects.create(user=self.user)
         self.client.credentials(HTTP_AUTHORIZATION=f'Token {token.key}')
 
-        avatar_file = SimpleUploadedFile(
-            'avatar.png',
-            (
-                b'\x89PNG\r\n\x1a\n'
-                b'\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde'
-                b'\x00\x00\x00\x0cIDATx\x9cc```\x00\x00\x00\x04\x00\x01\xf6\x178U'
-                b'\x00\x00\x00\x00IEND\xaeB`\x82'
-            ),
-            content_type='image/png',
-        )
+        with tempfile.TemporaryDirectory() as media_root:
+            with override_settings(
+                MEDIA_ROOT=media_root,
+                STORAGES={
+                    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+                    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+                },
+            ):
+                avatar_file = SimpleUploadedFile(
+                    'avatar.png',
+                    (
+                        b'\x89PNG\r\n\x1a\n'
+                        b'\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde'
+                        b'\x00\x00\x00\x0cIDATx\x9cc```\x00\x00\x00\x04\x00\x01\xf6\x178U'
+                        b'\x00\x00\x00\x00IEND\xaeB`\x82'
+                    ),
+                    content_type='image/png',
+                )
 
-        response = self.client.post('/api/auth/avatar/', {'avatar': avatar_file})
+                response = self.client.post('/api/auth/avatar/', {'avatar': avatar_file})
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.user.refresh_from_db()
-        self.assertTrue(bool(self.user.profile.avatar))
-        self.assertIsNotNone(response.data['user']['avatar_url'])
-        self.assertIn('?v=', response.data['user']['avatar_url'])
-        self.assertTrue(AuditLog.objects.filter(action='auth.avatar_updated', target_id=self.user.id).exists())
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
+                self.user.refresh_from_db()
+                self.assertTrue(bool(self.user.profile.avatar))
+                self.assertIsNotNone(response.data['user']['avatar_url'])
+                self.assertIn('?v=', response.data['user']['avatar_url'])
+                self.assertTrue(AuditLog.objects.filter(action='auth.avatar_updated', target_id=self.user.id).exists())
+
+    def test_avatar_delete_clears_profile_photo(self):
+        token = Token.objects.create(user=self.user)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {token.key}')
+
+        with tempfile.TemporaryDirectory() as media_root:
+            with override_settings(
+                MEDIA_ROOT=media_root,
+                STORAGES={
+                    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+                    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+                },
+            ):
+                avatar_file = SimpleUploadedFile(
+                    'avatar.png',
+                    (
+                        b'\x89PNG\r\n\x1a\n'
+                        b'\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde'
+                        b'\x00\x00\x00\x0cIDATx\x9cc```\x00\x00\x00\x04\x00\x01\xf6\x178U'
+                        b'\x00\x00\x00\x00IEND\xaeB`\x82'
+                    ),
+                    content_type='image/png',
+                )
+                self.client.post('/api/auth/avatar/', {'avatar': avatar_file})
+
+                response = self.client.delete('/api/auth/avatar/')
+
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
+                self.user.refresh_from_db()
+                self.assertFalse(bool(self.user.profile.avatar))
+                self.assertIsNone(response.data['user']['avatar_url'])
+                self.assertTrue(AuditLog.objects.filter(action='auth.avatar_removed', target_id=self.user.id).exists())
 
     def test_regular_user_cannot_delete_account_without_admin_override_code(self):
         token = Token.objects.create(user=self.user)
