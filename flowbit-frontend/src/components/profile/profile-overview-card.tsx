@@ -14,8 +14,8 @@ export function ProfileOverviewCard({ user }: ProfileOverviewCardProps) {
             <ProfileAvatar user={user} className="h-24 w-24 rounded-[30px]" textClassName="text-3xl font-semibold" />
             <div className="min-w-0">
               <p className="text-sm font-medium uppercase tracking-[0.2em] text-stone-400">User Profile</p>
-              <div className="mt-3 flex flex-col gap-3 md:flex-row md:flex-wrap md:items-center md:gap-4">
-                <h1 className="min-w-0 break-words text-4xl font-semibold text-stone-950">{user.full_name || user.username}</h1>
+              <div className="mt-3 flex flex-col gap-3 xl:flex-row xl:flex-wrap xl:items-center xl:gap-4">
+                <h1 className="min-w-0 break-words text-3xl font-semibold text-stone-950 sm:text-4xl">{user.full_name || user.username}</h1>
                 <span className="inline-flex w-fit items-center rounded-full bg-stone-950 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-white">
                   {user.role || "User"}
                 </span>

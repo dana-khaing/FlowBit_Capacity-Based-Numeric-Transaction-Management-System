@@ -43,15 +43,6 @@ export function ProfileDetailsCard({ user, onUserChange, onNotify }: ProfileDeta
   const [errorMessage, setErrorMessage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
-  useEffect(() => {
-    setFormValues({
-      full_name: user.full_name || "",
-      username: user.username,
-      email: user.email || "",
-      phone_number: user.phone_number || "",
-    });
-  }, [user.full_name, user.username, user.email, user.phone_number]);
-
   const normalizedInitialValues = useMemo(
     () =>
       normalizeProfileForm({
@@ -68,6 +59,19 @@ export function ProfileDetailsCard({ user, onUserChange, onNotify }: ProfileDeta
     normalizedFormValues.username !== normalizedInitialValues.username ||
     normalizedFormValues.email !== normalizedInitialValues.email ||
     normalizedFormValues.phone_number !== normalizedInitialValues.phone_number;
+
+  useEffect(() => {
+    if (hasChanges || isSaving) {
+      return;
+    }
+
+    setFormValues({
+      full_name: user.full_name || "",
+      username: user.username,
+      email: user.email || "",
+      phone_number: user.phone_number || "",
+    });
+  }, [user.full_name, user.username, user.email, user.phone_number, hasChanges, isSaving]);
 
   function validateForm() {
     const nextErrors: {
