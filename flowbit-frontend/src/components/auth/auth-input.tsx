@@ -19,6 +19,7 @@ type AuthInputProps = {
   inputMode?: HTMLAttributes<HTMLInputElement>["inputMode"];
   disabled?: boolean;
   onKeyDown?: KeyboardEventHandler<HTMLInputElement>;
+  hideErrorMessage?: boolean;
 };
 
 export function AuthInput({
@@ -27,6 +28,7 @@ export function AuthInput({
   placeholder,
   error,
   hint,
+  hideErrorMessage = false,
   className,
   ...props
 }: AuthInputProps & { className?: string }) {
@@ -60,7 +62,7 @@ export function AuthInput({
           </button>
         ) : null}
       </div>
-      {error ? (
+      {error && !hideErrorMessage ? (
         <p id={descriptionId} className="mt-2 text-sm text-red-700">
           {error}
         </p>

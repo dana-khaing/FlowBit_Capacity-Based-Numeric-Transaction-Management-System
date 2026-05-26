@@ -200,7 +200,7 @@ export function LoginFormCard() {
         <div className="mt-6 rounded-[24px] border border-stone-200 bg-stone-50 px-4 py-4 text-sm text-stone-700">
           <p className="font-medium text-stone-900">Need another verification email?</p>
           <p className="mt-1 text-stone-600">Enter the email address for this account and FlowBit will send a fresh verification link. Also check your spam or junk folder.</p>
-          <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
             <div className="flex-1">
               <AuthInput
                 label="Verification email"
@@ -208,6 +208,7 @@ export function LoginFormCard() {
                 placeholder="Enter your email address"
                 autoComplete="email"
                 error={resendError}
+                hideErrorMessage
                 value={verificationEmail}
                 onChange={(event) => {
                   setVerificationEmail(event.target.value);
@@ -215,10 +216,11 @@ export function LoginFormCard() {
                 }}
               />
             </div>
-            <Button className="sm:self-end" size="lg" onClick={handleResendVerification} disabled={isResending}>
+            <Button size="lg" onClick={handleResendVerification} disabled={isResending}>
               {isResending ? "Sending..." : "Resend verification"}
             </Button>
           </div>
+          {resendError ? <p className="mt-3 text-sm text-red-700">{resendError}</p> : null}
           {resendMessage ? (
             <p className="mt-3 text-sm text-emerald-700">
               {resendMessage} If it does not arrive, check spam or try again shortly.
