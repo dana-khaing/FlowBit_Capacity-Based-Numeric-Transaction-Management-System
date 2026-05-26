@@ -220,17 +220,44 @@ class SupportMessageInline(admin.TabularInline):
 
 @admin.register(SupportCase)
 class SupportCaseAdmin(admin.ModelAdmin):
-    list_display = ('subject', 'created_by', 'status', 'closed_by', 'last_message_at', 'created_at')
-    list_filter = ('status', 'created_at', 'closed_at')
-    search_fields = ('subject', 'created_by__username', 'messages__body')
+    list_display = ('subject', 'intake_type', 'requester_display', 'status', 'closed_by', 'last_message_at', 'created_at')
+    list_filter = ('intake_type', 'status', 'created_at', 'closed_at')
+    search_fields = (
+        'subject',
+        'created_by__username',
+        'requester_name',
+        'requester_login_identifier',
+        'messages__body',
+    )
     inlines = [SupportMessageInline]
+
+    @admin.display(description='Requester')
+    def requester_display(self, obj):
+        if obj.intake_type == SupportCase.INTAKE_LOGIN_HELP:
+            return obj.requester_name or obj.requester_login_identifier
+        return obj.created_by
 
 
 @admin.register(SupportMessage)
 class SupportMessageAdmin(admin.ModelAdmin):
-    list_display = ('support_case', 'sender', 'created_at')
+    list_display = ('support_case', 'sender_display', 'created_at')
     list_filter = ('created_at',)
-    search_fields = ('support_case__subject', 'sender__username', 'body')
+    search_fields = (
+        'support_case__subject',
+        'sender__username',
+        'support_case__requester_name',
+        'support_case__requester_login_identifier',
+        'body',
+    )
+
+    @admin.display(description='Sender')
+    def sender_display(self, obj):
+        if (
+            obj.support_case.intake_type == SupportCase.INTAKE_LOGIN_HELP
+            and obj.support_case.created_by_id == obj.sender_id
+        ):
+            return obj.support_case.requester_name or obj.support_case.requester_login_identifier
+        return obj.sender
 
 
 @admin.register(Collaborator)

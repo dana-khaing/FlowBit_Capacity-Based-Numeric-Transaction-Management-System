@@ -2592,6 +2592,24 @@ class PrivateWorkspaceTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
+    def test_admin_case_detail_shows_requester_identity_for_login_help_message(self):
+        self.client.post('/api/support-cases/login-help/', {
+            'login_identifier': 'locked.user',
+            'requester_name': 'Locked User',
+            'subject': 'Cannot log in',
+            'message': 'I cannot access my account after several attempts.',
+        }, format='json')
+        support_case = SupportCase.objects.get(subject='Cannot log in')
+
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.get(f'/api/support-cases/{support_case.id}/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['created_by_full_name'], 'Locked User')
+        self.assertEqual(response.data['created_by_username'], 'locked.user')
+        self.assertEqual(response.data['messages'][0]['sender_full_name'], 'Locked User')
+        self.assertEqual(response.data['messages'][0]['sender_username'], 'locked.user')
+
     def test_case_can_be_replied_closed_and_reopened_by_both_sides(self):
         support_case = SupportCase.objects.create(
             created_by=self.user_one,
