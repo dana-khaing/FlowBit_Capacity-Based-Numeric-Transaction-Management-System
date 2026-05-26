@@ -467,6 +467,7 @@ class AuthAPITests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(response.data['detail'], 'Verification token is invalid or expired.')
 
+    @override_settings(EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS=0)
     def test_resend_verification_sends_new_email_for_inactive_user(self):
         self.client.post('/api/auth/register/', {
             'full_name': 'Resend User',
@@ -487,6 +488,15 @@ class AuthAPITests(APITestCase):
         first_token.refresh_from_db()
         self.assertIsNotNone(first_token.used_at)
         self.assertEqual(EmailVerificationToken.objects.filter(user__username='resend_user').count(), 2)
+
+    def test_resend_verification_returns_generic_message_for_unknown_email(self):
+        response = self.client.post('/api/auth/resend-verification/', {
+            'email': 'missing-verify@example.com',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['message'], 'If the email exists, a verification message has been sent.')
+        self.assertEqual(len(mail.outbox), 0)
 
     @override_settings(EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS=60)
     def test_resend_verification_is_rate_limited_when_requested_too_soon(self):
