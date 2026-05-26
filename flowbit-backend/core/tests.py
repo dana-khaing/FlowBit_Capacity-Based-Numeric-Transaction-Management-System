@@ -2513,6 +2513,31 @@ class PrivateWorkspaceTests(APITestCase):
         subjects = {item['subject'] for item in response.data}
         self.assertEqual(subjects, {'User One Case'})
 
+    def test_support_cases_are_listed_latest_activity_first(self):
+        earlier_case = SupportCase.objects.create(
+            created_by=self.user_one,
+            subject='Earlier Case',
+            last_message_at=timezone.now() - timezone.timedelta(hours=2),
+        )
+        later_case = SupportCase.objects.create(
+            created_by=self.user_one,
+            subject='Later Case',
+            last_message_at=timezone.now() - timezone.timedelta(hours=1),
+        )
+        SupportMessage.objects.create(support_case=earlier_case, sender=self.user_one, body='Earlier message')
+        SupportMessage.objects.create(support_case=later_case, sender=self.user_one, body='Later message')
+
+        later_case.last_message_at = timezone.now() - timezone.timedelta(minutes=10)
+        later_case.save(update_fields=['last_message_at', 'updated_at'])
+        earlier_case.last_message_at = timezone.now()
+        earlier_case.save(update_fields=['last_message_at', 'updated_at'])
+
+        self.client.force_authenticate(user=self.user_one)
+        response = self.client.get('/api/support-cases/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual([item['subject'] for item in response.data], ['Earlier Case', 'Later Case'])
+
     def test_admin_can_view_all_support_cases(self):
         case_one = SupportCase.objects.create(
             created_by=self.user_one,
@@ -2558,6 +2583,57 @@ class PrivateWorkspaceTests(APITestCase):
                 title='New customer service case',
             ).exists()
         )
+
+    def test_public_login_help_case_can_be_created_without_authentication(self):
+        response = self.client.post('/api/support-cases/login-help/', {
+            'login_identifier': 'locked.user',
+            'requester_name': 'Locked User',
+            'subject': 'Cannot log in',
+            'message': 'I cannot access my account after several attempts.',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['message'], 'Your login-help case has been sent to the admin.')
+        support_case = SupportCase.objects.get(subject='Cannot log in')
+        self.assertEqual(support_case.intake_type, SupportCase.INTAKE_LOGIN_HELP)
+        self.assertEqual(support_case.requester_name, 'Locked User')
+        self.assertEqual(support_case.requester_login_identifier, 'locked.user')
+        self.assertEqual(support_case.created_by.username, '_login_help_intake')
+        self.assertEqual(support_case.messages.count(), 1)
+        self.assertEqual(support_case.messages.first().sender.username, '_login_help_intake')
+        self.assertEqual(response.data['case']['created_by_full_name'], 'Locked User')
+        self.assertEqual(response.data['case']['created_by_username'], 'locked.user')
+        self.assertTrue(
+            UserNotification.objects.filter(
+                recipient=self.admin_user,
+                title='New login help case',
+            ).exists()
+        )
+        audit_entry = AuditLog.objects.get(action='support.login_help_case_created')
+        self.assertIsNone(audit_entry.user)
+
+    def test_public_login_help_does_not_open_authenticated_support_case_routes(self):
+        response = self.client.get('/api/support-cases/')
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_admin_case_detail_shows_requester_identity_for_login_help_message(self):
+        self.client.post('/api/support-cases/login-help/', {
+            'login_identifier': 'locked.user',
+            'requester_name': 'Locked User',
+            'subject': 'Cannot log in',
+            'message': 'I cannot access my account after several attempts.',
+        }, format='json')
+        support_case = SupportCase.objects.get(subject='Cannot log in')
+
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.get(f'/api/support-cases/{support_case.id}/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['created_by_full_name'], 'Locked User')
+        self.assertEqual(response.data['created_by_username'], 'locked.user')
+        self.assertEqual(response.data['messages'][0]['sender_full_name'], 'Locked User')
+        self.assertEqual(response.data['messages'][0]['sender_username'], 'locked.user')
 
     def test_case_can_be_replied_closed_and_reopened_by_both_sides(self):
         support_case = SupportCase.objects.create(
