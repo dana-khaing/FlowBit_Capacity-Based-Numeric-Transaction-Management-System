@@ -12,6 +12,7 @@ import { requestPasswordReset } from "@/lib/auth-client";
 const recoveryNotes = [
   "Enter the email address linked to your account.",
   "If the address is recognized, you will receive instructions to reset your password.",
+  "If the email does not arrive, check your spam or junk folder before trying again.",
   "After resetting your password, sign in again to continue to your workspace.",
 ];
 
