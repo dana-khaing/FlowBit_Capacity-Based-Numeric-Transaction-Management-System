@@ -367,6 +367,27 @@ class AuthAPITests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('confirm_password', response.data)
 
+    @patch('core.views.send_mail', side_effect=Exception('smtp down'))
+    def test_register_returns_operational_error_when_verification_email_fails(self, mock_send_mail):
+        response = self.client.post('/api/auth/register/', {
+            'full_name': 'Delivery Failure User',
+            'username': 'delivery_failure_user',
+            'email': 'delivery-failure@example.com',
+            'phone_number': '+44-7000-000009',
+            'password': 'strong-pass-456',
+            'confirm_password': 'strong-pass-456',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
+        self.assertEqual(
+            response.data['detail'],
+            'Account created, but we could not send the verification email right now. Please try resending verification shortly.',
+        )
+        created_user = User.objects.get(username='delivery_failure_user')
+        self.assertFalse(created_user.is_active)
+        self.assertTrue(AuditLog.objects.filter(action='auth.register', target_id=created_user.id).exists())
+        self.assertTrue(AuditLog.objects.filter(action='auth.email_delivery_failed', target_id=created_user.id).exists())
+
     def test_login_returns_token_and_user_payload(self):
         response = self.client.post('/api/auth/login/', {
             'username': 'auth_user',
@@ -466,6 +487,52 @@ class AuthAPITests(APITestCase):
         first_token.refresh_from_db()
         self.assertIsNotNone(first_token.used_at)
         self.assertEqual(EmailVerificationToken.objects.filter(user__username='resend_user').count(), 2)
+
+    @override_settings(EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS=60)
+    def test_resend_verification_is_rate_limited_when_requested_too_soon(self):
+        self.client.post('/api/auth/register/', {
+            'full_name': 'Resend Limited User',
+            'username': 'resend_limited_user',
+            'email': 'resend-limited@example.com',
+            'phone_number': '+44-7000-000010',
+            'password': 'strong-pass-456',
+            'confirm_password': 'strong-pass-456',
+        }, format='json')
+
+        response = self.client.post('/api/auth/resend-verification/', {
+            'email': 'resend-limited@example.com',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+        self.assertIn('Please wait', response.data['detail'])
+        self.assertTrue(
+            AuditLog.objects.filter(action='auth.email_verification_resend_rate_limited').exists()
+        )
+
+    @patch('core.views.send_mail', side_effect=Exception('smtp down'))
+    @override_settings(EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS=0)
+    def test_resend_verification_returns_operational_error_when_email_fails(self, mock_send_mail):
+        self.client.post('/api/auth/register/', {
+            'full_name': 'Resend Failure User',
+            'username': 'resend_failure_user',
+            'email': 'resend-failure@example.com',
+            'phone_number': '+44-7000-000011',
+            'password': 'strong-pass-456',
+            'confirm_password': 'strong-pass-456',
+        }, format='json')
+
+        response = self.client.post('/api/auth/resend-verification/', {
+            'email': 'resend-failure@example.com',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
+        self.assertEqual(
+            response.data['detail'],
+            'We could not send the verification email right now. Please try again shortly.',
+        )
+        self.assertTrue(
+            AuditLog.objects.filter(action='auth.email_delivery_failed', target_id=User.objects.get(username='resend_failure_user').id).exists()
+        )
 
     def test_login_accepts_email_address(self):
         response = self.client.post('/api/auth/login/', {

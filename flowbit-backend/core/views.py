@@ -285,6 +285,19 @@ def issue_and_send_email_verification(*, request, user):
     return verification_token
 
 
+def get_email_verification_resend_wait_seconds(user):
+    cooldown_seconds = max(getattr(settings, 'EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS', 60), 0)
+    if cooldown_seconds == 0:
+        return 0
+
+    latest_token = EmailVerificationToken.objects.filter(user=user).order_by('-created_at').first()
+    if latest_token is None:
+        return 0
+
+    elapsed_seconds = (timezone.now() - latest_token.created_at).total_seconds()
+    return max(int(cooldown_seconds - elapsed_seconds), 0)
+
+
 def collaborator_snapshot(user):
     return {
         'id': user.id,
@@ -4816,7 +4829,27 @@ class ResendVerificationView(APIView):
         email = serializer.validated_data['email'].strip().lower()
         user = User.objects.filter(email__iexact=email).first()
         if user and not user.is_active and user.has_usable_password():
-            issue_and_send_email_verification(request=request, user=user)
+            wait_seconds = get_email_verification_resend_wait_seconds(user)
+            if wait_seconds > 0:
+                record_audit_log(
+                    request,
+                    'auth.email_verification_resend_rate_limited',
+                    target=user,
+                    details=f"Verification resend blocked for '{user.username}'",
+                    changes={'email': user.email, 'wait_seconds': wait_seconds},
+                )
+                return Response(
+                    {'detail': f'Please wait {wait_seconds} seconds before requesting another verification email.'},
+                    status=status.HTTP_429_TOO_MANY_REQUESTS,
+                )
+
+            try:
+                issue_and_send_email_verification(request=request, user=user)
+            except AuthEmailDeliveryError:
+                return Response(
+                    {'detail': 'We could not send the verification email right now. Please try again shortly.'},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
 
         return Response(
             {'message': 'If the email exists, a verification message has been sent.'},
@@ -4872,7 +4905,6 @@ class RegisterView(APIView):
         serializer = RegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
-        issue_and_send_email_verification(request=request, user=user)
 
         record_audit_log(
             request,
@@ -4885,6 +4917,17 @@ class RegisterView(APIView):
                 'phone_number': user.profile.phone_number,
             },
         )
+
+        try:
+            issue_and_send_email_verification(request=request, user=user)
+        except AuthEmailDeliveryError:
+            return Response(
+                {
+                    'detail': 'Account created, but we could not send the verification email right now. Please try resending verification shortly.',
+                    'user': UserProfileSerializer(user).data,
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
 
         return Response(
             {
