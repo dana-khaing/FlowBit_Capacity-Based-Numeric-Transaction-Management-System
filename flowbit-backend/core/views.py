@@ -4762,13 +4762,19 @@ class ForgotPasswordView(APIView):
         if user and user.has_usable_password():
             expiry_hours = getattr(settings, 'PASSWORD_RESET_TOKEN_EXPIRY_HOURS', 2)
             reset_token, raw_token = PasswordResetToken.issue_for_user(user, expiry_hours=expiry_hours)
-            send_mail(
-                subject='FlowBit password reset',
-                message=build_password_reset_email_body(reset_token, raw_token),
-                from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@flowbit.local'),
-                recipient_list=[user.email],
-                fail_silently=True,
-            )
+            try:
+                send_auth_email(
+                    request=request,
+                    user=user,
+                    subject='FlowBit password reset',
+                    message=build_password_reset_email_body(reset_token, raw_token),
+                    audit_action='password_reset',
+                )
+            except AuthEmailDeliveryError:
+                return Response(
+                    {'detail': 'We could not send the password reset email right now. Please try again shortly.'},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
             record_audit_log(
                 request,
                 'auth.password_reset_requested',

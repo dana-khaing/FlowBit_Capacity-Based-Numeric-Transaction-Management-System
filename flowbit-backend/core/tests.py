@@ -850,6 +850,24 @@ class AuthAPITests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(mail.outbox), 0)
 
+    @patch('core.views.send_mail', side_effect=Exception('smtp down'))
+    def test_forgot_password_returns_operational_error_when_email_fails(self, mock_send_mail):
+        response = self.client.post('/api/auth/forgot-password/', {
+            'email': 'auth@example.com',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
+        self.assertEqual(
+            response.data['detail'],
+            'We could not send the password reset email right now. Please try again shortly.',
+        )
+        self.assertTrue(
+            AuditLog.objects.filter(action='auth.email_delivery_failed', target_id=self.user.id).exists()
+        )
+        self.assertFalse(
+            AuditLog.objects.filter(action='auth.password_reset_requested', target_id=self.user.id).exists()
+        )
+
     def test_reset_password_completes_with_valid_token(self):
         self.client.post('/api/auth/forgot-password/', {
             'email': 'auth@example.com',
