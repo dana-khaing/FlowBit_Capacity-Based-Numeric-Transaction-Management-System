@@ -3581,7 +3581,7 @@ class SupportCaseViewSet(viewsets.ModelViewSet):
             )
         ).annotate(
             message_count_annotated=Count('messages', distinct=True),
-        )
+        ).order_by('-last_message_at', '-updated_at', '-created_at', '-id')
 
         if is_admin_user(self.request.user):
             return queryset

@@ -83,7 +83,7 @@ export function LoginHelpFormCard() {
         </div>
         <Link
           href="/login"
-          className="inline-flex items-center gap-2 rounded-full border border-stone-900/10 bg-stone-50 px-4 py-2 text-sm font-medium text-stone-600"
+          className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full border border-stone-900/10 bg-stone-50 px-4 py-2 text-sm font-medium text-stone-600"
         >
           <FontAwesomeIcon icon={faArrowLeft} className="h-3.5 w-3.5" />
           Back to login
@@ -91,8 +91,7 @@ export function LoginHelpFormCard() {
       </div>
 
       <p className="mt-5 max-w-2xl text-sm leading-7 text-stone-600">
-        Use this if reset password and verification steps did not solve the issue. The request goes into the same
-        customer service queue the admin already manages.
+        Use this if reset password and verification steps did not solve the issue.
       </p>
 
       <div className="mt-8 grid gap-4 md:grid-cols-2">
