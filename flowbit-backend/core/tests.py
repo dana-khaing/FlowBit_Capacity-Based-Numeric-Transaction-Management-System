@@ -2576,6 +2576,8 @@ class PrivateWorkspaceTests(APITestCase):
         self.assertEqual(support_case.created_by.username, '_login_help_intake')
         self.assertEqual(support_case.messages.count(), 1)
         self.assertEqual(support_case.messages.first().sender.username, '_login_help_intake')
+        self.assertEqual(response.data['case']['created_by_full_name'], 'Locked User')
+        self.assertEqual(response.data['case']['created_by_username'], 'locked.user')
         self.assertTrue(
             UserNotification.objects.filter(
                 recipient=self.admin_user,

@@ -1097,17 +1097,29 @@ class SupportMessageSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
+    def _is_login_help_requester_message(self, obj):
+        return (
+            obj.support_case.intake_type == SupportCase.INTAKE_LOGIN_HELP
+            and obj.support_case.created_by_id == obj.sender_id
+        )
+
     def get_sender_username(self, obj):
+        if self._is_login_help_requester_message(obj):
+            return obj.support_case.requester_login_identifier
         if obj.sender_id is None:
             return ''
         return obj.sender.username
 
     def get_sender_full_name(self, obj):
+        if self._is_login_help_requester_message(obj):
+            return obj.support_case.requester_name or obj.support_case.requester_login_identifier
         if obj.sender_id is None:
             return 'Login help requester'
         return obj.sender.get_full_name().strip() or obj.sender.username
 
     def get_sender_role(self, obj):
+        if self._is_login_help_requester_message(obj):
+            return 'login_help'
         if obj.sender_id is None:
             return ''
         profile = getattr(obj.sender, 'profile', None)
