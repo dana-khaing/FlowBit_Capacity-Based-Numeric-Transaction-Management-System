@@ -15,6 +15,9 @@ export type FlowBitSupportMessage = {
 export type FlowBitSupportCase = {
   id: number;
   subject: string;
+  intake_type: "STANDARD" | "LOGIN_HELP";
+  requester_name: string;
+  requester_login_identifier: string;
   status: "OPEN" | "CLOSED";
   created_by: number;
   created_by_username: string;
@@ -60,6 +63,18 @@ export async function createSupportCase(payload: { subject: string; message: str
   return apiRequest<FlowBitSupportCase>("/support-cases/", {
     method: "POST",
     headers: authHeaders(),
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function createPublicLoginHelpCase(payload: {
+  login_identifier: string;
+  requester_name?: string;
+  subject: string;
+  message: string;
+}) {
+  return apiRequest<{ message: string; case: FlowBitSupportCase }>("/support-cases/login-help/", {
+    method: "POST",
     body: JSON.stringify(payload),
   });
 }

@@ -1700,6 +1700,13 @@ def _create_period_event_notification(
 
 
 class SupportCase(models.Model):
+    INTAKE_STANDARD = 'STANDARD'
+    INTAKE_LOGIN_HELP = 'LOGIN_HELP'
+    INTAKE_TYPE_CHOICES = (
+        (INTAKE_STANDARD, 'Standard'),
+        (INTAKE_LOGIN_HELP, 'Login help'),
+    )
+
     STATUS_OPEN = 'OPEN'
     STATUS_CLOSED = 'CLOSED'
     STATUS_CHOICES = (
@@ -1713,6 +1720,9 @@ class SupportCase(models.Model):
         related_name='support_cases',
     )
     subject = models.CharField(max_length=160)
+    intake_type = models.CharField(max_length=24, choices=INTAKE_TYPE_CHOICES, default=INTAKE_STANDARD)
+    requester_name = models.CharField(max_length=160, blank=True, default='')
+    requester_login_identifier = models.CharField(max_length=160, blank=True, default='')
     status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_OPEN)
     closed_at = models.DateTimeField(null=True, blank=True)
     closed_by = models.ForeignKey(
@@ -1727,9 +1737,12 @@ class SupportCase(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ['-last_message_at', '-updated_at', '-id']
+        ordering = ['-created_at', '-id']
 
     def __str__(self):
+        if self.intake_type == self.INTAKE_LOGIN_HELP:
+            identity = self.requester_name or self.requester_login_identifier or self.created_by.username
+            return f"{self.subject} ({identity})"
         return f"{self.subject} ({self.created_by.username})"
 
     def close(self, closed_by=None, save=True):

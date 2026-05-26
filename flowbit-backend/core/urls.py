@@ -29,6 +29,7 @@ from .views import (
     VerifyEmailView,
     ResendVerificationView,
     ResetPasswordConfirmView,
+    PublicLoginHelpCaseCreateView,
     TicketListView,
     TicketDetailView,
     TicketRefundView,
@@ -51,6 +52,7 @@ router.register(r'users', UserManagementViewSet, basename='user-management')
 router.register(r'repeat-tickets', RepeatTicketViewSet, basename='repeat-ticket')
 
 urlpatterns = [
+    path('support-cases/login-help/', PublicLoginHelpCaseCreateView.as_view(), name='support-case-login-help'),
     # All router endpoints (ledgers, identifiers, transactions, overflows)
     path('', include(router.urls)),
 

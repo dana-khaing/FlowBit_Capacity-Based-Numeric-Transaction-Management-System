@@ -1078,7 +1078,7 @@ class NotificationBroadcastSerializer(serializers.Serializer):
 
 
 class SupportMessageSerializer(serializers.ModelSerializer):
-    sender_username = serializers.CharField(source='sender.username', read_only=True)
+    sender_username = serializers.SerializerMethodField()
     sender_full_name = serializers.SerializerMethodField()
     sender_role = serializers.SerializerMethodField()
     is_admin_sender = serializers.SerializerMethodField()
@@ -1097,10 +1097,31 @@ class SupportMessageSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
+    def _is_login_help_requester_message(self, obj):
+        return (
+            obj.support_case.intake_type == SupportCase.INTAKE_LOGIN_HELP
+            and obj.support_case.created_by_id == obj.sender_id
+        )
+
+    def get_sender_username(self, obj):
+        if self._is_login_help_requester_message(obj):
+            return obj.support_case.requester_login_identifier
+        if obj.sender_id is None:
+            return ''
+        return obj.sender.username
+
     def get_sender_full_name(self, obj):
+        if self._is_login_help_requester_message(obj):
+            return obj.support_case.requester_name or obj.support_case.requester_login_identifier
+        if obj.sender_id is None:
+            return 'Login help requester'
         return obj.sender.get_full_name().strip() or obj.sender.username
 
     def get_sender_role(self, obj):
+        if self._is_login_help_requester_message(obj):
+            return 'login_help'
+        if obj.sender_id is None:
+            return ''
         profile = getattr(obj.sender, 'profile', None)
         return getattr(profile, 'role', '')
 
@@ -1110,7 +1131,7 @@ class SupportMessageSerializer(serializers.ModelSerializer):
 
 
 class SupportCaseSerializer(serializers.ModelSerializer):
-    created_by_username = serializers.CharField(source='created_by.username', read_only=True)
+    created_by_username = serializers.SerializerMethodField()
     created_by_full_name = serializers.SerializerMethodField()
     created_by_role = serializers.SerializerMethodField()
     closed_by_username = serializers.CharField(source='closed_by.username', read_only=True, allow_null=True)
@@ -1121,6 +1142,9 @@ class SupportCaseSerializer(serializers.ModelSerializer):
         fields = [
             'id',
             'subject',
+            'intake_type',
+            'requester_name',
+            'requester_login_identifier',
             'status',
             'created_by',
             'created_by_username',
@@ -1137,10 +1161,19 @@ class SupportCaseSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
+    def get_created_by_username(self, obj):
+        if obj.intake_type == SupportCase.INTAKE_LOGIN_HELP:
+            return obj.requester_login_identifier or obj.created_by.username
+        return obj.created_by.username
+
     def get_created_by_full_name(self, obj):
+        if obj.intake_type == SupportCase.INTAKE_LOGIN_HELP:
+            return obj.requester_name or obj.requester_login_identifier or obj.created_by.username
         return obj.created_by.get_full_name().strip() or obj.created_by.username
 
     def get_created_by_role(self, obj):
+        if obj.intake_type == SupportCase.INTAKE_LOGIN_HELP:
+            return 'login_help'
         profile = getattr(obj.created_by, 'profile', None)
         return getattr(profile, 'role', '')
 
@@ -1158,6 +1191,34 @@ class SupportCaseSerializer(serializers.ModelSerializer):
 class SupportCaseCreateSerializer(serializers.Serializer):
     subject = serializers.CharField(max_length=160)
     message = serializers.CharField()
+
+    def validate_subject(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError('Subject is required.')
+        return value
+
+    def validate_message(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError('Message is required.')
+        return value
+
+
+class PublicLoginHelpCaseCreateSerializer(serializers.Serializer):
+    login_identifier = serializers.CharField(max_length=160)
+    requester_name = serializers.CharField(max_length=160, required=False, allow_blank=True)
+    subject = serializers.CharField(max_length=160)
+    message = serializers.CharField()
+
+    def validate_login_identifier(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError('Username or email is required.')
+        return value
+
+    def validate_requester_name(self, value):
+        return value.strip()
 
     def validate_subject(self, value):
         value = value.strip()
