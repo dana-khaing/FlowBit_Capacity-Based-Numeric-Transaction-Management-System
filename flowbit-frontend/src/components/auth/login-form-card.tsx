@@ -274,9 +274,14 @@ export function LoginFormCard() {
           Keep me signed in on this device
         </label>
 
-        <Link href="/forgot-password" className="text-sm font-medium text-[#b66427]">
-          Forgot password?
-        </Link>
+        <div className="flex flex-wrap items-center gap-4 text-sm">
+          <Link href="/forgot-password" className="font-medium text-[#b66427]">
+            Forgot password?
+          </Link>
+          <Link href="/login-help" className="font-medium text-stone-500 transition hover:text-stone-900">
+            Can&apos;t log in? Contact admin
+          </Link>
+        </div>
       </div>
 
       <div className="mt-6 flex flex-col gap-3 sm:flex-row">

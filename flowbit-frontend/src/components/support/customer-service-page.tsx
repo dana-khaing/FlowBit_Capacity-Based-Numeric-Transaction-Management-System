@@ -45,6 +45,12 @@ function statusTone(status: "OPEN" | "CLOSED") {
     : "bg-stone-200 text-stone-600";
 }
 
+function intakeTone(intakeType: "STANDARD" | "LOGIN_HELP") {
+  return intakeType === "LOGIN_HELP"
+    ? "bg-amber-100 text-amber-700"
+    : "bg-stone-200 text-stone-600";
+}
+
 export function CustomerServicePage() {
   const currentUserState = useCurrentUserState();
   const [user, setUser] = useState<AuthUser | null>(getStoredUser());
@@ -216,6 +222,7 @@ export function CustomerServicePage() {
         item.subject,
         item.created_by_username,
         item.created_by_full_name,
+        item.requester_login_identifier,
         item.last_message_preview,
       ]
         .join(" ")
@@ -328,7 +335,15 @@ export function CustomerServicePage() {
               {isAdmin ? "Customers" : "My cases"}
             </p>
             <p className="mt-2 text-2xl font-semibold text-stone-900">
-              {isAdmin ? new Set(cases.map((item) => item.created_by)).size : cases.length}
+              {isAdmin
+                ? new Set(
+                    cases.map((item) =>
+                      item.intake_type === "LOGIN_HELP"
+                        ? item.requester_login_identifier || `case-${item.id}`
+                        : `user-${item.created_by}`,
+                    ),
+                  ).size
+                : cases.length}
             </p>
           </div>
         </div>
@@ -385,9 +400,16 @@ export function CustomerServicePage() {
                             {isAdmin ? item.created_by_full_name : "My case"}
                           </p>
                         </div>
-                        <span className={`rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${isSelected ? "bg-white/15 text-white" : statusTone(item.status)}`}>
-                          {item.status}
-                        </span>
+                        <div className="flex flex-col items-end gap-2">
+                          <span className={`rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${isSelected ? "bg-white/15 text-white" : statusTone(item.status)}`}>
+                            {item.status}
+                          </span>
+                          {item.intake_type === "LOGIN_HELP" ? (
+                            <span className={`rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${isSelected ? "bg-white/15 text-white" : intakeTone(item.intake_type)}`}>
+                              Login help
+                            </span>
+                          ) : null}
+                        </div>
                       </div>
                       <div className={`mt-3 flex flex-wrap items-center gap-3 text-xs font-semibold uppercase tracking-[0.14em] ${isSelected ? "text-stone-300" : "text-stone-400"}`}>
                         <span>{item.message_count} message{item.message_count === 1 ? "" : "s"}</span>
@@ -414,9 +436,17 @@ export function CustomerServicePage() {
                       <span className={`rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${statusTone(selectedCase.status)}`}>
                         {selectedCase.status}
                       </span>
+                      {selectedCase.intake_type === "LOGIN_HELP" ? (
+                        <span className={`rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${intakeTone(selectedCase.intake_type)}`}>
+                          Login help
+                        </span>
+                      ) : null}
                     </div>
                     <div className="flex flex-wrap items-center gap-3 text-sm text-stone-500">
                       <span>{selectedCase.created_by_full_name}</span>
+                      {selectedCase.intake_type === "LOGIN_HELP" ? (
+                        <span>Login: {selectedCase.requester_login_identifier}</span>
+                      ) : null}
                       <span>{formatDateTime(selectedCase.created_at)}</span>
                       {selectedCase.closed_at ? <span>Closed {formatDateTime(selectedCase.closed_at)}</span> : null}
                     </div>
