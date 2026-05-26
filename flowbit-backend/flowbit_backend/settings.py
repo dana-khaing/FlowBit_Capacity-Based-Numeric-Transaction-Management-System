@@ -186,11 +186,19 @@ if all([
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 GOOGLE_OAUTH_CLIENT_ID = config('GOOGLE_OAUTH_CLIENT_ID', default='')
+EMAIL_BACKEND = config('EMAIL_BACKEND', default='django.core.mail.backends.smtp.EmailBackend')
+EMAIL_HOST = config('EMAIL_HOST', default='localhost')
+EMAIL_PORT = config('EMAIL_PORT', cast=int, default=25)
+EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')
+EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
+EMAIL_USE_TLS = config('EMAIL_USE_TLS', cast=bool, default=False)
+EMAIL_USE_SSL = config('EMAIL_USE_SSL', cast=bool, default=False)
 DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='noreply@flowbit.local')
 FRONTEND_PASSWORD_RESET_URL = config('FRONTEND_PASSWORD_RESET_URL', default='')
 PASSWORD_RESET_TOKEN_EXPIRY_HOURS = config('PASSWORD_RESET_TOKEN_EXPIRY_HOURS', cast=int, default=2)
 FRONTEND_EMAIL_VERIFICATION_URL = config('FRONTEND_EMAIL_VERIFICATION_URL', default='')
 EMAIL_VERIFICATION_TOKEN_EXPIRY_HOURS = config('EMAIL_VERIFICATION_TOKEN_EXPIRY_HOURS', cast=int, default=24)
+EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS = config('EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS', cast=int, default=60)
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 REST_FRAMEWORK = {

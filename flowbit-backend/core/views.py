@@ -1,4 +1,11 @@
 # All imports organized in ONE place at the top
+import csv
+import logging
+from datetime import datetime, time
+from decimal import Decimal, InvalidOperation
+from io import BytesIO
+from itertools import permutations
+
 from rest_framework import viewsets, generics, status, mixins
 from rest_framework.permissions import AllowAny
 from rest_framework.exceptions import ValidationError as DRFValidationError
@@ -19,11 +26,6 @@ from django.db.models import Count, DecimalField, ExpressionWrapper, F, IntegerF
 from django.db.models.functions import Coalesce, Greatest
 from django.core.exceptions import ValidationError
 from rest_framework.authtoken.models import Token
-from decimal import Decimal, InvalidOperation
-from datetime import datetime, time
-import csv
-from io import BytesIO
-from itertools import permutations
 from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -116,6 +118,8 @@ from .serializers import (
     TicketRefundActionSerializer,
     TicketReceiptPdfSerializer,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def parse_period_value(value):
@@ -236,15 +240,40 @@ def build_email_verification_email_body(verification_token, raw_token):
     return "\n".join(body_lines)
 
 
+class AuthEmailDeliveryError(Exception):
+    pass
+
+
+def send_auth_email(*, request, user, subject, message, audit_action):
+    try:
+        send_mail(
+            subject=subject,
+            message=message,
+            from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@flowbit.local'),
+            recipient_list=[user.email],
+            fail_silently=False,
+        )
+    except Exception as exc:
+        logger.exception("Failed to send auth email '%s' to %s", audit_action, user.email)
+        record_audit_log(
+            request,
+            'auth.email_delivery_failed',
+            target=user,
+            details=f"Auth email delivery failed for '{user.username}'",
+            changes={'email': user.email, 'category': audit_action, 'error': str(exc)},
+        )
+        raise AuthEmailDeliveryError from exc
+
+
 def issue_and_send_email_verification(*, request, user):
     expiry_hours = getattr(settings, 'EMAIL_VERIFICATION_TOKEN_EXPIRY_HOURS', 24)
     verification_token, raw_token = EmailVerificationToken.issue_for_user(user, expiry_hours=expiry_hours)
-    send_mail(
+    send_auth_email(
+        request=request,
+        user=user,
         subject='FlowBit email verification',
         message=build_email_verification_email_body(verification_token, raw_token),
-        from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@flowbit.local'),
-        recipient_list=[user.email],
-        fail_silently=True,
+        audit_action='email_verification',
     )
     record_audit_log(
         request,
