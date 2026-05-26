@@ -1737,7 +1737,7 @@ class SupportCase(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ['-last_message_at', '-updated_at', '-id']
+        ordering = ['-created_at', '-id']
 
     def __str__(self):
         if self.intake_type == self.INTAKE_LOGIN_HELP:

@@ -2513,6 +2513,31 @@ class PrivateWorkspaceTests(APITestCase):
         subjects = {item['subject'] for item in response.data}
         self.assertEqual(subjects, {'User One Case'})
 
+    def test_support_cases_are_listed_latest_activity_first(self):
+        earlier_case = SupportCase.objects.create(
+            created_by=self.user_one,
+            subject='Earlier Case',
+            last_message_at=timezone.now() - timezone.timedelta(hours=2),
+        )
+        later_case = SupportCase.objects.create(
+            created_by=self.user_one,
+            subject='Later Case',
+            last_message_at=timezone.now() - timezone.timedelta(hours=1),
+        )
+        SupportMessage.objects.create(support_case=earlier_case, sender=self.user_one, body='Earlier message')
+        SupportMessage.objects.create(support_case=later_case, sender=self.user_one, body='Later message')
+
+        later_case.last_message_at = timezone.now() - timezone.timedelta(minutes=10)
+        later_case.save(update_fields=['last_message_at', 'updated_at'])
+        earlier_case.last_message_at = timezone.now()
+        earlier_case.save(update_fields=['last_message_at', 'updated_at'])
+
+        self.client.force_authenticate(user=self.user_one)
+        response = self.client.get('/api/support-cases/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual([item['subject'] for item in response.data], ['Earlier Case', 'Later Case'])
+
     def test_admin_can_view_all_support_cases(self):
         case_one = SupportCase.objects.create(
             created_by=self.user_one,
