@@ -1,4 +1,11 @@
 # All imports organized in ONE place at the top
+import csv
+import logging
+from datetime import datetime, time
+from decimal import Decimal, InvalidOperation
+from io import BytesIO
+from itertools import permutations
+
 from rest_framework import viewsets, generics, status, mixins
 from rest_framework.permissions import AllowAny
 from rest_framework.exceptions import ValidationError as DRFValidationError
@@ -19,11 +26,6 @@ from django.db.models import Count, DecimalField, ExpressionWrapper, F, IntegerF
 from django.db.models.functions import Coalesce, Greatest
 from django.core.exceptions import ValidationError
 from rest_framework.authtoken.models import Token
-from decimal import Decimal, InvalidOperation
-from datetime import datetime, time
-import csv
-from io import BytesIO
-from itertools import permutations
 from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -116,6 +118,8 @@ from .serializers import (
     TicketRefundActionSerializer,
     TicketReceiptPdfSerializer,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def parse_period_value(value):
@@ -236,15 +240,40 @@ def build_email_verification_email_body(verification_token, raw_token):
     return "\n".join(body_lines)
 
 
+class AuthEmailDeliveryError(Exception):
+    pass
+
+
+def send_auth_email(*, request, user, subject, message, audit_action):
+    try:
+        send_mail(
+            subject=subject,
+            message=message,
+            from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@flowbit.local'),
+            recipient_list=[user.email],
+            fail_silently=False,
+        )
+    except Exception as exc:
+        logger.exception("Failed to send auth email '%s' to %s", audit_action, user.email)
+        record_audit_log(
+            request,
+            'auth.email_delivery_failed',
+            target=user,
+            details=f"Auth email delivery failed for '{user.username}'",
+            changes={'email': user.email, 'category': audit_action, 'error': str(exc)},
+        )
+        raise AuthEmailDeliveryError from exc
+
+
 def issue_and_send_email_verification(*, request, user):
     expiry_hours = getattr(settings, 'EMAIL_VERIFICATION_TOKEN_EXPIRY_HOURS', 24)
     verification_token, raw_token = EmailVerificationToken.issue_for_user(user, expiry_hours=expiry_hours)
-    send_mail(
+    send_auth_email(
+        request=request,
+        user=user,
         subject='FlowBit email verification',
         message=build_email_verification_email_body(verification_token, raw_token),
-        from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@flowbit.local'),
-        recipient_list=[user.email],
-        fail_silently=True,
+        audit_action='email_verification',
     )
     record_audit_log(
         request,
@@ -254,6 +283,19 @@ def issue_and_send_email_verification(*, request, user):
         changes={'email': user.email, 'selector': str(verification_token.selector)},
     )
     return verification_token
+
+
+def get_email_verification_resend_wait_seconds(user):
+    cooldown_seconds = max(getattr(settings, 'EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS', 60), 0)
+    if cooldown_seconds == 0:
+        return 0
+
+    latest_token = EmailVerificationToken.objects.filter(user=user).order_by('-created_at').first()
+    if latest_token is None:
+        return 0
+
+    elapsed_seconds = (timezone.now() - latest_token.created_at).total_seconds()
+    return max(int(cooldown_seconds - elapsed_seconds), 0)
 
 
 def collaborator_snapshot(user):
@@ -4720,13 +4762,19 @@ class ForgotPasswordView(APIView):
         if user and user.has_usable_password():
             expiry_hours = getattr(settings, 'PASSWORD_RESET_TOKEN_EXPIRY_HOURS', 2)
             reset_token, raw_token = PasswordResetToken.issue_for_user(user, expiry_hours=expiry_hours)
-            send_mail(
-                subject='FlowBit password reset',
-                message=build_password_reset_email_body(reset_token, raw_token),
-                from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@flowbit.local'),
-                recipient_list=[user.email],
-                fail_silently=True,
-            )
+            try:
+                send_auth_email(
+                    request=request,
+                    user=user,
+                    subject='FlowBit password reset',
+                    message=build_password_reset_email_body(reset_token, raw_token),
+                    audit_action='password_reset',
+                )
+            except AuthEmailDeliveryError:
+                return Response(
+                    {'detail': 'We could not send the password reset email right now. Please try again shortly.'},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
             record_audit_log(
                 request,
                 'auth.password_reset_requested',
@@ -4787,7 +4835,27 @@ class ResendVerificationView(APIView):
         email = serializer.validated_data['email'].strip().lower()
         user = User.objects.filter(email__iexact=email).first()
         if user and not user.is_active and user.has_usable_password():
-            issue_and_send_email_verification(request=request, user=user)
+            wait_seconds = get_email_verification_resend_wait_seconds(user)
+            if wait_seconds > 0:
+                record_audit_log(
+                    request,
+                    'auth.email_verification_resend_rate_limited',
+                    target=user,
+                    details=f"Verification resend blocked for '{user.username}'",
+                    changes={'email': user.email, 'wait_seconds': wait_seconds},
+                )
+                return Response(
+                    {'detail': f'Please wait {wait_seconds} seconds before requesting another verification email.'},
+                    status=status.HTTP_429_TOO_MANY_REQUESTS,
+                )
+
+            try:
+                issue_and_send_email_verification(request=request, user=user)
+            except AuthEmailDeliveryError:
+                return Response(
+                    {'detail': 'We could not send the verification email right now. Please try again shortly.'},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
 
         return Response(
             {'message': 'If the email exists, a verification message has been sent.'},
@@ -4843,7 +4911,6 @@ class RegisterView(APIView):
         serializer = RegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
-        issue_and_send_email_verification(request=request, user=user)
 
         record_audit_log(
             request,
@@ -4856,6 +4923,17 @@ class RegisterView(APIView):
                 'phone_number': user.profile.phone_number,
             },
         )
+
+        try:
+            issue_and_send_email_verification(request=request, user=user)
+        except AuthEmailDeliveryError:
+            return Response(
+                {
+                    'detail': 'Account created, but we could not send the verification email right now. Please try resending verification shortly.',
+                    'user': UserProfileSerializer(user).data,
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
 
         return Response(
             {

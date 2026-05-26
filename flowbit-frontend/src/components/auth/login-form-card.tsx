@@ -24,6 +24,7 @@ export function LoginFormCard() {
   const [keepSignedIn, setKeepSignedIn] = useState(false);
   const [showSignUpSuccess, setShowSignUpSuccess] = useState(false);
   const [showVerifyEmailNotice, setShowVerifyEmailNotice] = useState(false);
+  const [showDeliveryFailureNotice, setShowDeliveryFailureNotice] = useState(false);
   const [credentials, setCredentials] = useState({ username: "", password: "" });
   const [verificationEmail, setVerificationEmail] = useState("");
   const [fieldErrors, setFieldErrors] = useState<{ username?: string; password?: string }>({});
@@ -42,9 +43,15 @@ export function LoginFormCard() {
     const params = new URLSearchParams(window.location.search);
     const signupState = params.get("signup");
     const signupEmail = params.get("email") || "";
+    const deliveryState = params.get("delivery");
+    const deliveryMessage = params.get("message") || "";
     setShowSignUpSuccess(signupState === "success");
     setShowVerifyEmailNotice(signupState === "verify-email");
+    setShowDeliveryFailureNotice(deliveryState === "failed");
     setVerificationEmail(signupEmail);
+    if (deliveryState === "failed" && deliveryMessage) {
+      setErrorMessage(deliveryMessage);
+    }
   }, []);
 
   const showVerificationHelp = showVerifyEmailNotice || errorMessage === "Verify your email before logging in.";
@@ -177,6 +184,12 @@ export function LoginFormCard() {
         </div>
       ) : null}
 
+      {showDeliveryFailureNotice ? (
+        <div className="mt-6 rounded-[20px] border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-900">
+          The account was created, but FlowBit could not send the verification email yet. Use resend below after checking your sender setup.
+        </div>
+      ) : null}
+
       {errorMessage ? (
         <div className="mt-6 rounded-[20px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
           {errorMessage}
@@ -186,8 +199,8 @@ export function LoginFormCard() {
       {showVerificationHelp ? (
         <div className="mt-6 rounded-[24px] border border-stone-200 bg-stone-50 px-4 py-4 text-sm text-stone-700">
           <p className="font-medium text-stone-900">Need another verification email?</p>
-          <p className="mt-1 text-stone-600">Enter the email address for this account and FlowBit will send a fresh verification link.</p>
-          <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+          <p className="mt-1 text-stone-600">Enter the email address for this account and FlowBit will send a fresh verification link. Also check your spam or junk folder.</p>
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
             <div className="flex-1">
               <AuthInput
                 label="Verification email"
@@ -195,6 +208,7 @@ export function LoginFormCard() {
                 placeholder="Enter your email address"
                 autoComplete="email"
                 error={resendError}
+                hideErrorMessage
                 value={verificationEmail}
                 onChange={(event) => {
                   setVerificationEmail(event.target.value);
@@ -202,11 +216,16 @@ export function LoginFormCard() {
                 }}
               />
             </div>
-            <Button className="sm:self-end" size="lg" onClick={handleResendVerification} disabled={isResending}>
+            <Button size="lg" onClick={handleResendVerification} disabled={isResending}>
               {isResending ? "Sending..." : "Resend verification"}
             </Button>
           </div>
-          {resendMessage ? <p className="mt-3 text-sm text-emerald-700">{resendMessage}</p> : null}
+          {resendError ? <p className="mt-3 text-sm text-red-700">{resendError}</p> : null}
+          {resendMessage ? (
+            <p className="mt-3 text-sm text-emerald-700">
+              {resendMessage} If it does not arrive, check spam or try again shortly.
+            </p>
+          ) : null}
         </div>
       ) : null}
 

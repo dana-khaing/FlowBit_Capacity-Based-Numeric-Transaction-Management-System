@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState, type ChangeEventHandler, type HTMLAttributes, type KeyboardEventHandler } from "react";
+import { useState, type ChangeEventHandler, type HTMLAttributes, type KeyboardEventHandler } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faEye, faEyeSlash } from "@fortawesome/free-solid-svg-icons";
 import { Input } from "@/components/ui/input";
@@ -19,6 +19,8 @@ type AuthInputProps = {
   inputMode?: HTMLAttributes<HTMLInputElement>["inputMode"];
   disabled?: boolean;
   onKeyDown?: KeyboardEventHandler<HTMLInputElement>;
+  hideErrorMessage?: boolean;
+  id?: string;
 };
 
 export function AuthInput({
@@ -27,10 +29,16 @@ export function AuthInput({
   placeholder,
   error,
   hint,
+  hideErrorMessage = false,
   className,
+  id,
   ...props
 }: AuthInputProps & { className?: string }) {
-  const inputId = useId();
+  const inputId =
+    id ||
+    (props.name
+      ? `auth-input-${props.name}`
+      : `auth-input-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`);
   const descriptionId = `${inputId}-description`;
   const [showPassword, setShowPassword] = useState(false);
   const isPassword = type === "password";
@@ -60,7 +68,7 @@ export function AuthInput({
           </button>
         ) : null}
       </div>
-      {error ? (
+      {error && !hideErrorMessage ? (
         <p id={descriptionId} className="mt-2 text-sm text-red-700">
           {error}
         </p>
