@@ -455,7 +455,7 @@ export function CustomerServicePage() {
                     type="button"
                     onClick={handleToggleCaseStatus}
                     disabled={isSaving}
-                    className="inline-flex items-center justify-center rounded-[16px] border border-stone-900/10 bg-[#f8f6f2] px-4 py-2.5 text-sm font-semibold text-stone-700 transition hover:border-stone-300 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-[16px] border border-stone-900/10 bg-[#f8f6f2] px-4 py-2.5 text-sm font-semibold text-stone-700 transition hover:border-stone-300 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {selectedCase.status === "OPEN" ? "Close case" : "Reopen case"}
                   </button>
