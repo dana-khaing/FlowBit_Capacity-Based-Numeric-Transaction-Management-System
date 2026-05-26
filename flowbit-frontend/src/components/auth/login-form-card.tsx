@@ -274,14 +274,9 @@ export function LoginFormCard() {
           Keep me signed in on this device
         </label>
 
-        <div className="flex flex-wrap items-center gap-4 text-sm">
-          <Link href="/forgot-password" className="font-medium text-[#b66427]">
-            Forgot password?
-          </Link>
-          <Link href="/login-help" className="font-medium text-stone-500 transition hover:text-stone-900">
-            Can&apos;t log in? Contact admin
-          </Link>
-        </div>
+        <Link href="/forgot-password" className="text-sm font-medium text-[#b66427]">
+          Forgot password?
+        </Link>
       </div>
 
       <div className="mt-6 flex flex-col gap-3 sm:flex-row">
@@ -321,7 +316,12 @@ export function LoginFormCard() {
             <p className="text-[11px] uppercase tracking-[0.18em] text-stone-500">Sign-In Help</p>
             <h3 className="mt-2 text-lg font-semibold text-stone-950">Need help accessing your account?</h3>
           </div>
-          <div className="rounded-full bg-white px-4 py-2 text-sm font-medium text-stone-600">Support</div>
+          <Link
+            href="/login-help"
+            className="inline-flex items-center justify-center rounded-full bg-white px-4 py-2 text-sm font-medium text-stone-600 transition hover:bg-stone-100 hover:text-stone-900"
+          >
+            Support
+          </Link>
         </div>
 
         <ul className="mt-4 space-y-3 text-sm leading-6 text-stone-600">
