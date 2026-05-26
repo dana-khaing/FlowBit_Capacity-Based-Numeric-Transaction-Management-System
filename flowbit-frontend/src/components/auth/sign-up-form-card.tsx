@@ -73,7 +73,14 @@ export function SignUpFormCard() {
       await registerAccount(formValues);
       router.push(`/login?signup=verify-email&email=${encodeURIComponent(formValues.email.trim())}`);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to create your account.");
+      const message = error instanceof Error ? error.message : "Unable to create your account.";
+      if (message.startsWith("Account created,")) {
+        router.push(
+          `/login?signup=verify-email&delivery=failed&email=${encodeURIComponent(formValues.email.trim())}&message=${encodeURIComponent(message)}`,
+        );
+        return;
+      }
+      setErrorMessage(message);
     } finally {
       setIsSubmitting(false);
     }
