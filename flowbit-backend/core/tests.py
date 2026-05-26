@@ -2559,6 +2559,37 @@ class PrivateWorkspaceTests(APITestCase):
             ).exists()
         )
 
+    def test_public_login_help_case_can_be_created_without_authentication(self):
+        response = self.client.post('/api/support-cases/login-help/', {
+            'login_identifier': 'locked.user',
+            'requester_name': 'Locked User',
+            'subject': 'Cannot log in',
+            'message': 'I cannot access my account after several attempts.',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['message'], 'Your login-help case has been sent to the admin.')
+        support_case = SupportCase.objects.get(subject='Cannot log in')
+        self.assertEqual(support_case.intake_type, SupportCase.INTAKE_LOGIN_HELP)
+        self.assertEqual(support_case.requester_name, 'Locked User')
+        self.assertEqual(support_case.requester_login_identifier, 'locked.user')
+        self.assertEqual(support_case.created_by.username, '_login_help_intake')
+        self.assertEqual(support_case.messages.count(), 1)
+        self.assertEqual(support_case.messages.first().sender.username, '_login_help_intake')
+        self.assertTrue(
+            UserNotification.objects.filter(
+                recipient=self.admin_user,
+                title='New login help case',
+            ).exists()
+        )
+        audit_entry = AuditLog.objects.get(action='support.login_help_case_created')
+        self.assertIsNone(audit_entry.user)
+
+    def test_public_login_help_does_not_open_authenticated_support_case_routes(self):
+        response = self.client.get('/api/support-cases/')
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
     def test_case_can_be_replied_closed_and_reopened_by_both_sides(self):
         support_case = SupportCase.objects.create(
             created_by=self.user_one,

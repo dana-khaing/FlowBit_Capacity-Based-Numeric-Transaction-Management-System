@@ -95,6 +95,7 @@ from .serializers import (
     SupportCaseSerializer,
     SupportCaseDetailSerializer,
     SupportCaseCreateSerializer,
+    PublicLoginHelpCaseCreateSerializer,
     SupportCaseReplySerializer,
     TicketSerializer,
     TicketDetailSerializer,
@@ -120,6 +121,9 @@ from .serializers import (
 )
 
 logger = logging.getLogger(__name__)
+
+LOGIN_HELP_INTAKE_USERNAME = '_login_help_intake'
+LOGIN_HELP_INTAKE_EMAIL = 'login-help-intake@flowbit.local'
 
 
 def parse_period_value(value):
@@ -565,7 +569,7 @@ def notify_support_case_participants(
     action_href='/contact-support',
 ):
     recipients = set()
-    if support_case.created_by_id != actor.id:
+    if support_case.intake_type != SupportCase.INTAKE_LOGIN_HELP and support_case.created_by_id != actor.id:
         recipients.add(support_case.created_by)
     if include_admins:
         recipients.update(
@@ -589,6 +593,22 @@ def notification_actor_label(user):
     if is_admin_user(user):
         return 'Admin'
     return user.get_full_name().strip() or user.username
+
+
+def get_login_help_intake_user():
+    intake_user, created = User.objects.get_or_create(
+        username=LOGIN_HELP_INTAKE_USERNAME,
+        defaults={
+            'email': LOGIN_HELP_INTAKE_EMAIL,
+            'first_name': 'Login',
+            'last_name': 'Help Intake',
+            'is_active': False,
+        },
+    )
+    if created:
+        intake_user.set_unusable_password()
+        intake_user.save(update_fields=['password'])
+    return intake_user
 
 
 def refresh_dashboard_for_user(user):
@@ -3709,6 +3729,69 @@ class SupportCaseViewSet(viewsets.ModelViewSet):
         )
         support_case = self.get_queryset().get(pk=support_case.pk)
         return Response(SupportCaseSerializer(support_case).data, status=status.HTTP_200_OK)
+
+
+class PublicLoginHelpCaseCreateView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = PublicLoginHelpCaseCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        intake_user = get_login_help_intake_user()
+        with db_transaction.atomic():
+            support_case = SupportCase.objects.create(
+                created_by=intake_user,
+                subject=serializer.validated_data['subject'],
+                intake_type=SupportCase.INTAKE_LOGIN_HELP,
+                requester_name=serializer.validated_data.get('requester_name', ''),
+                requester_login_identifier=serializer.validated_data['login_identifier'],
+                last_message_at=timezone.now(),
+            )
+            SupportMessage.objects.create(
+                support_case=support_case,
+                sender=intake_user,
+                body=serializer.validated_data['message'],
+            )
+
+        support_case = SupportCase.objects.select_related(
+            'created_by',
+            'created_by__profile',
+            'closed_by',
+        ).prefetch_related(
+            Prefetch(
+                'messages',
+                queryset=SupportMessage.objects.select_related('sender', 'sender__profile').order_by('created_at', 'id'),
+            )
+        ).annotate(
+            message_count_annotated=Count('messages', distinct=True),
+        ).get(pk=support_case.pk)
+        notify_support_case_participants(
+            support_case=support_case,
+            actor=intake_user,
+            title='New login help case',
+            message=f"Login help case opened: {support_case.subject}.",
+            include_admins=True,
+        )
+        record_audit_log(
+            request,
+            'support.login_help_case_created',
+            target=support_case,
+            details=f"Created public login help case '{support_case.subject}'",
+            changes={
+                'case_id': support_case.id,
+                'subject': support_case.subject,
+                'requester_name': support_case.requester_name,
+                'requester_login_identifier': support_case.requester_login_identifier,
+            },
+        )
+        return Response(
+            {
+                'message': 'Your login-help case has been sent to the admin.',
+                'case': SupportCaseSerializer(support_case).data,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
