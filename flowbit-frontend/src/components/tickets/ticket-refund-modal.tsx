@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { OverrideCodeInput } from "@/components/admin/override-code-input";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import type { FlowBitTicketDetail } from "@/lib/ticket-client";
 
 type TicketRefundModalProps = {
@@ -341,12 +341,11 @@ export function TicketRefundModal({
                 <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
                   Admin override code
                 </span>
-                <Input
-                  type="password"
+                <OverrideCodeInput
                   value={adminOverrideCode}
-                  onChange={(event) => onCodeChange(event.target.value)}
-                  placeholder="Enter override code"
+                  onChange={onCodeChange}
                   disabled={Boolean(busyAction)}
+                  autoFocus
                 />
               </label>
             ) : null}

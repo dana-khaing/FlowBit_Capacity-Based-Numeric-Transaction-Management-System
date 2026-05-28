@@ -1,8 +1,8 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { OverrideCodeInput } from "@/components/admin/override-code-input";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 
 type AdminConfirmModalProps = {
   open: boolean;
@@ -55,13 +55,7 @@ export function AdminConfirmModal({
         {showCodeInput ? (
           <label className="mt-5 block space-y-2">
             <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">{codeLabel}</span>
-            <Input
-              type="password"
-              value={codeValue}
-              onChange={(event) => onCodeChange(event.target.value)}
-              placeholder="Enter override code"
-              disabled={busy}
-            />
+            <OverrideCodeInput value={codeValue} onChange={onCodeChange} disabled={busy} autoFocus />
           </label>
         ) : null}
 

@@ -30,6 +30,7 @@ from core.models import (
     AuditLog,
     PasswordResetToken,
     EmailVerificationToken,
+    OverrideResetToken,
     Profile,
     Collaborator,
     Ticket,
@@ -144,6 +145,7 @@ class OperationalDataPurgeCommandTests(APITestCase):
             message='Test notification',
         )
         PasswordResetToken.issue_for_user(regular_user, expiry_hours=1)
+        OverrideResetToken.issue_for_user(admin_user, expiry_hours=1)
         Collaborator.objects.create(
             owner=admin_user,
             username='purge_helper',
@@ -167,6 +169,7 @@ class OperationalDataPurgeCommandTests(APITestCase):
         self.assertFalse(IdentifierCapacityAdjustment.objects.exists())
         self.assertFalse(Collaborator.objects.exists())
         self.assertFalse(PasswordResetToken.objects.exists())
+        self.assertFalse(OverrideResetToken.objects.exists())
         self.assertFalse(AuditLog.objects.exists())
         self.assertFalse(Identifier.objects.exists())
         self.assertIn('Deleted', out.getvalue())
@@ -700,14 +703,14 @@ class AuthAPITests(APITestCase):
             email='account-admin@example.com',
         )
         admin_user.profile.role = 'admin'
-        admin_user.profile.set_master_override_password('override-123')
+        admin_user.profile.set_master_override_password('1234')
         admin_user.profile.save(update_fields=['role', 'master_override_password', 'updated_at'])
 
         token = Token.objects.create(user=self.user)
         self.client.credentials(HTTP_AUTHORIZATION=f'Token {token.key}')
 
         response = self.client.delete('/api/auth/me/', {
-            'admin_override_code': 'override-123',
+            'admin_override_code': '1234',
         }, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -814,12 +817,12 @@ class AuthAPITests(APITestCase):
     def test_login_accepts_master_override_password(self):
         self.user.profile.role = 'admin'
         self.user.profile.save(update_fields=['role', 'updated_at'])
-        self.user.profile.set_master_override_password('override-456')
+        self.user.profile.set_master_override_password('4567')
         self.user.profile.save(update_fields=['master_override_password', 'updated_at'])
 
         response = self.client.post('/api/auth/login/', {
             'username': 'auth_user',
-            'password': 'override-456',
+            'password': '4567',
         }, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -827,12 +830,12 @@ class AuthAPITests(APITestCase):
         self.assertTrue(AuditLog.objects.filter(action='auth.login_override', target_id=self.user.id).exists())
 
     def test_login_rejects_master_override_for_non_admin_user(self):
-        self.user.profile.set_master_override_password('override-456')
+        self.user.profile.set_master_override_password('4567')
         self.user.profile.save(update_fields=['master_override_password', 'updated_at'])
 
         response = self.client.post('/api/auth/login/', {
             'username': 'auth_user',
-            'password': 'override-456',
+            'password': '4567',
         }, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -848,8 +851,67 @@ class AuthAPITests(APITestCase):
         self.assertEqual(mail.outbox[0].to, ['auth@example.com'])
         self.assertIn('Selector:', mail.outbox[0].body)
         self.assertIn('Token:', mail.outbox[0].body)
+
+    def test_forgot_override_code_sends_reset_email_for_admin(self):
+        self.user.profile.role = 'admin'
+        self.user.profile.set_master_override_password('4567')
+        self.user.profile.save(update_fields=['role', 'master_override_password', 'updated_at'])
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.post('/api/auth/forgot-override-code/', {}, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ['auth@example.com'])
+        self.assertIn('FlowBit override code reset request', mail.outbox[0].body)
+        self.assertTrue(OverrideResetToken.objects.filter(user=self.user).exists())
+
+    def test_forgot_override_code_requires_admin_account(self):
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.post('/api/auth/forgot-override-code/', {}, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data['detail'], 'Only admin accounts can reset override codes.')
+
+    def test_reset_override_code_requires_correct_account_password(self):
+        self.user.profile.role = 'admin'
+        self.user.profile.set_master_override_password('4567')
+        self.user.profile.save(update_fields=['role', 'master_override_password', 'updated_at'])
+        override_reset_token, raw_token = OverrideResetToken.issue_for_user(self.user, expiry_hours=1)
+
+        response = self.client.post('/api/auth/reset-override-code/', {
+            'selector': str(override_reset_token.selector),
+            'token': raw_token,
+            'new_override_code': '1234',
+            'confirm_override_code': '1234',
+            'account_password': 'wrong-password',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['detail'], 'Account password is incorrect.')
+
+    def test_reset_override_code_completes_with_valid_token(self):
+        self.user.profile.role = 'admin'
+        self.user.profile.set_master_override_password('4567')
+        self.user.profile.save(update_fields=['role', 'master_override_password', 'updated_at'])
+        override_reset_token, raw_token = OverrideResetToken.issue_for_user(self.user, expiry_hours=1)
+
+        response = self.client.post('/api/auth/reset-override-code/', {
+            'selector': str(override_reset_token.selector),
+            'token': raw_token,
+            'new_override_code': '1234',
+            'confirm_override_code': '1234',
+            'account_password': 'password123',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.profile.check_master_override_password('1234'))
+        override_reset_token.refresh_from_db()
+        self.assertIsNotNone(override_reset_token.used_at)
         self.assertTrue(
-            AuditLog.objects.filter(action='auth.password_reset_requested', target_id=self.user.id).exists()
+            AuditLog.objects.filter(action='auth.override_reset_completed', target_id=self.user.id).exists()
         )
 
     def test_forgot_password_returns_generic_message_for_unknown_email(self):
@@ -977,7 +1039,7 @@ class RolePermissionTests(APITestCase):
             password='password123',
         )
         self.admin_user.profile.role = 'admin'
-        self.admin_user.profile.set_master_override_password('override-123')
+        self.admin_user.profile.set_master_override_password('1234')
         self.admin_user.profile.save(update_fields=['role', 'master_override_password', 'updated_at'])
 
         self.regular_user = User.objects.create_user(
@@ -1014,7 +1076,7 @@ class RolePermissionTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_regular_user_can_create_period_with_admin_override_code(self):
-        self.admin_user.profile.set_master_override_password('override-123')
+        self.admin_user.profile.set_master_override_password('1234')
         self.admin_user.profile.save(update_fields=['master_override_password', 'updated_at'])
         self.client.force_authenticate(user=self.regular_user)
 
@@ -1023,7 +1085,7 @@ class RolePermissionTests(APITestCase):
             'start_date': '2028-01-01',
             'end_date': '2028-01-31',
             'is_open': False,
-            'admin_override_code': 'override-123',
+            'admin_override_code': '1234',
         }, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
@@ -1033,13 +1095,13 @@ class RolePermissionTests(APITestCase):
         self.assertTrue(admin_audit.changes['admin_override_used'])
 
     def test_regular_user_can_close_ledger_with_admin_override_code(self):
-        self.admin_user.profile.set_master_override_password('override-123')
+        self.admin_user.profile.set_master_override_password('1234')
         self.admin_user.profile.save(update_fields=['master_override_password', 'updated_at'])
         self.client.force_authenticate(user=self.regular_user)
 
         response = self.client.post(
             f'/api/ledgers/{self.ledger.id}/close/',
-            {'admin_override_code': 'override-123'},
+            {'admin_override_code': '1234'},
             format='json'
         )
 
@@ -1048,7 +1110,7 @@ class RolePermissionTests(APITestCase):
         self.assertFalse(self.ledger.is_active)
 
     def test_regular_user_can_reopen_closed_ledger_with_admin_override_code(self):
-        self.admin_user.profile.set_master_override_password('override-123')
+        self.admin_user.profile.set_master_override_password('1234')
         self.admin_user.profile.save(update_fields=['master_override_password', 'updated_at'])
         self.ledger.close()
         self.client.force_authenticate(user=self.regular_user)
@@ -1056,7 +1118,7 @@ class RolePermissionTests(APITestCase):
         response = self.client.post(
             f'/api/ledgers/{self.ledger.id}/reopen/',
             {
-                'admin_override_code': 'override-123',
+                'admin_override_code': '1234',
                 'end_date': '2027-01-20',
                 'close_time': '18:30',
             },
@@ -1173,7 +1235,7 @@ class RolePermissionTests(APITestCase):
 
         response = self.client.post(
             f'/api/users/{self.regular_user.id}/set-role/',
-            {'role': 'admin', 'admin_override_code': 'override-123'},
+            {'role': 'admin', 'admin_override_code': '1234'},
             format='json'
         )
 
@@ -1192,7 +1254,7 @@ class RolePermissionTests(APITestCase):
 
         response = self.client.post(
             f'/api/users/{self.admin_user.id}/set-role/',
-            {'role': 'user', 'admin_override_code': 'override-123'},
+            {'role': 'user', 'admin_override_code': '1234'},
             format='json'
         )
 
@@ -1205,13 +1267,13 @@ class RolePermissionTests(APITestCase):
         self.client.force_authenticate(user=self.admin_user)
         response = self.client.post(
             f'/api/users/{self.admin_user.id}/set-master-override-password/',
-            {'master_override_password': 'override-999', 'admin_override_code': 'override-123'},
+            {'master_override_password': '9999', 'admin_override_code': '1234'},
             format='json'
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.admin_user.refresh_from_db()
-        self.assertTrue(self.admin_user.profile.check_master_override_password('override-999'))
+        self.assertTrue(self.admin_user.profile.check_master_override_password('9999'))
         self.assertTrue(
             UserNotification.objects.filter(
                 recipient=self.admin_user,
@@ -1226,20 +1288,32 @@ class RolePermissionTests(APITestCase):
 
         response = self.client.post(
             f'/api/users/{self.admin_user.id}/set-master-override-password/',
-            {'master_override_password': 'first-override'},
+            {'master_override_password': '2468'},
             format='json'
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.admin_user.refresh_from_db()
-        self.assertTrue(self.admin_user.profile.check_master_override_password('first-override'))
+        self.assertTrue(self.admin_user.profile.check_master_override_password('2468'))
+
+    def test_admin_cannot_set_non_numeric_override_password(self):
+        self.client.force_authenticate(user=self.admin_user)
+
+        response = self.client.post(
+            f'/api/users/{self.admin_user.id}/set-master-override-password/',
+            {'master_override_password': '12a4', 'admin_override_code': '1234'},
+            format='json'
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['master_override_password'][0], 'Override code must be exactly 4 digits.')
 
     def test_admin_can_delete_user_account(self):
         self.client.force_authenticate(user=self.admin_user)
 
         response = self.client.delete(
             f'/api/users/{self.regular_user.id}/',
-            {'admin_override_code': 'override-123'},
+            {'admin_override_code': '1234'},
             format='json',
         )
 
@@ -1252,7 +1326,7 @@ class RolePermissionTests(APITestCase):
 
         response = self.client.post(
             f'/api/users/{self.regular_user.id}/set-master-override-password/',
-            {'master_override_password': 'override-123', 'admin_override_code': 'override-123'},
+            {'master_override_password': '1234', 'admin_override_code': '1234'},
             format='json'
         )
 
@@ -1283,12 +1357,12 @@ class RolePermissionTests(APITestCase):
 
     def test_admin_cannot_set_master_override_without_override_code(self):
         self.client.force_authenticate(user=self.admin_user)
-        self.admin_user.profile.set_master_override_password('existing-override')
+        self.admin_user.profile.set_master_override_password('5678')
         self.admin_user.profile.save(update_fields=['master_override_password', 'updated_at'])
 
         response = self.client.post(
             f'/api/users/{self.admin_user.id}/set-master-override-password/',
-            {'master_override_password': 'override-999'},
+            {'master_override_password': '9999'},
             format='json'
         )
 
@@ -1297,12 +1371,12 @@ class RolePermissionTests(APITestCase):
 
     def test_admin_cannot_set_master_override_with_incorrect_override_code(self):
         self.client.force_authenticate(user=self.admin_user)
-        self.admin_user.profile.set_master_override_password('existing-override')
+        self.admin_user.profile.set_master_override_password('5678')
         self.admin_user.profile.save(update_fields=['master_override_password', 'updated_at'])
 
         response = self.client.post(
             f'/api/users/{self.admin_user.id}/set-master-override-password/',
-            {'master_override_password': 'override-999', 'admin_override_code': 'wrong-code'},
+            {'master_override_password': '9999', 'admin_override_code': '0000'},
             format='json'
         )
 
@@ -1313,12 +1387,12 @@ class RolePermissionTests(APITestCase):
         self.client.force_authenticate(user=self.admin_user)
         other_admin = User.objects.create_user(username='second_admin_user', password='password123')
         other_admin.profile.role = 'admin'
-        other_admin.profile.set_master_override_password('second-override')
+        other_admin.profile.set_master_override_password('6789')
         other_admin.profile.save(update_fields=['role', 'master_override_password', 'updated_at'])
 
         response = self.client.post(
             f'/api/users/{other_admin.id}/set-master-override-password/',
-            {'master_override_password': 'override-999', 'admin_override_code': 'override-123'},
+            {'master_override_password': '9999', 'admin_override_code': '1234'},
             format='json'
         )
 
@@ -1332,6 +1406,18 @@ class RolePermissionTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(response.data['detail'], 'Admin override code is required for this action.')
+
+    def test_admin_cannot_delete_user_with_invalid_override_code_format(self):
+        self.client.force_authenticate(user=self.admin_user)
+
+        response = self.client.delete(
+            f'/api/users/{self.regular_user.id}/',
+            {'admin_override_code': '12a4'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['detail'], 'Override code must be exactly 4 digits.')
         self.assertTrue(User.objects.filter(pk=self.regular_user.pk).exists())
 
     def test_admin_cannot_delete_user_with_incorrect_override_code(self):
@@ -1339,7 +1425,7 @@ class RolePermissionTests(APITestCase):
 
         response = self.client.delete(
             f'/api/users/{self.regular_user.id}/',
-            {'admin_override_code': 'wrong-code'},
+            {'admin_override_code': '0000'},
             format='json',
         )
 
@@ -1436,7 +1522,7 @@ class PrivateWorkspaceTests(APITestCase):
             password='password123',
         )
         self.admin_user.profile.role = 'admin'
-        self.admin_user.profile.set_master_override_password('override-123')
+        self.admin_user.profile.set_master_override_password('1234')
         self.admin_user.profile.save(update_fields=['role', 'master_override_password', 'updated_at'])
 
         self.user_one = User.objects.create_user(
@@ -1471,7 +1557,7 @@ class PrivateWorkspaceTests(APITestCase):
             'name': 'Blocked Period',
             'start_date': '2028-01-01',
             'end_date': '2028-01-31',
-            'admin_override_code': 'override-123',
+            'admin_override_code': '1234',
         }, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
@@ -2729,7 +2815,7 @@ class PrivateWorkflowAPITests(APITestCase):
             password='password123',
         )
         self.approver.profile.role = 'admin'
-        self.approver.profile.set_master_override_password('override-123')
+        self.approver.profile.set_master_override_password('1234')
         self.approver.profile.save(update_fields=['role', 'master_override_password', 'updated_at'])
         self.other_user = User.objects.create_user(
             username='other_user',
@@ -2874,7 +2960,7 @@ class PrivateWorkflowAPITests(APITestCase):
     def test_ticket_list_can_filter_refunded_tickets(self):
         refund_response = self.client.post(
             f'/api/tickets/{self.active_ticket.ticket_number}/refund/',
-            {'action': 'refund_ticket', 'admin_override_code': 'override-123'},
+            {'action': 'refund_ticket', 'admin_override_code': '1234'},
             format='json',
         )
         self.assertEqual(refund_response.status_code, status.HTTP_200_OK)
@@ -3319,7 +3405,7 @@ class PrivateWorkflowAPITests(APITestCase):
             f'/api/tickets/{generated_ticket.ticket_number}/refund/',
             {
                 'action': 'refund_transaction',
-                'admin_override_code': 'override-123',
+                'admin_override_code': '1234',
                 'transaction_id': generated_transaction.id,
                 'sync_repeat_ticket': True,
             },
@@ -3363,7 +3449,7 @@ class PrivateWorkflowAPITests(APITestCase):
             f'/api/overflows/{overflow.id}/resolve/',
             {
                 'action': 'refund_overflow_only',
-                'admin_override_code': 'override-123',
+                'admin_override_code': '1234',
                 'sync_repeat_ticket': True,
             },
             format='json',
@@ -3974,7 +4060,7 @@ class PrivateWorkflowAPITests(APITestCase):
     def test_ticket_refund_can_succeed_without_spill_over(self):
         response = self.client.post(
             f'/api/tickets/{self.active_ticket.ticket_number}/refund/',
-            {'action': 'refund_ticket', 'admin_override_code': 'override-123'},
+            {'action': 'refund_ticket', 'admin_override_code': '1234'},
             format='json',
         )
 
@@ -3997,7 +4083,7 @@ class PrivateWorkflowAPITests(APITestCase):
     def test_ticket_refund_rejects_incorrect_admin_override_code_for_admin_user(self):
         response = self.client.post(
             f'/api/tickets/{self.active_ticket.ticket_number}/refund/',
-            {'action': 'refund_ticket', 'admin_override_code': 'wrong-code'},
+            {'action': 'refund_ticket', 'admin_override_code': '0000'},
             format='json',
         )
 
@@ -4053,7 +4139,7 @@ class PrivateWorkflowAPITests(APITestCase):
             f'/api/tickets/{self.active_ticket.ticket_number}/refund/',
             {
                 'action': 'refund_transaction',
-                'admin_override_code': 'override-123',
+                'admin_override_code': '1234',
                 'transaction_id': self.active_transaction.id,
             },
             format='json',
@@ -4086,7 +4172,7 @@ class PrivateWorkflowAPITests(APITestCase):
             f'/api/tickets/{self.active_ticket.ticket_number}/refund/',
             {
                 'action': 'refund_transaction',
-                'admin_override_code': 'override-123',
+                'admin_override_code': '1234',
                 'transaction_id': second_transaction.id,
             },
             format='json',
@@ -4104,7 +4190,7 @@ class PrivateWorkflowAPITests(APITestCase):
 
         response = self.client.post(
             f'/api/overflows/{overflow.id}/resolve/',
-            {'action': 'refund_overflow_only', 'admin_override_code': 'override-123'},
+            {'action': 'refund_overflow_only', 'admin_override_code': '1234'},
             format='json',
         )
 
@@ -4143,7 +4229,7 @@ class PrivateWorkflowAPITests(APITestCase):
             f'/api/tickets/{refund_ticket.ticket_number}/refund/',
             {
                 'action': 'refund_ticket',
-                'admin_override_code': 'override-123',
+                'admin_override_code': '1234',
                 'cso_refund_mode': 'return_to_tcso',
             },
             format='json',
@@ -4191,7 +4277,7 @@ class PrivateWorkflowAPITests(APITestCase):
             f'/api/tickets/{refund_ticket.ticket_number}/refund/',
             {
                 'action': 'refund_ticket',
-                'admin_override_code': 'override-123',
+                'admin_override_code': '1234',
                 'cso_refund_mode': 'return_to_tcso',
             },
             format='json',
@@ -4231,7 +4317,7 @@ class PrivateWorkflowAPITests(APITestCase):
             {
                 'action': 'refund_transaction',
                 'transaction_id': refund_transaction.id,
-                'admin_override_code': 'override-123',
+                'admin_override_code': '1234',
                 'cso_refund_mode': 'refund_spill_over',
             },
             format='json',
@@ -4257,14 +4343,14 @@ class PrivateWorkflowAPITests(APITestCase):
 
         refund_ticket_response = self.client.post(
             f'/api/tickets/{self.active_ticket.ticket_number}/refund/',
-            {'action': 'refund_ticket', 'admin_override_code': 'override-123'},
+            {'action': 'refund_ticket', 'admin_override_code': '1234'},
             format='json',
         )
         refund_transaction_response = self.client.post(
             f'/api/tickets/{self.active_ticket.ticket_number}/refund/',
             {
                 'action': 'refund_transaction',
-                'admin_override_code': 'override-123',
+                'admin_override_code': '1234',
                 'transaction_id': self.active_transaction.id,
             },
             format='json',
@@ -4285,7 +4371,7 @@ class PrivateWorkflowAPITests(APITestCase):
 
         response = self.client.post(
             f'/api/overflows/{overflow.id}/resolve/',
-            {'action': 'refund_overflow_only', 'admin_override_code': 'override-123'},
+            {'action': 'refund_overflow_only', 'admin_override_code': '1234'},
             format='json',
         )
 
@@ -4311,7 +4397,7 @@ class PrivateWorkflowAPITests(APITestCase):
 
         response = self.client.post(
             f'/api/overflows/{overflow.id}/resolve/',
-            {'action': 'refund_overflow_only', 'admin_override_code': 'override-123'},
+            {'action': 'refund_overflow_only', 'admin_override_code': '1234'},
             format='json',
         )
 
@@ -4322,7 +4408,7 @@ class PrivateWorkflowAPITests(APITestCase):
     def test_fully_refunded_ticket_still_appears_in_active_period_history(self):
         response = self.client.post(
             f'/api/tickets/{self.active_ticket.ticket_number}/refund/',
-            {'action': 'refund_ticket', 'admin_override_code': 'override-123'},
+            {'action': 'refund_ticket', 'admin_override_code': '1234'},
             format='json',
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -4345,7 +4431,7 @@ class PrivateWorkflowAPITests(APITestCase):
     def test_ticket_refund_audit_includes_ticket_summary(self):
         response = self.client.post(
             f'/api/tickets/{self.active_ticket.ticket_number}/refund/',
-            {'action': 'refund_ticket', 'admin_override_code': 'override-123'},
+            {'action': 'refund_ticket', 'admin_override_code': '1234'},
             format='json',
         )
 
@@ -4616,7 +4702,7 @@ class PrivateWorkflowAPITests(APITestCase):
             f'/api/overflows/{overflow.id}/resolve/',
             {
                 'action': 'refund_overflow_only',
-                'admin_override_code': 'override-123',
+                'admin_override_code': '1234',
                 'cso_refund_mode': 'return_to_tcso',
             },
             format='json',
@@ -4662,7 +4748,7 @@ class PrivateWorkflowAPITests(APITestCase):
             f'/api/overflows/{overflow.id}/resolve/',
             {
                 'action': 'refund_overflow_only',
-                'admin_override_code': 'override-123',
+                'admin_override_code': '1234',
                 'cso_refund_mode': 'refund_spill_over',
             },
             format='json',
@@ -4703,7 +4789,7 @@ class PrivateWorkflowAPITests(APITestCase):
             f'/api/overflows/{overflow.id}/resolve/',
             {
                 'action': 'refund_overflow_only',
-                'admin_override_code': 'override-123',
+                'admin_override_code': '1234',
                 'cso_refund_mode': 'return_to_tcso',
             },
             format='json',
@@ -4749,7 +4835,7 @@ class PrivateWorkflowAPITests(APITestCase):
             f'/api/overflows/{overflow.id}/resolve/',
             {
                 'action': 'refund_transaction',
-                'admin_override_code': 'override-123',
+                'admin_override_code': '1234',
                 'cso_refund_mode': 'return_to_tcso',
             },
             format='json',
@@ -4783,7 +4869,7 @@ class PrivateWorkflowAPITests(APITestCase):
             f'/api/overflows/{overflow.id}/resolve/',
             {
                 'action': 'refund_ticket',
-                'admin_override_code': 'override-123',
+                'admin_override_code': '1234',
                 'cso_refund_mode': 'refund_spill_over',
             },
             format='json',
@@ -4832,7 +4918,7 @@ class PrivateWorkflowAPITests(APITestCase):
 
         return_response = self.client.post(
             f'/api/overflows/{overkill.id}/resolve/',
-            {'action': 'refund_overflow_only', 'admin_override_code': 'override-123'},
+            {'action': 'refund_overflow_only', 'admin_override_code': '1234'},
             format='json',
         )
 
@@ -4889,7 +4975,7 @@ class PrivateWorkflowAPITests(APITestCase):
 
         return_response = self.client.post(
             f'/api/overflows/{consumed_cso.id}/resolve/',
-            {'action': 'refund_overflow_only', 'admin_override_code': 'override-123'},
+            {'action': 'refund_overflow_only', 'admin_override_code': '1234'},
             format='json',
         )
 
@@ -4959,7 +5045,7 @@ class PrivateWorkflowAPITests(APITestCase):
 
         refund_response = self.client.post(
             f'/api/tickets/{consume_ticket.ticket_number}/refund/',
-            {'action': 'refund_ticket', 'admin_override_code': 'override-123'},
+            {'action': 'refund_ticket', 'admin_override_code': '1234'},
             format='json',
         )
 

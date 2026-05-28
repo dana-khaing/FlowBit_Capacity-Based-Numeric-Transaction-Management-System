@@ -48,6 +48,7 @@ from .models import (
     Profile,
     PasswordResetToken,
     EmailVerificationToken,
+    OverrideResetToken,
     Collaborator,
     Ticket,
     RepeatTicket,
@@ -63,6 +64,7 @@ from .models import (
     preview_transaction_allocation,
     refund_overflow,
     refund_transactions,
+    is_valid_override_code,
 )
 from .audit import record_audit_log, serialize_audit_value, snapshot_instance
 from .notification_realtime import (
@@ -110,9 +112,11 @@ from .serializers import (
     AccountDeletionSerializer,
     ProfileAvatarSerializer,
     ForgotPasswordSerializer,
+    ForgotOverrideCodeSerializer,
     EmailVerificationConfirmSerializer,
     ResendVerificationSerializer,
     ResetPasswordConfirmSerializer,
+    ResetOverrideCodeConfirmSerializer,
     CollaboratorManageSerializer,
     UserRoleUpdateSerializer,
     MasterOverridePasswordSerializer,
@@ -244,6 +248,25 @@ def build_email_verification_email_body(verification_token, raw_token):
     return "\n".join(body_lines)
 
 
+def build_override_reset_email_body(override_reset_token, raw_token):
+    frontend_url = getattr(settings, 'FRONTEND_OVERRIDE_RESET_URL', '').strip()
+    body_lines = [
+        "FlowBit override code reset request",
+        "",
+        "Use this link to reset your 4-digit admin override code.",
+        "",
+        f"Selector: {override_reset_token.selector}",
+        f"Token: {raw_token}",
+        f"Expires At: {timezone.localtime(override_reset_token.expires_at).isoformat()}",
+    ]
+    if frontend_url:
+        body_lines.extend([
+            "",
+            f"Reset URL: {frontend_url}?selector={override_reset_token.selector}&token={raw_token}",
+        ])
+    return "\n".join(body_lines)
+
+
 class AuthEmailDeliveryError(Exception):
     pass
 
@@ -287,6 +310,26 @@ def issue_and_send_email_verification(*, request, user):
         changes={'email': user.email, 'selector': str(verification_token.selector)},
     )
     return verification_token
+
+
+def issue_and_send_override_reset(*, request, user):
+    expiry_hours = getattr(settings, 'OVERRIDE_RESET_TOKEN_EXPIRY_HOURS', 2)
+    override_reset_token, raw_token = OverrideResetToken.issue_for_user(user, expiry_hours=expiry_hours)
+    send_auth_email(
+        request=request,
+        user=user,
+        subject='FlowBit override code reset',
+        message=build_override_reset_email_body(override_reset_token, raw_token),
+        audit_action='override_reset',
+    )
+    record_audit_log(
+        request,
+        'auth.override_reset_requested',
+        target=user,
+        details=f"Override reset requested for '{user.username}'",
+        changes={'email': user.email, 'selector': str(override_reset_token.selector)},
+    )
+    return override_reset_token
 
 
 def get_email_verification_resend_wait_seconds(user):
@@ -4872,6 +4915,44 @@ class ForgotPasswordView(APIView):
         )
 
 
+class ForgotOverrideCodeView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = ForgotOverrideCodeSerializer(data=request.data or {})
+        serializer.is_valid(raise_exception=True)
+
+        profile, _ = Profile.objects.get_or_create(user=request.user)
+        if profile.role != 'admin':
+            return Response(
+                {'detail': 'Only admin accounts can reset override codes.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if not profile.master_override_password:
+            return Response(
+                {'detail': 'No override code is configured for this admin account yet.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not request.user.email:
+            return Response(
+                {'detail': 'Add an email address to your account before resetting your override code.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            issue_and_send_override_reset(request=request, user=request.user)
+        except AuthEmailDeliveryError:
+            return Response(
+                {'detail': 'We could not send the override reset email right now. Please try again shortly.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        return Response(
+            {'message': 'If the email exists, an override reset message has been sent.'},
+            status=status.HTTP_200_OK,
+        )
+
+
 class VerifyEmailView(APIView):
     permission_classes = [AllowAny]
 
@@ -4983,6 +5064,53 @@ class ResetPasswordConfirmView(APIView):
                 'token': token.key,
                 'user': UserProfileSerializer(user).data,
             },
+            status=status.HTTP_200_OK,
+        )
+
+
+class ResetOverrideCodeConfirmView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = ResetOverrideCodeConfirmSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        override_reset_token = OverrideResetToken.objects.filter(
+            selector=serializer.validated_data['selector']
+        ).select_related('user').first()
+        if override_reset_token is None or not override_reset_token.check_token(serializer.validated_data['token']):
+            return Response(
+                {'detail': 'Override reset token is invalid or expired.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user = override_reset_token.user
+        profile, _ = Profile.objects.get_or_create(user=user)
+        if profile.role != 'admin':
+            return Response(
+                {'detail': 'Only admin accounts can reset override codes.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not user.check_password(serializer.validated_data['account_password']):
+            return Response(
+                {'detail': 'Account password is incorrect.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        profile.set_master_override_password(serializer.validated_data['new_override_code'])
+        profile.save(update_fields=['master_override_password', 'updated_at'])
+        override_reset_token.mark_used()
+
+        record_audit_log(
+            request,
+            'auth.override_reset_completed',
+            target=user,
+            details=f"Override reset completed for '{user.username}'",
+            changes={'selector': str(override_reset_token.selector)},
+        )
+
+        return Response(
+            {'message': 'Override code reset successfully.'},
             status=status.HTTP_200_OK,
         )
 
@@ -5346,6 +5474,11 @@ class UserManagementViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mi
         if not raw_code:
             return Response(
                 {'detail': 'Admin override code is required for this action.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not is_valid_override_code(raw_code):
+            return Response(
+                {'detail': 'Override code must be exactly 4 digits.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         override_profile = get_valid_admin_override_profile(raw_code)
