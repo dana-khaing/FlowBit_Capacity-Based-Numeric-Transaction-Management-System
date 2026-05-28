@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faTriangleExclamation, faTrashCan } from "@fortawesome/free-solid-svg-icons";
-import { AuthInput } from "@/components/auth/auth-input";
+import { OverrideCodeInput } from "@/components/admin/override-code-input";
 import { Button } from "@/components/ui/button";
 import { ProfileDeleteModal } from "@/components/profile/profile-delete-modal";
 import { clearStoredSession, deleteCurrentUserAccount, type AuthUser } from "@/lib/auth-client";
@@ -75,13 +75,10 @@ export function ProfileDangerZoneCard({ user }: ProfileDangerZoneCardProps) {
         isSubmitting={isDeleting}
       >
         {!user.role || user.role !== "admin" ? (
-          <AuthInput
-            label="Admin override code"
-            type="password"
-            placeholder="Enter admin override code"
-            value={adminOverrideCode}
-            onChange={(event) => setAdminOverrideCode(event.target.value)}
-          />
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-stone-600">Admin override code</p>
+            <OverrideCodeInput value={adminOverrideCode} onChange={setAdminOverrideCode} autoFocus />
+          </div>
         ) : null}
 
         {errorMessage ? (
