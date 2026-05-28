@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowLeft, faKey } from "@fortawesome/free-solid-svg-icons";
@@ -16,6 +17,7 @@ type ResetOverrideCodeFormCardProps = {
 };
 
 export function ResetOverrideCodeFormCard({ selector, token }: ResetOverrideCodeFormCardProps) {
+  const router = useRouter();
   const [newOverrideCode, setNewOverrideCode] = useState("");
   const [confirmOverrideCode, setConfirmOverrideCode] = useState("");
   const [accountPassword, setAccountPassword] = useState("");
@@ -63,10 +65,12 @@ export function ResetOverrideCodeFormCard({ selector, token }: ResetOverrideCode
         confirm_override_code: confirmOverrideCode,
         account_password: accountPassword,
       });
-      setMessage(response.message);
+      setMessage("Override code reset successfully. Redirecting to login...");
       setNewOverrideCode("");
       setConfirmOverrideCode("");
       setAccountPassword("");
+      router.push("/login");
+      router.refresh();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to reset override code.");
     } finally {

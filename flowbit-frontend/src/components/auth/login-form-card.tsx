@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowLeft, faArrowRightToBracket } from "@fortawesome/free-solid-svg-icons";
 import Link from "next/link";
-import { OverrideCodeInput } from "@/components/admin/override-code-input";
 import { AuthInput } from "./auth-input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -26,7 +25,6 @@ export function LoginFormCard() {
   const [showSignUpSuccess, setShowSignUpSuccess] = useState(false);
   const [showVerifyEmailNotice, setShowVerifyEmailNotice] = useState(false);
   const [showDeliveryFailureNotice, setShowDeliveryFailureNotice] = useState(false);
-  const [useOverrideCode, setUseOverrideCode] = useState(false);
   const [credentials, setCredentials] = useState({ username: "", password: "" });
   const [verificationEmail, setVerificationEmail] = useState("");
   const [fieldErrors, setFieldErrors] = useState<{ username?: string; password?: string }>({});
@@ -74,9 +72,7 @@ export function LoginFormCard() {
     }
 
     if (!credentials.password) {
-      nextErrors.password = useOverrideCode ? "Enter your 4-digit override code to continue." : "Enter your password to continue.";
-    } else if (useOverrideCode && credentials.password.length !== 4) {
-      nextErrors.password = "Use all 4 digits of your override code.";
+      nextErrors.password = "Enter your password to continue.";
     }
 
     setFieldErrors(nextErrors);
@@ -252,38 +248,24 @@ export function LoginFormCard() {
             }
           }}
         />
-        {useOverrideCode ? (
-          <div className="space-y-2">
-            <p className="text-sm font-medium text-stone-600">Admin override code</p>
-            <OverrideCodeInput
-              value={credentials.password}
-              onChange={(value) => {
-                setCredentials((current) => ({ ...current, password: value }));
-                setFieldErrors((current) => ({ ...current, password: undefined }));
-              }}
-            />
-            {fieldErrors.password ? <p className="text-sm text-red-700">{fieldErrors.password}</p> : null}
-          </div>
-        ) : (
-          <AuthInput
-            label="Password"
-            type="password"
-            placeholder="Enter your password"
-            name="password"
-            autoComplete="current-password"
-            error={fieldErrors.password}
-            value={credentials.password}
-            onChange={(event) => {
-              setCredentials((current) => ({ ...current, password: event.target.value }));
-              setFieldErrors((current) => ({ ...current, password: undefined }));
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                void handleLogin();
-              }
-            }}
-          />
-        )}
+        <AuthInput
+          label="Password"
+          type="password"
+          placeholder="Enter your password"
+          name="password"
+          autoComplete="current-password"
+          error={fieldErrors.password}
+          value={credentials.password}
+          onChange={(event) => {
+            setCredentials((current) => ({ ...current, password: event.target.value }));
+            setFieldErrors((current) => ({ ...current, password: undefined }));
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              void handleLogin();
+            }
+          }}
+        />
       </div>
 
       <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -292,24 +274,9 @@ export function LoginFormCard() {
           Keep me signed in on this device
         </label>
 
-        <div className="flex items-center gap-4">
-          {!useOverrideCode ? (
-            <Link href="/forgot-password" className="text-sm font-medium text-[#b66427]">
-              Forgot password?
-            </Link>
-          ) : null}
-          <button
-            type="button"
-            onClick={() => {
-              setUseOverrideCode((current) => !current);
-              setCredentials((current) => ({ ...current, password: "" }));
-              setFieldErrors((current) => ({ ...current, password: undefined }));
-            }}
-            className="text-sm font-medium text-[#b66427] underline underline-offset-4"
-          >
-            {useOverrideCode ? "Use password instead" : "Use admin override code"}
-          </button>
-        </div>
+        <Link href="/forgot-password" className="text-sm font-medium text-[#b66427]">
+          Forgot password?
+        </Link>
       </div>
 
       <div className="mt-6 flex flex-col gap-3 sm:flex-row">
