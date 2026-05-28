@@ -31,11 +31,28 @@ from .models import (
     SupportCase,
     SupportMessage,
     _from_allocation_basis_amount,
+    is_valid_override_code,
 )
 
 
 DEFAULT_PERIOD_CLOSE_TIME = time(hour=23, minute=0)
 DEFAULT_LEDGER_CLOSE_TIME = time(hour=14, minute=30)
+
+
+OVERRIDE_CODE_ERROR = "Override code must be exactly 4 digits."
+
+
+class OverrideCodeField(serializers.CharField):
+    def __init__(self, *args, allow_blank=False, **kwargs):
+        super().__init__(*args, allow_blank=allow_blank, trim_whitespace=True, **kwargs)
+
+    def to_internal_value(self, data):
+        value = super().to_internal_value(data)
+        if value == "" and self.allow_blank:
+            return value
+        if not is_valid_override_code(value):
+            raise serializers.ValidationError(OVERRIDE_CODE_ERROR)
+        return value.strip()
 
 
 def _aware_datetime_from_date(value, fallback_time):
@@ -635,7 +652,7 @@ class TicketRefundActionSerializer(serializers.Serializer):
         choices=['return_to_tcso', 'refund_spill_over'],
         required=False,
     )
-    admin_override_code = serializers.CharField(
+    admin_override_code = OverrideCodeField(
         write_only=True,
         required=False,
         allow_blank=True,
@@ -1524,18 +1541,35 @@ class ResetPasswordConfirmSerializer(serializers.Serializer):
         return value
 
 
+class ForgotOverrideCodeSerializer(serializers.Serializer):
+    pass
+
+
+class ResetOverrideCodeConfirmSerializer(serializers.Serializer):
+    selector = serializers.UUIDField()
+    token = serializers.CharField(write_only=True)
+    new_override_code = OverrideCodeField(write_only=True)
+    confirm_override_code = OverrideCodeField(write_only=True)
+    account_password = serializers.CharField(write_only=True)
+
+    def validate(self, attrs):
+        if attrs['new_override_code'] != attrs['confirm_override_code']:
+            raise serializers.ValidationError({'confirm_override_code': 'Override codes do not match.'})
+        return attrs
+
+
 class UserRoleUpdateSerializer(serializers.Serializer):
     role = serializers.ChoiceField(choices=Profile.ROLE_CHOICES)
-    admin_override_code = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    admin_override_code = OverrideCodeField(write_only=True, required=False, allow_blank=True)
 
 
 class MasterOverridePasswordSerializer(serializers.Serializer):
-    master_override_password = serializers.CharField(write_only=True, required=False, allow_blank=True)
-    admin_override_code = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    master_override_password = OverrideCodeField(write_only=True)
+    admin_override_code = OverrideCodeField(write_only=True, required=False, allow_blank=True)
 
 
 class AccountDeletionSerializer(serializers.Serializer):
-    admin_override_code = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    admin_override_code = OverrideCodeField(write_only=True, required=False, allow_blank=True)
 
 
 class ProfileAvatarSerializer(serializers.Serializer):
