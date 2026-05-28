@@ -12,6 +12,7 @@ from core.models import (
     OverflowNotification,
     UserNotification,
     PasswordResetToken,
+    OverrideResetToken,
     Period,
     Ticket,
     Transaction,
@@ -43,6 +44,7 @@ class Command(BaseCommand):
             ("periods", Period),
             ("identifiers", Identifier),
             ("password_reset_tokens", PasswordResetToken),
+            ("override_reset_tokens", OverrideResetToken),
             ("audit_logs", AuditLog),
         ]
 

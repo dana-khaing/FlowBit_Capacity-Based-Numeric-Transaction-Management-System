@@ -42,6 +42,14 @@ type PasswordResetPayload = {
   new_password: string;
 };
 
+type OverrideResetPayload = {
+  selector: string;
+  token: string;
+  new_override_code: string;
+  confirm_override_code: string;
+  account_password: string;
+};
+
 type EmailVerificationPayload = {
   selector: string;
   token: string;
@@ -153,6 +161,19 @@ export async function requestPasswordReset(email: string) {
   });
 }
 
+export async function requestOverrideCodeReset() {
+  const token = getStoredToken();
+  if (!token) {
+    throw new Error("No session found.");
+  }
+
+  return apiRequest<{ message: string }>("/auth/forgot-override-code/", {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({}),
+  });
+}
+
 export async function resetPassword(payload: PasswordResetPayload, remember = false) {
   const response = await apiRequest<LoginResponse & { message: string }>("/auth/reset-password/", {
     method: "POST",
@@ -160,6 +181,13 @@ export async function resetPassword(payload: PasswordResetPayload, remember = fa
   });
   setStoredSession(response.token, response.user, remember);
   return response;
+}
+
+export async function resetOverrideCode(payload: OverrideResetPayload) {
+  return apiRequest<{ message: string }>("/auth/reset-override-code/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function changePassword(payload: { current_password: string; new_password: string }) {
