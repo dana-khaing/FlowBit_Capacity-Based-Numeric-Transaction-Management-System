@@ -2,7 +2,7 @@
 
 ![Header](https://capsule-render.vercel.app/api?type=waving&color=0:0b0b0b,35:1a1a1a,70:6b5523,100:d4af37&height=220&section=header&text=FlowBit&fontSize=48&fontColor=f8f3e7&fontAlignY=38&desc=Realtime%20Numeric%20Transaction%20Operations%20Platform&descAlignY=58&descColor=f3df9b&animation=fadeIn)
 
-[![Release](https://img.shields.io/badge/Release-v1.3--beta-c9a227?style=for-the-badge&logoColor=white)](https://github.com/dana-khaing/FlowBit_Capacity-Based-Numeric-Transaction-Management-System/releases/tag/v1.3-beta)
+[![Release](https://img.shields.io/badge/Release-v1.4--beta-c9a227?style=for-the-badge&logoColor=white)](https://github.com/dana-khaing/FlowBit_Capacity-Based-Numeric-Transaction-Management-System/releases/tag/v1.4-beta)
 [![Status](https://img.shields.io/badge/Status-Deployed_Beta-5f4b1b?style=for-the-badge&logoColor=white)](https://flowbitdev.vercel.app)
 [![License](https://img.shields.io/badge/License-Proprietary-111111?style=for-the-badge&logoColor=white)](./LICENSE)
 [![Frontend](https://img.shields.io/badge/Frontend-Next.js-1b1b1b?style=for-the-badge&logo=nextdotjs&logoColor=f5d76e)](https://nextjs.org/)
@@ -22,7 +22,7 @@ The system is designed for teams that need live visibility over constrained iden
 
 ## Product Snapshot
 
-- Current release: `1.3-beta`
+- Current release: `1.4-beta`
 - Status: deployed beta
 - Delivery model:
   - browser-based production application
