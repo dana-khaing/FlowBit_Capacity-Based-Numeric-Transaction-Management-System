@@ -1,5 +1,6 @@
 import secrets
 import uuid
+import re
 from datetime import datetime, time
 
 from django.db import models, transaction
@@ -14,6 +15,15 @@ from django.utils.text import slugify
 
 
 DEFAULT_HELPER_NAME = 'system'
+OVERRIDE_CODE_PATTERN = re.compile(r'^\d{4}$')
+
+
+def normalize_override_code(value):
+    return (value or '').strip()
+
+
+def is_valid_override_code(value):
+    return bool(OVERRIDE_CODE_PATTERN.fullmatch(normalize_override_code(value)))
 
 
 class Period(models.Model):
@@ -2337,6 +2347,9 @@ class Profile(models.Model):
         if self.role != 'admin':
             return False
 
+        if not is_valid_override_code(raw_password):
+            return False
+
         stored_value = (self.master_override_password or '').strip()
         if not stored_value:
             return False
@@ -2461,3 +2474,47 @@ class EmailVerificationToken(models.Model):
             expires_at=timezone.now() + timezone.timedelta(hours=expiry_hours),
         )
         return verification_token, raw_token
+
+
+class OverrideResetToken(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='override_reset_tokens')
+    selector = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    token_hash = models.CharField(max_length=128)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['selector']),
+            models.Index(fields=['expires_at']),
+        ]
+
+    def __str__(self):
+        return f"Override reset token for {self.user.username}"
+
+    @property
+    def is_active(self):
+        return self.used_at is None and self.expires_at > timezone.now()
+
+    def check_token(self, raw_token):
+        return self.is_active and check_password(raw_token, self.token_hash)
+
+    def mark_used(self, used_at=None):
+        if used_at is None:
+            used_at = timezone.now()
+        self.used_at = used_at
+        self.save(update_fields=['used_at'])
+
+    @classmethod
+    def issue_for_user(cls, user, expiry_hours=2):
+        cls.objects.filter(user=user, used_at__isnull=True).update(used_at=timezone.now())
+
+        raw_token = secrets.token_urlsafe(32)
+        override_reset_token = cls.objects.create(
+            user=user,
+            token_hash=make_password(raw_token),
+            expires_at=timezone.now() + timezone.timedelta(hours=expiry_hours),
+        )
+        return override_reset_token, raw_token

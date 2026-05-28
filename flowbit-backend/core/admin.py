@@ -18,6 +18,7 @@ from .models import (
     AuditLog,
     PasswordResetToken,
     EmailVerificationToken,
+    OverrideResetToken,
     Ticket,
 )
 
@@ -305,6 +306,20 @@ class PasswordResetTokenAdmin(admin.ModelAdmin):
 
 @admin.register(EmailVerificationToken)
 class EmailVerificationTokenAdmin(admin.ModelAdmin):
+    list_display = ('user', 'selector', 'expires_at', 'used_at', 'created_at')
+    search_fields = ('user__username', 'user__email', 'selector')
+    list_filter = ('expires_at', 'used_at', 'created_at')
+    readonly_fields = ('user', 'selector', 'expires_at', 'used_at', 'created_at')
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(OverrideResetToken)
+class OverrideResetTokenAdmin(admin.ModelAdmin):
     list_display = ('user', 'selector', 'expires_at', 'used_at', 'created_at')
     search_fields = ('user__username', 'user__email', 'selector')
     list_filter = ('expires_at', 'used_at', 'created_at')
