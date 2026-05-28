@@ -1,6 +1,6 @@
 {
   "name": "flowbit-frontend",
-  "version": "1.4-beta",
+  "version": "1.5-beta",
   "private": true,
   "scripts": {
     "dev": "next dev",
