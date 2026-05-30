@@ -44,9 +44,6 @@ export function SignUpFormCard() {
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formValues.email)) {
       nextErrors.email = "Enter a valid email address.";
     }
-    if (!formValues.phone_number.trim()) {
-      nextErrors.phone_number = "Enter your phone number.";
-    }
     if (!formValues.password) {
       nextErrors.password = "Create a password.";
     } else if (formValues.password.length < 8) {
@@ -138,7 +135,7 @@ export function SignUpFormCard() {
           }}
         />
         <AuthInput
-          label="Phone number"
+          label="Phone number (optional)"
           type="tel"
           placeholder="Enter your phone number"
           autoComplete="tel"

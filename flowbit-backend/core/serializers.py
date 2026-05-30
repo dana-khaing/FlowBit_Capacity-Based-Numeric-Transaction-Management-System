@@ -1473,7 +1473,7 @@ class RegisterSerializer(serializers.Serializer):
     full_name = serializers.CharField(max_length=150)
     username = serializers.CharField(max_length=150)
     email = serializers.EmailField()
-    phone_number = serializers.CharField(max_length=50)
+    phone_number = serializers.CharField(max_length=50, allow_blank=True, required=False)
     password = serializers.CharField(write_only=True)
     confirm_password = serializers.CharField(write_only=True)
 
@@ -1508,7 +1508,7 @@ class RegisterSerializer(serializers.Serializer):
             is_active=False,
         )
         profile, _ = Profile.objects.get_or_create(user=user)
-        profile.phone_number = validated_data['phone_number'].strip()
+        profile.phone_number = (validated_data.get('phone_number') or '').strip()
         profile.save(update_fields=['phone_number', 'updated_at'])
         user.refresh_from_db()
         return user
