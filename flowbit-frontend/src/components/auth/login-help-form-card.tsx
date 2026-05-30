@@ -129,19 +129,21 @@ export function LoginHelpFormCard() {
             setFieldErrors((current) => ({ ...current, requester_name: undefined }));
           }}
         />
-        <AuthInput
-          label="Reply email"
-          type="email"
-          placeholder="Enter the email address for admin replies"
-          name="requester_email"
-          autoComplete="email"
-          error={fieldErrors.requester_email}
-          value={formValues.requester_email}
-          onChange={(event) => {
-            setFormValues((current) => ({ ...current, requester_email: event.target.value }));
-            setFieldErrors((current) => ({ ...current, requester_email: undefined }));
-          }}
-        />
+        <div className="md:col-span-2">
+          <AuthInput
+            label="Reply email"
+            type="email"
+            placeholder="Enter the email address for admin replies"
+            name="requester_email"
+            autoComplete="email"
+            error={fieldErrors.requester_email}
+            value={formValues.requester_email}
+            onChange={(event) => {
+              setFormValues((current) => ({ ...current, requester_email: event.target.value }));
+              setFieldErrors((current) => ({ ...current, requester_email: undefined }));
+            }}
+          />
+        </div>
       </div>
 
       <div className="mt-4 space-y-4">
