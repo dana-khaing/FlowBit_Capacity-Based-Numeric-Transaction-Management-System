@@ -344,6 +344,20 @@ class AuthAPITests(APITestCase):
         self.assertTrue(AuditLog.objects.filter(action='auth.register', target_id=created_user.id).exists())
         self.assertTrue(AuditLog.objects.filter(action='auth.email_verification_requested', target_id=created_user.id).exists())
 
+    def test_register_allows_missing_phone_number(self):
+        response = self.client.post('/api/auth/register/', {
+            'full_name': 'No Phone User',
+            'username': 'no_phone_user',
+            'email': 'no-phone@example.com',
+            'password': 'strong-pass-456',
+            'confirm_password': 'strong-pass-456',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        created_user = User.objects.get(username='no_phone_user')
+        self.assertEqual(created_user.profile.phone_number, '')
+        self.assertEqual(response.data['user']['phone_number'], '')
+
     def test_register_rejects_duplicate_email(self):
         response = self.client.post('/api/auth/register/', {
             'full_name': 'Another User',
