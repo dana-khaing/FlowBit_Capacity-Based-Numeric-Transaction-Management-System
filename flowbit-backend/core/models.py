@@ -1732,6 +1732,7 @@ class SupportCase(models.Model):
     subject = models.CharField(max_length=160)
     intake_type = models.CharField(max_length=24, choices=INTAKE_TYPE_CHOICES, default=INTAKE_STANDARD)
     requester_name = models.CharField(max_length=160, blank=True, default='')
+    requester_email = models.EmailField(max_length=254, blank=True, default='')
     requester_login_identifier = models.CharField(max_length=160, blank=True, default='')
     status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_OPEN)
     closed_at = models.DateTimeField(null=True, blank=True)

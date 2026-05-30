@@ -51,6 +51,10 @@ function intakeTone(intakeType: "STANDARD" | "LOGIN_HELP") {
     : "bg-stone-200 text-stone-600";
 }
 
+function looksLikeEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
 export function CustomerServicePage() {
   const currentUserState = useCurrentUserState();
   const [user, setUser] = useState<AuthUser | null>(getStoredUser());
@@ -63,6 +67,7 @@ export function CustomerServicePage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
   const [search, setSearch] = useState("");
   const [replyDraft, setReplyDraft] = useState("");
+  const [loginHelpReplyEmail, setLoginHelpReplyEmail] = useState("");
   const [newCaseOpen, setNewCaseOpen] = useState(false);
   const [newCaseSubject, setNewCaseSubject] = useState("");
   const [newCaseMessage, setNewCaseMessage] = useState("");
@@ -209,6 +214,17 @@ export function CustomerServicePage() {
     }
   }, [selectedCase?.messages.length, selectedCase]);
 
+  useEffect(() => {
+    if (!selectedCase || selectedCase.intake_type !== "LOGIN_HELP") {
+      setLoginHelpReplyEmail("");
+      return;
+    }
+    setLoginHelpReplyEmail(
+      selectedCase.requester_email ||
+        (looksLikeEmail(selectedCase.requester_login_identifier) ? selectedCase.requester_login_identifier : ""),
+    );
+  }, [selectedCase?.id, selectedCase?.intake_type, selectedCase?.requester_email, selectedCase?.requester_login_identifier]);
+
   const filteredCases = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
     return cases.filter((item) => {
@@ -258,11 +274,24 @@ export function CustomerServicePage() {
     if (!selectedCaseId || !replyDraft.trim()) {
       return;
     }
+    const replyEmail = loginHelpReplyEmail.trim();
+    if (isAdmin && selectedCase?.intake_type === "LOGIN_HELP" && !replyEmail) {
+      setErrorMessage("Enter a requester email before sending this login-help reply.");
+      return;
+    }
+    if (isAdmin && selectedCase?.intake_type === "LOGIN_HELP" && replyEmail && !looksLikeEmail(replyEmail)) {
+      setErrorMessage("Enter a valid requester email before sending this login-help reply.");
+      return;
+    }
 
     setIsSaving(true);
     setErrorMessage("");
     try {
-      await replyToSupportCase(selectedCaseId, replyDraft);
+      await replyToSupportCase(
+        selectedCaseId,
+        replyDraft,
+        isAdmin && selectedCase?.intake_type === "LOGIN_HELP" ? { requester_email: replyEmail } : undefined,
+      );
       setReplyDraft("");
       shouldForceScrollRef.current = true;
       await refreshCasesAndSelectedCase(selectedCaseId);
@@ -445,7 +474,10 @@ export function CustomerServicePage() {
                     <div className="flex flex-wrap items-center gap-3 text-sm text-stone-500">
                       <span>{selectedCase.created_by_full_name}</span>
                       {selectedCase.intake_type === "LOGIN_HELP" ? (
-                        <span>Login: {selectedCase.requester_login_identifier}</span>
+                        <>
+                          <span>Login: {selectedCase.requester_login_identifier}</span>
+                          <span>Email: {selectedCase.requester_email || loginHelpReplyEmail || "Not set"}</span>
+                        </>
                       ) : null}
                       <span>{formatDateTime(selectedCase.created_at)}</span>
                       {selectedCase.closed_at ? <span>Closed {formatDateTime(selectedCase.closed_at)}</span> : null}
@@ -519,6 +551,21 @@ export function CustomerServicePage() {
 
                 <div className="mt-4 rounded-[22px] border border-stone-900/8 bg-[#f8f6f2] p-3">
                   <div className="space-y-3">
+                    {isAdmin && selectedCase.intake_type === "LOGIN_HELP" ? (
+                      <label className="block">
+                        <span className="text-xs font-semibold uppercase tracking-[0.12em] text-stone-500">
+                          Reply email
+                        </span>
+                        <input
+                          type="email"
+                          value={loginHelpReplyEmail}
+                          onChange={(event) => setLoginHelpReplyEmail(event.target.value)}
+                          placeholder="requester@example.com"
+                          disabled={selectedCase.status === "CLOSED"}
+                          className="mt-2 h-11 w-full rounded-[16px] border border-stone-900/10 bg-white px-4 text-sm text-stone-900 outline-none transition placeholder:text-stone-400 focus:border-stone-400 disabled:cursor-not-allowed disabled:opacity-60"
+                        />
+                      </label>
+                    ) : null}
                     <textarea
                       value={replyDraft}
                       onChange={(event) => setReplyDraft(event.target.value)}
@@ -531,7 +578,9 @@ export function CustomerServicePage() {
                       <p className="text-xs text-stone-500">
                         {selectedCase.status === "CLOSED"
                           ? "Reopen the case to continue the conversation."
-                          : "Replies stay in this shared thread for both sides."}
+                          : selectedCase.intake_type === "LOGIN_HELP"
+                            ? `Admin replies are emailed to ${loginHelpReplyEmail || "the requester email"}.`
+                            : "Replies stay in this shared thread for both sides."}
                       </p>
                       <button
                         type="button"

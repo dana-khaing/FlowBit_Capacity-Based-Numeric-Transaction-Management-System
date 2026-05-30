@@ -19,6 +19,7 @@ export function LoginHelpFormCard() {
   const [formValues, setFormValues] = useState({
     login_identifier: "",
     requester_name: "",
+    requester_email: "",
     subject: "",
     message: "",
   });
@@ -35,6 +36,11 @@ export function LoginHelpFormCard() {
     }
     if (!formValues.subject.trim()) {
       nextErrors.subject = "Enter a short issue summary.";
+    }
+    if (!formValues.requester_email.trim()) {
+      nextErrors.requester_email = "Enter the email address you want the admin to reply to.";
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formValues.requester_email.trim())) {
+      nextErrors.requester_email = "Enter a valid email address.";
     }
     if (!formValues.message.trim()) {
       nextErrors.message = "Describe the login problem.";
@@ -56,6 +62,7 @@ export function LoginHelpFormCard() {
       const response = await createPublicLoginHelpCase({
         login_identifier: formValues.login_identifier.trim(),
         requester_name: formValues.requester_name.trim(),
+        requester_email: formValues.requester_email.trim(),
         subject: formValues.subject.trim(),
         message: formValues.message.trim(),
       });
@@ -63,6 +70,7 @@ export function LoginHelpFormCard() {
       setFormValues({
         login_identifier: "",
         requester_name: "",
+        requester_email: "",
         subject: "",
         message: "",
       });
@@ -119,6 +127,19 @@ export function LoginHelpFormCard() {
           onChange={(event) => {
             setFormValues((current) => ({ ...current, requester_name: event.target.value }));
             setFieldErrors((current) => ({ ...current, requester_name: undefined }));
+          }}
+        />
+        <AuthInput
+          label="Reply email"
+          type="email"
+          placeholder="Enter the email address for admin replies"
+          name="requester_email"
+          autoComplete="email"
+          error={fieldErrors.requester_email}
+          value={formValues.requester_email}
+          onChange={(event) => {
+            setFormValues((current) => ({ ...current, requester_email: event.target.value }));
+            setFieldErrors((current) => ({ ...current, requester_email: undefined }));
           }}
         />
       </div>
