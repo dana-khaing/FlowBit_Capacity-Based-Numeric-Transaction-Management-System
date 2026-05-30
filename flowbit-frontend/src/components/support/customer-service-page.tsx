@@ -561,7 +561,7 @@ export function CustomerServicePage() {
                           value={loginHelpReplyEmail}
                           onChange={(event) => setLoginHelpReplyEmail(event.target.value)}
                           placeholder="requester@example.com"
-                          disabled={selectedCase.status === "CLOSED"}
+                          disabled={selectedCase.status === "CLOSED" || Boolean(selectedCase.requester_email)}
                           className="h-12 w-full rounded-2xl border border-stone-900/10 bg-white px-4 text-sm text-stone-900 outline-none transition placeholder:text-stone-400 focus:border-stone-400 disabled:cursor-not-allowed disabled:opacity-60"
                         />
                       </label>
