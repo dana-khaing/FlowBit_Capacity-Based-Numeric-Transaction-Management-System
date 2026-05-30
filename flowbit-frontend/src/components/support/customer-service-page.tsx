@@ -552,8 +552,8 @@ export function CustomerServicePage() {
                 <div className="mt-4 rounded-[22px] border border-stone-900/8 bg-[#f8f6f2] p-3">
                   <div className="space-y-3">
                     {isAdmin && selectedCase.intake_type === "LOGIN_HELP" ? (
-                      <label className="block">
-                        <span className="text-xs font-semibold uppercase tracking-[0.12em] text-stone-500">
+                      <label className="flex w-full flex-col gap-2">
+                        <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
                           Reply email
                         </span>
                         <input
@@ -561,8 +561,8 @@ export function CustomerServicePage() {
                           value={loginHelpReplyEmail}
                           onChange={(event) => setLoginHelpReplyEmail(event.target.value)}
                           placeholder="requester@example.com"
-                          disabled={selectedCase.status === "CLOSED"}
-                          className="mt-2 h-11 w-full rounded-[16px] border border-stone-900/10 bg-white px-4 text-sm text-stone-900 outline-none transition placeholder:text-stone-400 focus:border-stone-400 disabled:cursor-not-allowed disabled:opacity-60"
+                          disabled={selectedCase.status === "CLOSED" || Boolean(selectedCase.requester_email)}
+                          className="h-12 w-full rounded-2xl border border-stone-900/10 bg-white px-4 text-sm text-stone-900 outline-none transition placeholder:text-stone-400 focus:border-stone-400 disabled:cursor-not-allowed disabled:opacity-60"
                         />
                       </label>
                     ) : null}

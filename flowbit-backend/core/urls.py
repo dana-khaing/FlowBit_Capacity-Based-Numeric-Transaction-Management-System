@@ -20,6 +20,7 @@ from .views import (
     IdentifierCapacityReportView,
     LoginView,
     RegisterView,
+    UsernameAvailabilityView,
     GoogleLoginView,
     LogoutView,
     MeView,
@@ -60,6 +61,7 @@ urlpatterns = [
 
     path('auth/login/', LoginView.as_view(), name='auth-login'),
     path('auth/register/', RegisterView.as_view(), name='auth-register'),
+    path('auth/username-availability/', UsernameAvailabilityView.as_view(), name='auth-username-availability'),
     path('auth/google/', GoogleLoginView.as_view(), name='auth-google-login'),
     path('auth/logout/', LogoutView.as_view(), name='auth-logout'),
     path('auth/me/', MeView.as_view(), name='auth-me'),
