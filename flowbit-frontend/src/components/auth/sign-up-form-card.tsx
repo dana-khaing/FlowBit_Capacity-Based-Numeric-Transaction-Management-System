@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -8,7 +8,7 @@ import { faArrowLeft, faUserPlus } from "@fortawesome/free-solid-svg-icons";
 import { AuthInput } from "./auth-input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { registerAccount } from "@/lib/auth-client";
+import { checkUsernameAvailability, registerAccount } from "@/lib/auth-client";
 
 const signUpNotes = [
   "Fill in your account details carefully before submitting.",
@@ -28,7 +28,41 @@ export function SignUpFormCard() {
   });
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof typeof formValues, string>>>({});
   const [errorMessage, setErrorMessage] = useState("");
+  const [usernameHint, setUsernameHint] = useState("");
+  const [isUsernameAvailable, setIsUsernameAvailable] = useState<boolean | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    const username = formValues.username.trim();
+    setIsUsernameAvailable(null);
+
+    if (!username) {
+      setUsernameHint("");
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      checkUsernameAvailability(username)
+        .then((result) => {
+          if (formValues.username.trim() !== username) {
+            return;
+          }
+          setIsUsernameAvailable(result.available);
+          setUsernameHint(result.message);
+          setFieldErrors((current) => ({
+            ...current,
+            username: result.available ? undefined : result.message,
+          }));
+        })
+        .catch(() => {
+          if (formValues.username.trim() === username) {
+            setUsernameHint("Username availability could not be checked right now.");
+          }
+        });
+    }, 450);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [formValues.username]);
 
   function validateForm() {
     const nextErrors: Partial<Record<keyof typeof formValues, string>> = {};
@@ -38,6 +72,8 @@ export function SignUpFormCard() {
     }
     if (!formValues.username.trim()) {
       nextErrors.username = "Choose a username.";
+    } else if (isUsernameAvailable === false) {
+      nextErrors.username = usernameHint || "This username is already taken.";
     }
     if (!formValues.email.trim()) {
       nextErrors.email = "Enter your email address.";
@@ -116,10 +152,12 @@ export function SignUpFormCard() {
           type="text"
           placeholder="Choose a username"
           error={fieldErrors.username}
+          hint={isUsernameAvailable ? usernameHint : undefined}
           value={formValues.username}
           onChange={(event) => {
             setFormValues((current) => ({ ...current, username: event.target.value }));
             setFieldErrors((current) => ({ ...current, username: undefined }));
+            setUsernameHint("");
           }}
         />
         <AuthInput

@@ -140,6 +140,15 @@ export async function registerAccount(payload: RegisterPayload) {
   });
 }
 
+export async function checkUsernameAvailability(username: string) {
+  return apiRequest<{ available: boolean; message: string }>(
+    `/auth/username-availability/?username=${encodeURIComponent(username)}`,
+    {
+      method: "GET",
+    },
+  );
+}
+
 export async function verifyEmailAddress(payload: EmailVerificationPayload) {
   return apiRequest<{ message: string }>("/auth/verify-email/", {
     method: "POST",
