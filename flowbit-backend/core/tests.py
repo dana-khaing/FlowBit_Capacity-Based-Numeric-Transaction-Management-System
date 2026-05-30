@@ -2674,6 +2674,7 @@ class PrivateWorkspaceTests(APITestCase):
         response = self.client.post('/api/support-cases/login-help/', {
             'login_identifier': 'locked.user',
             'requester_name': 'Locked User',
+            'requester_email': 'locked.user@example.com',
             'subject': 'Cannot log in',
             'message': 'I cannot access my account after several attempts.',
         }, format='json')
@@ -2683,6 +2684,7 @@ class PrivateWorkspaceTests(APITestCase):
         support_case = SupportCase.objects.get(subject='Cannot log in')
         self.assertEqual(support_case.intake_type, SupportCase.INTAKE_LOGIN_HELP)
         self.assertEqual(support_case.requester_name, 'Locked User')
+        self.assertEqual(support_case.requester_email, 'locked.user@example.com')
         self.assertEqual(support_case.requester_login_identifier, 'locked.user')
         self.assertEqual(support_case.created_by.username, '_login_help_intake')
         self.assertEqual(support_case.messages.count(), 1)
@@ -2707,6 +2709,7 @@ class PrivateWorkspaceTests(APITestCase):
         self.client.post('/api/support-cases/login-help/', {
             'login_identifier': 'locked.user',
             'requester_name': 'Locked User',
+            'requester_email': 'locked.user@example.com',
             'subject': 'Cannot log in',
             'message': 'I cannot access my account after several attempts.',
         }, format='json')
@@ -2718,8 +2721,92 @@ class PrivateWorkspaceTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['created_by_full_name'], 'Locked User')
         self.assertEqual(response.data['created_by_username'], 'locked.user')
+        self.assertEqual(response.data['requester_email'], 'locked.user@example.com')
         self.assertEqual(response.data['messages'][0]['sender_full_name'], 'Locked User')
         self.assertEqual(response.data['messages'][0]['sender_username'], 'locked.user')
+
+    def test_admin_reply_to_login_help_case_sends_email(self):
+        self.client.post('/api/support-cases/login-help/', {
+            'login_identifier': 'locked.user',
+            'requester_name': 'Locked User',
+            'requester_email': 'locked.user@example.com',
+            'subject': 'Cannot log in',
+            'message': 'I cannot access my account after several attempts.',
+        }, format='json')
+        support_case = SupportCase.objects.get(subject='Cannot log in')
+
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.post(
+            f'/api/support-cases/{support_case.id}/reply/',
+            {'message': 'Please try signing in again now.'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ['locked.user@example.com'])
+        self.assertIn('Please try signing in again now.', mail.outbox[0].body)
+
+    def test_admin_reply_to_old_login_help_case_can_save_reply_email(self):
+        intake_user = User.objects.create_user(username='_old_login_help_intake')
+        support_case = SupportCase.objects.create(
+            created_by=intake_user,
+            subject='Old login help',
+            intake_type=SupportCase.INTAKE_LOGIN_HELP,
+            requester_name='Old User',
+            requester_login_identifier='old.user',
+            last_message_at=timezone.now(),
+        )
+        SupportMessage.objects.create(
+            support_case=support_case,
+            sender=intake_user,
+            body='I need help signing in.',
+        )
+
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.post(
+            f'/api/support-cases/{support_case.id}/reply/',
+            {
+                'message': 'Please try signing in again now.',
+                'requester_email': 'Old.User@Example.com',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        support_case.refresh_from_db()
+        self.assertEqual(support_case.requester_email, 'old.user@example.com')
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ['old.user@example.com'])
+
+    def test_admin_reply_to_old_login_help_case_uses_email_login_identifier(self):
+        intake_user = User.objects.create_user(username='_email_login_help_intake')
+        support_case = SupportCase.objects.create(
+            created_by=intake_user,
+            subject='Email login help',
+            intake_type=SupportCase.INTAKE_LOGIN_HELP,
+            requester_name='Email User',
+            requester_login_identifier='email.user@example.com',
+            last_message_at=timezone.now(),
+        )
+        SupportMessage.objects.create(
+            support_case=support_case,
+            sender=intake_user,
+            body='I need help signing in.',
+        )
+
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.post(
+            f'/api/support-cases/{support_case.id}/reply/',
+            {'message': 'Please try signing in again now.'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        support_case.refresh_from_db()
+        self.assertEqual(support_case.requester_email, 'email.user@example.com')
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ['email.user@example.com'])
 
     def test_case_can_be_replied_closed_and_reopened_by_both_sides(self):
         support_case = SupportCase.objects.create(
