@@ -1161,6 +1161,7 @@ class SupportCaseSerializer(serializers.ModelSerializer):
             'subject',
             'intake_type',
             'requester_name',
+            'requester_email',
             'requester_login_identifier',
             'status',
             'created_by',
@@ -1225,6 +1226,7 @@ class SupportCaseCreateSerializer(serializers.Serializer):
 class PublicLoginHelpCaseCreateSerializer(serializers.Serializer):
     login_identifier = serializers.CharField(max_length=160)
     requester_name = serializers.CharField(max_length=160, required=False, allow_blank=True)
+    requester_email = serializers.EmailField(max_length=254)
     subject = serializers.CharField(max_length=160)
     message = serializers.CharField()
 
@@ -1236,6 +1238,9 @@ class PublicLoginHelpCaseCreateSerializer(serializers.Serializer):
 
     def validate_requester_name(self, value):
         return value.strip()
+
+    def validate_requester_email(self, value):
+        return value.strip().lower()
 
     def validate_subject(self, value):
         value = value.strip()
@@ -1252,12 +1257,16 @@ class PublicLoginHelpCaseCreateSerializer(serializers.Serializer):
 
 class SupportCaseReplySerializer(serializers.Serializer):
     message = serializers.CharField()
+    requester_email = serializers.EmailField(required=False, allow_blank=True, max_length=254)
 
     def validate_message(self, value):
         value = value.strip()
         if not value:
             raise serializers.ValidationError('Message is required.')
         return value
+
+    def validate_requester_email(self, value):
+        return value.strip().lower()
 
 
 class SupportCaseDetailSerializer(SupportCaseSerializer):

@@ -271,6 +271,10 @@ class AuthEmailDeliveryError(Exception):
     pass
 
 
+class SupportEmailDeliveryError(Exception):
+    pass
+
+
 def send_auth_email(*, request, user, subject, message, audit_action):
     try:
         send_mail(
@@ -290,6 +294,42 @@ def send_auth_email(*, request, user, subject, message, audit_action):
             changes={'email': user.email, 'category': audit_action, 'error': str(exc)},
         )
         raise AuthEmailDeliveryError from exc
+
+
+def send_support_reply_email(*, request, support_case, recipient_email, subject, message):
+    try:
+        send_mail(
+            subject=subject,
+            message=message,
+            from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@flowbit.local'),
+            recipient_list=[recipient_email],
+            fail_silently=False,
+        )
+    except Exception as exc:
+        logger.exception("Failed to send support reply email to %s for case %s", recipient_email, support_case.id)
+        record_audit_log(
+            request,
+            'support.email_delivery_failed',
+            target=support_case,
+            details=f"Support reply email delivery failed for case '{support_case.subject}'",
+            changes={'case_id': support_case.id, 'recipient_email': recipient_email, 'error': str(exc)},
+        )
+        raise SupportEmailDeliveryError from exc
+
+
+def build_login_help_reply_email_body(*, support_case, admin_user, reply_body):
+    admin_name = admin_user.get_full_name().strip() or admin_user.username
+    return "\n".join(
+        [
+            f"FlowBit login help reply: {support_case.subject}",
+            "",
+            f"Admin: {admin_name}",
+            f"Reply sent at: {timezone.localtime(timezone.now()).isoformat()}",
+            "",
+            "Reply:",
+            reply_body,
+        ]
+    )
 
 
 def issue_and_send_email_verification(*, request, user):
@@ -3686,15 +3726,56 @@ class SupportCaseViewSet(viewsets.ModelViewSet):
         support_case = self.get_object()
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        reply_body = serializer.validated_data['message']
+        should_save_requester_email = False
+
+        if is_admin_user(request.user) and support_case.intake_type == SupportCase.INTAKE_LOGIN_HELP:
+            requester_email = (
+                support_case.requester_email
+                or serializer.validated_data.get('requester_email', '')
+                or (
+                    support_case.requester_login_identifier
+                    if '@' in support_case.requester_login_identifier
+                    else ''
+                )
+            )
+            if not requester_email:
+                return Response(
+                    {'detail': 'Enter a requester email before sending this login-help reply.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            try:
+                send_support_reply_email(
+                    request=request,
+                    support_case=support_case,
+                    recipient_email=requester_email,
+                    subject=f"FlowBit login help reply: {support_case.subject}",
+                    message=build_login_help_reply_email_body(
+                        support_case=support_case,
+                        admin_user=request.user,
+                        reply_body=reply_body,
+                    ),
+                )
+            except SupportEmailDeliveryError:
+                return Response(
+                    {'detail': 'We could not send the login-help reply email right now. Please try again shortly.'},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
+            if support_case.requester_email != requester_email:
+                support_case.requester_email = requester_email
+                should_save_requester_email = True
 
         with db_transaction.atomic():
             message = SupportMessage.objects.create(
                 support_case=support_case,
                 sender=request.user,
-                body=serializer.validated_data['message'],
+                body=reply_body,
             )
             support_case.last_message_at = message.created_at
-            support_case.save(update_fields=['last_message_at', 'updated_at'])
+            update_fields = ['last_message_at', 'updated_at']
+            if should_save_requester_email:
+                update_fields.append('requester_email')
+            support_case.save(update_fields=update_fields)
 
         actor_label = notification_actor_label(request.user)
         if is_admin_user(request.user):
@@ -3788,6 +3869,7 @@ class PublicLoginHelpCaseCreateView(APIView):
                 subject=serializer.validated_data['subject'],
                 intake_type=SupportCase.INTAKE_LOGIN_HELP,
                 requester_name=serializer.validated_data.get('requester_name', ''),
+                requester_email=serializer.validated_data['requester_email'],
                 requester_login_identifier=serializer.validated_data['login_identifier'],
                 last_message_at=timezone.now(),
             )
@@ -3825,6 +3907,7 @@ class PublicLoginHelpCaseCreateView(APIView):
                 'case_id': support_case.id,
                 'subject': support_case.subject,
                 'requester_name': support_case.requester_name,
+                'requester_email': support_case.requester_email,
                 'requester_login_identifier': support_case.requester_login_identifier,
             },
         )
