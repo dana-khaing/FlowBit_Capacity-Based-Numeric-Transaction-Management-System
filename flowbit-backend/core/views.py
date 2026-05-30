@@ -5238,6 +5238,27 @@ class RegisterView(APIView):
         )
 
 
+class UsernameAvailabilityView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        username = (request.query_params.get('username') or '').strip()
+        if not username:
+            return Response(
+                {'available': False, 'message': 'Choose a username.'},
+                status=status.HTTP_200_OK,
+            )
+
+        is_available = not User.objects.filter(username__iexact=username).exists()
+        return Response(
+            {
+                'available': is_available,
+                'message': 'Username is available.' if is_available else 'This username is already taken.',
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
 class LoginView(APIView):
     permission_classes = [AllowAny]
 

@@ -358,6 +358,20 @@ class AuthAPITests(APITestCase):
         self.assertEqual(created_user.profile.phone_number, '')
         self.assertEqual(response.data['user']['phone_number'], '')
 
+    def test_username_availability_warns_when_username_is_taken(self):
+        response = self.client.get('/api/auth/username-availability/', {'username': 'AUTH_USER'})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(response.data['available'])
+        self.assertEqual(response.data['message'], 'This username is already taken.')
+
+    def test_username_availability_allows_unused_username(self):
+        response = self.client.get('/api/auth/username-availability/', {'username': 'fresh_user'})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data['available'])
+        self.assertEqual(response.data['message'], 'Username is available.')
+
     def test_register_rejects_duplicate_email(self):
         response = self.client.post('/api/auth/register/', {
             'full_name': 'Another User',
