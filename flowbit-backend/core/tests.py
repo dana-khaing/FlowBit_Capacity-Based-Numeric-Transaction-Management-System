@@ -3445,6 +3445,12 @@ class PrivateWorkflowAPITests(APITestCase):
             response.data['unsuccessful'][0]['status'],
             RepeatTicketGeneration.STATUS_UNSUCCESSFUL,
         )
+        failed_generation = RepeatTicketGeneration.objects.get(
+            repeat_ticket_id=failing_repeat.data['id'],
+            period=self.active_period,
+        )
+        self.assertEqual(failed_generation.status, RepeatTicketGeneration.STATUS_UNSUCCESSFUL)
+        self.assertIn('no longer exists', failed_generation.failure_message)
 
     def test_repeat_ticket_generate_requires_spill_over_confirmation(self):
         repeat_ticket_response = self.client.post(
@@ -4262,6 +4268,28 @@ class PrivateWorkflowAPITests(APITestCase):
         self.active_transaction.refresh_from_db()
         self.assertTrue(self.active_ticket.is_refunded)
         self.assertTrue(self.active_transaction.is_refunded)
+
+    @patch('core.views.notify_refund_change')
+    @patch('core.views.refund_transactions')
+    def test_ticket_refund_notification_uses_period_captured_before_overflow_deletion(
+        self,
+        mocked_refund_transactions,
+        mocked_notify_refund_change,
+    ):
+        def delete_overflows(transactions, **_kwargs):
+            for transaction_obj in transactions:
+                transaction_obj.overflows.all().delete()
+
+        mocked_refund_transactions.side_effect = delete_overflows
+
+        response = self.client.post(
+            f'/api/tickets/{self.active_ticket.ticket_number}/refund/',
+            {'action': 'refund_ticket', 'admin_override_code': '1234'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(mocked_notify_refund_change.call_args.kwargs['period'], self.active_period)
 
     def test_ticket_refund_requires_admin_override_code_for_admin_user(self):
         response = self.client.post(
