@@ -2717,8 +2717,9 @@ class TransactionViewSet(viewsets.ModelViewSet):
             ledger_prefix='allocations__ledger__'
         )
 
+    @db_transaction.atomic
     def create(self, request, *args, **kwargs):
-        open_period = Period.get_open_period()
+        open_period = Period.objects.select_for_update().filter(is_open=True).order_by('start_date').first()
         if not open_period:
             return Response(
                 {"detail": "No open period available."},
@@ -2733,6 +2734,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         identifier = serializer.validated_data['identifier']
+        identifier = Identifier.objects.select_for_update().get(pk=identifier.pk)
         identifier._allocation_owner = request.user
         total_amount = serializer.validated_data['total_amount']
         manual_allocations_input = request.data.get('manual_allocations') or []
@@ -3199,6 +3201,20 @@ class OverflowViewSet(viewsets.ModelViewSet):
             )
 
         with db_transaction.atomic():
+            overflow = (
+                Overflow.objects.select_for_update()
+                .select_related('transaction__identifier', 'transaction__created_by', 'period')
+                .get(pk=overflow.pk)
+            )
+            if overflow.status != Overflow.STATUS_TCSO:
+                return Response(
+                    {"detail": "Only pending overflows can be approved"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            approved_amount = min(requested_amount, overflow.excess_amount)
+            extra_amount = requested_amount - overflow.excess_amount
+            target_period = overflow.period
+
             overflow.amount_to_approve = approved_amount
             overflow.status = Overflow.STATUS_CSO
             overflow.approved_at = timezone.now()
@@ -6474,7 +6490,7 @@ class CreateTicketWithTransactions(APIView):
     def post(self, request):
         data = request.data
 
-        open_period = Period.get_open_period()
+        open_period = Period.objects.select_for_update().filter(is_open=True).order_by('start_date').first()
         if not open_period:
             return Response(
                 {"detail": "No open period available."},
@@ -6496,6 +6512,13 @@ class CreateTicketWithTransactions(APIView):
                 {"detail": "No active ledgers available in the current open period."},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+        identifier_ids = sorted({
+            item.get('identifier')
+            for item in (data.get('items') or [])
+            if isinstance(item, dict) and item.get('identifier')
+        })
+        list(Identifier.objects.select_for_update().filter(pk__in=identifier_ids).order_by('pk'))
 
         try:
             prepared_items, errors = _prepare_ticket_items_for_period(
