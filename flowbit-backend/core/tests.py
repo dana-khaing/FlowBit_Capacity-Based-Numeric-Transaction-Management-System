@@ -1,15 +1,17 @@
 from io import StringIO
 from decimal import Decimal
 from datetime import datetime, time, timedelta
+import threading
 import tempfile
 from unittest.mock import patch
 
 from django.core.management import call_command
 from django.core import mail
 from django.contrib.auth.models import User
+from django.db import close_old_connections
 from django.db.models import Q, Sum
-from django.test import override_settings
-from django.test import SimpleTestCase
+from django.test import override_settings, skipUnlessDBFeature
+from django.test import SimpleTestCase, TransactionTestCase
 from django.utils import timezone
 from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework import status
@@ -41,6 +43,82 @@ from core.models import (
     RepeatTicketGeneration,
 )
 from flowbit_backend.db_config import build_database_config
+
+
+class DatabaseRaceProtectionTests(TransactionTestCase):
+    reset_sequences = True
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='concurrent-owner', password='password')
+        self.identifier = Identifier.objects.create(number='901')
+        period_end = (timezone.now() + timedelta(days=2)).replace(
+            hour=23,
+            minute=59,
+            second=59,
+            microsecond=0,
+        )
+        self.period = Period.objects.create(
+            name='Concurrent Period',
+            start_date=timezone.now() - timedelta(days=1),
+            end_date=period_end,
+            pre_close_time=time(hour=15, minute=30),
+        )
+        self.ledger = Ledger.objects.create(
+            period=self.period,
+            owner=self.user,
+            name='Concurrent Ledger',
+            end_date=self.period.end_date,
+            limit_per_identifier=Decimal('100.00'),
+        )
+
+    @skipUnlessDBFeature('has_select_for_update')
+    def test_concurrent_transactions_cannot_over_allocate_ledger_capacity(self):
+        barrier = threading.Barrier(2)
+        errors = []
+
+        def create_transaction():
+            close_old_connections()
+            try:
+                barrier.wait(timeout=5)
+                Transaction.objects.create(
+                    identifier_id=self.identifier.id,
+                    total_amount=Decimal('60.00'),
+                    created_by_id=self.user.id,
+                )
+            except Exception as exc:
+                errors.append(exc)
+            finally:
+                close_old_connections()
+
+        threads = [threading.Thread(target=create_transaction) for _ in range(2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=10)
+
+        self.assertFalse(any(thread.is_alive() for thread in threads))
+        self.assertEqual(errors, [])
+        self.assertEqual(
+            LedgerAllocation.objects.filter(ledger=self.ledger).aggregate(total=Sum('amount'))['total'],
+            Decimal('100.00'),
+        )
+        self.assertEqual(
+            Overflow.objects.filter(status=Overflow.STATUS_TCSO).aggregate(total=Sum('excess_amount'))['total'],
+            Decimal('50.00'),
+        )
+        self.assertEqual(Transaction.objects.values('order_number').distinct().count(), 2)
+
+    def test_generated_ticket_and_transaction_numbers_use_database_ids(self):
+        ticket = Ticket.objects.create(created_by=self.user)
+        transaction_obj = Transaction.objects.create(
+            ticket=ticket,
+            identifier=self.identifier,
+            total_amount=Decimal('10.00'),
+            created_by=self.user,
+        )
+
+        self.assertTrue(ticket.ticket_number.endswith(f'-{ticket.pk:04d}'))
+        self.assertEqual(transaction_obj.order_number, f'FB-{transaction_obj.pk:06d}')
 
 
 class DatabaseConfigTests(SimpleTestCase):
