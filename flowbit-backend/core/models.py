@@ -288,16 +288,21 @@ class Ledger(models.Model):
         if reserve or not create or period is None:
             return reserve
 
-        return cls.objects.create(
-            period=period,
-            owner=owner,
-            name=f"{period.name} Capacity Reserve",
-            end_date=period.end_date,
-            limit_per_identifier=Decimal('0.00'),
-            priority=cls.CAPACITY_RESERVE_PRIORITY,
-            is_active=period.is_open,
-            is_capacity_reserve=True,
-        )
+        with transaction.atomic():
+            User.objects.select_for_update().get(pk=owner.pk)
+            reserve, _ = cls.objects.get_or_create(
+                period=period,
+                owner=owner,
+                is_capacity_reserve=True,
+                defaults={
+                    'name': f"{period.name} Capacity Reserve",
+                    'end_date': period.end_date,
+                    'limit_per_identifier': Decimal('0.00'),
+                    'priority': cls.CAPACITY_RESERVE_PRIORITY,
+                    'is_active': period.is_open,
+                },
+            )
+            return reserve
 
     def close(self, closed_at=None, save=True):
         if closed_at is None:
@@ -658,7 +663,7 @@ def _allocate_transaction_amount(transaction_obj, amount, period, apply_multipli
         period=period,
         owner=transaction_obj.created_by,
     )
-    active_ledgers = Ledger.objects.filter(
+    active_ledgers = Ledger.objects.select_for_update().filter(
         is_active=True,
         period=period,
         is_capacity_reserve=False,
@@ -716,6 +721,16 @@ def _allocate_transaction_amount(transaction_obj, amount, period, apply_multipli
 
 
 def _allocate_manual_transaction_amount(transaction_obj, amount, period, manual_allocations, apply_multiplier=False):
+    ledger_ids = [item['ledger'].pk for item in manual_allocations if item.get('ledger') is not None]
+    locked_ledgers = {
+        ledger.pk: ledger
+        for ledger in Ledger.objects.select_for_update().filter(pk__in=ledger_ids)
+    }
+    manual_allocations = [
+        {**item, 'ledger': locked_ledgers.get(item['ledger'].pk)}
+        for item in manual_allocations
+        if item.get('ledger') is not None and item['ledger'].pk in locked_ledgers
+    ]
     preview = preview_transaction_allocation(
         identifier=transaction_obj.identifier,
         total_amount=amount,
@@ -752,12 +767,14 @@ def _allocate_manual_transaction_amount(transaction_obj, amount, period, manual_
     return preview['overflow_amount']
 
 
+@transaction.atomic
 def _retry_pending_overflows(period, identifier):
     if period is None:
         return
 
+    Identifier.objects.select_for_update().get(pk=identifier.pk)
     pending_overflows = (
-        Overflow.objects.filter(
+        Overflow.objects.select_for_update().filter(
             _period_overflow_filter(period),
             status=Overflow.STATUS_TCSO,
             transaction__identifier=identifier,
@@ -783,13 +800,14 @@ def _retry_pending_overflows(period, identifier):
             overflow.save(update_fields=['excess_amount'])
 
 
+@transaction.atomic
 def _resolve_pending_overflows(period, exclude_ledger_ids=None):
     if period is None:
         return
 
     exclude_ledger_ids = exclude_ledger_ids or []
     pending_overflows = (
-        Overflow.objects.filter(
+        Overflow.objects.select_for_update().filter(
             _period_overflow_filter(period),
             status=Overflow.STATUS_TCSO,
         )
@@ -1095,17 +1113,15 @@ class Ticket(models.Model):
         return self.ticket_number
 
     def save(self, *args, **kwargs):
-        if not self.ticket_number:
+        is_new = self.pk is None
+        generated_ticket_number = is_new and not self.ticket_number
+        if generated_ticket_number:
             today = timezone.now().strftime('%Y%m%d')
-            last = Ticket.objects.filter(
-                ticket_number__startswith=f"TICKET-{today}"
-            ).order_by('-ticket_number').first()
-            seq = 1
-            if last:
-                last_seq = int(last.ticket_number.split('-')[-1])
-                seq = last_seq + 1
-            self.ticket_number = f"TICKET-{today}-{seq:04d}"
+            self.ticket_number = f"TICKET-{today}-{uuid.uuid4().hex[:12]}"
         super().save(*args, **kwargs)
+        if generated_ticket_number:
+            self.ticket_number = f"TICKET-{today}-{self.pk:04d}"
+            Ticket.objects.filter(pk=self.pk).update(ticket_number=self.ticket_number)
 
     @property
     def total_amount(self):
@@ -1310,53 +1326,57 @@ class Transaction(models.Model):
         return _get_transaction_period(self)
 
     def save(self, *args, **kwargs):
-        if not self.order_number:
-            last = Transaction.objects.order_by('-id').first()
-            seq = (last.id + 1) if last else 1
-            self.order_number = f'FB-{seq:06d}'
-
         is_new = self.pk is None
-        super().save(*args, **kwargs)
+        generated_order_number = is_new and not self.order_number
+        with transaction.atomic():
+            if generated_order_number:
+                self.order_number = f'FB-{uuid.uuid4().hex[:12]}'
+            super().save(*args, **kwargs)
+            if generated_order_number:
+                self.order_number = f'FB-{self.pk:06d}'
+                Transaction.objects.filter(pk=self.pk).update(order_number=self.order_number)
 
-        if is_new and not getattr(self, '_skip_auto_allocate', False):
-            self._allocate_to_ledgers()
+            if is_new and not getattr(self, '_skip_auto_allocate', False):
+                self._allocate_to_ledgers()
 
     def _allocate_to_ledgers(self):
-        open_period = Period.get_open_period()
-        if not open_period:
-            raise ValidationError("No open period available.")
+        with transaction.atomic():
+            open_period = Period.objects.select_for_update().filter(is_open=True).order_by('start_date').first()
+            if not open_period or open_period.pre_closed_at is not None:
+                raise ValidationError("No open period available.")
 
-        active_ledgers = Ledger.objects.filter(
-            is_active=True,
-            period=open_period,
-            is_capacity_reserve=False,
-        ).order_by('priority')
-        if not active_ledgers.exists():
-            raise ValidationError("No active ledgers available in the current open period.")
+            Identifier.objects.select_for_update().get(pk=self.identifier_id)
+            active_ledgers = Ledger.objects.select_for_update().filter(
+                is_active=True,
+                period=open_period,
+                is_capacity_reserve=False,
+            ).order_by('priority')
+            if not active_ledgers.exists():
+                raise ValidationError("No active ledgers available in the current open period.")
 
-        manual_allocations = getattr(self, '_manual_allocations', None)
-        if manual_allocations:
-            remaining = _allocate_manual_transaction_amount(
-                self,
-                self.total_amount,
-                open_period,
-                manual_allocations,
-                apply_multiplier=True,
-            )
-        else:
-            remaining = _allocate_transaction_amount(
-                self,
-                self.total_amount,
-                open_period,
-                apply_multiplier=True,
-            )
+            manual_allocations = getattr(self, '_manual_allocations', None)
+            if manual_allocations:
+                remaining = _allocate_manual_transaction_amount(
+                    self,
+                    self.total_amount,
+                    open_period,
+                    manual_allocations,
+                    apply_multiplier=True,
+                )
+            else:
+                remaining = _allocate_transaction_amount(
+                    self,
+                    self.total_amount,
+                    open_period,
+                    apply_multiplier=True,
+                )
 
-        if remaining > 0:
-            Overflow.objects.create(
-                transaction=self,
-                excess_amount=remaining,
-                status=Overflow.STATUS_TCSO
-            )
+            if remaining > 0:
+                Overflow.objects.create(
+                    transaction=self,
+                    excess_amount=remaining,
+                    status=Overflow.STATUS_TCSO
+                )
 
 
 class LedgerAllocation(models.Model):
@@ -1818,13 +1838,15 @@ def _grant_capacity_adjustment(overflow, amount, adjustment_type, helper_name):
     )
 
 
+@transaction.atomic
 def _consume_overkill_capacity(identifier, period, owner, amount, consuming_transaction=None):
     if period is None or owner is None or amount <= 0:
         return
 
+    Identifier.objects.select_for_update().get(pk=identifier.pk)
     remaining = Decimal(str(amount))
     overkill_rows = list(
-        Overflow.objects.filter(
+        Overflow.objects.select_for_update().filter(
             identifier=identifier,
             owner=owner,
             period=period,
