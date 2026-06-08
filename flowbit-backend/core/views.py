@@ -6064,7 +6064,7 @@ class TicketRefundView(APIView):
                     request_user=request.user,
                     action_href='/tickets',
                     source_key=f'ticket-cso-refund:{ticket.id}:{timezone.now().isoformat()}',
-                    period=ticket.transactions.first().period if ticket.transactions.exists() else None,
+                    period=ticket_period,
                 )
                 refresh_dashboard_for_user(ticket.created_by)
                 return Response({
@@ -6111,7 +6111,7 @@ class TicketRefundView(APIView):
                 request_user=request.user,
                 action_href='/tickets',
                 source_key=f'ticket-refund:{ticket.id}:{timezone.now().isoformat()}',
-                period=ticket.transactions.first().overflows.first().period if ticket.transactions.exists() and ticket.transactions.first().overflows.exists() else None,
+                period=ticket_period,
             )
             refresh_dashboard_for_user(ticket.created_by)
             return Response({
@@ -6129,6 +6129,7 @@ class TicketRefundView(APIView):
                 {"detail": "This transaction has already been refunded."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        transaction_period = transaction_obj.period
 
         cso_overflows = [
             overflow for overflow in transaction_obj.overflows.all() if overflow.status == Overflow.STATUS_CSO
@@ -6174,7 +6175,7 @@ class TicketRefundView(APIView):
                 request_user=request.user,
                 action_href='/tickets',
                 source_key=f'ticket-transaction-cso-refund:{transaction_obj.id}:{timezone.now().isoformat()}',
-                period=transaction_obj.period,
+                period=transaction_period,
             )
             refresh_dashboard_for_user(ticket.created_by)
             return Response({
@@ -6223,7 +6224,7 @@ class TicketRefundView(APIView):
             request_user=request.user,
             action_href='/tickets',
             source_key=f'ticket-transaction-refund:{transaction_obj.id}:{timezone.now().isoformat()}',
-            period=transaction_obj.overflows.first().period if transaction_obj.overflows.exists() else None,
+            period=transaction_period,
         )
         refresh_dashboard_for_user(ticket.created_by)
         return Response({
@@ -6692,6 +6693,7 @@ class RepeatTicketViewSet(viewsets.ModelViewSet):
                 "status": current_status,
             }, status.HTTP_400_BAD_REQUEST
 
+        generation = None
         try:
             payload = _build_repeat_ticket_generation_payload(repeat_ticket)
             prepared_items, _errors = _prepare_ticket_items_for_period(
@@ -6741,6 +6743,15 @@ class RepeatTicketViewSet(viewsets.ModelViewSet):
             else:
                 message = str(detail)
                 errors = []
+            if generation is None:
+                generation, _created = RepeatTicketGeneration.objects.get_or_create(
+                    repeat_ticket=repeat_ticket,
+                    period=open_period,
+                    defaults={
+                        'status': RepeatTicketGeneration.STATUS_UNSUCCESSFUL,
+                        'source_version': repeat_ticket.version,
+                    },
+                )
             generation.ticket = None
             generation.status = RepeatTicketGeneration.STATUS_UNSUCCESSFUL
             generation.source_version = repeat_ticket.version
