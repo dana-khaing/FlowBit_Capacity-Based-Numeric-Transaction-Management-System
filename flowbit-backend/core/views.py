@@ -4074,6 +4074,14 @@ class CollaboratorViewSet(viewsets.ModelViewSet):
 
         return overflows, period_label
 
+    @staticmethod
+    def _export_overflow_identifier_number(overflow):
+        if overflow.identifier_id:
+            return overflow.identifier.number
+        if overflow.transaction_id:
+            return overflow.transaction.identifier.number
+        return ''
+
     def _get_spillover_export_payload(self, request, collaborator=None):
         period_id = request.query_params.get('period_id')
         if period_id:
@@ -4274,7 +4282,7 @@ class CollaboratorViewSet(viewsets.ModelViewSet):
             approved_amount = overflow.amount_to_approve or overflow.excess_amount or Decimal('0.00')
             total_amount += approved_amount
             writer.writerow([
-                overflow.transaction.identifier.number,
+                self._export_overflow_identifier_number(overflow),
                 '.',
                 f'{approved_amount:.2f}',
             ])
@@ -4333,7 +4341,7 @@ class CollaboratorViewSet(viewsets.ModelViewSet):
             approved_amount = overflow.amount_to_approve or overflow.excess_amount or Decimal('0.00')
             total_amount += approved_amount
             transaction_rows.append([
-                overflow.transaction.identifier.number,
+                self._export_overflow_identifier_number(overflow),
                 '.',
                 f'{approved_amount:.2f}',
             ])
