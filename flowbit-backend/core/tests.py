@@ -4755,6 +4755,33 @@ class PrivateWorkflowAPITests(APITestCase):
         self.assertEqual(hidden_response.status_code, status.HTTP_200_OK)
         self.assertEqual(hidden_response.data, [])
 
+    def test_collaborator_exports_include_detached_overkill(self):
+        overkill = Overflow.objects.create(
+            transaction=None,
+            identifier=self.second_identifier,
+            owner=self.approver,
+            period=self.active_period,
+            excess_amount=Decimal('125.00'),
+            amount_to_approve=Decimal('125.00'),
+            status=Overflow.STATUS_OVERKILL,
+            approved_at=timezone.now(),
+        )
+        overkill.collaborators.set([self.collaborator])
+
+        csv_response = self.client.get(
+            f'/api/collaborators/{self.collaborator.id}/export-transactions/',
+            {'period_id': self.active_period.id},
+        )
+        pdf_response = self.client.get(
+            f'/api/collaborators/{self.collaborator.id}/export-transactions-pdf/',
+            {'period_id': self.active_period.id},
+        )
+
+        self.assertEqual(csv_response.status_code, status.HTTP_200_OK)
+        self.assertIn('102,.,125.00', csv_response.content.decode('utf-8'))
+        self.assertEqual(pdf_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(pdf_response['Content-Type'], 'application/pdf')
+
     def test_extra_overflow_approval_creates_separate_overkill_record(self):
         tx = Transaction.objects.create(
             ticket=Ticket.objects.create(customer_name='Overkill Ticket', created_by=self.approver),
